@@ -101,13 +101,12 @@ function theme_taxonomy_overview_vocabularies($form) {
  * @see taxonomy_form_vocabulary_submit()
  */
 function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
-  drupal_add_js(drupal_get_path('module', 'taxonomy') .'/taxonomy_vocabulary.js');
   if (!is_array($edit)) {
     $edit = (array)$edit;
   }
   $edit += array(
     'name' => '',
-    'field_name' => '',
+    'field_name' => 'term_'. preg_replace('/[^a-z0-9]+/', '_', strtolower($edit['name'])),
     'description' => '',
     'help' => '',
     'hierarchy' => 0,
@@ -131,12 +130,8 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#field_suffix' => ' <small id="vocabulary-field-name-suffix">&nbsp;</small>',
   );
   $form['field_name'] = array(
-    '#title' => t('Machine name'),
-    '#type' => 'textfield',
-    '#default_value' => $edit['field_name'],
-    '#maxlength' => 32,
-    '#required' => TRUE,
-    '#description' => t('The machine-readable name of this vocabulary. This value will be used for the field name. This name must contain only lowercase letters, numbers, and underscores. Underscores will be converted into hyphens when constructing the URL of the <em>create content</em> page. This name must be unique.'),
+    '#type' => 'value',
+    '#value' => $edit['field_name'],
   );
   $form['help'] = array(
     '#type' => 'textfield',
@@ -153,6 +148,9 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
   );
   if (module_exists('term')) {
     $instances = field_read_instances(array('field_name' => $edit['field_name']));
+    foreach ($instances as $instance) {
+      $edit['nodes'][] = $instance['bundle'];
+    }
     $form['nodes'] = array(
       '#type' => 'checkboxes',
       '#title' => t('Content types'),
@@ -247,7 +245,6 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       'bundle' => '',
       'label' => $vocabulary->name,
       'description' => $vocabulary->description,
-      'weight' => $vocabulary->weight,
       'required' => $vocabulary->required,
       'widget' => array(
         'type' => 'options_select',
