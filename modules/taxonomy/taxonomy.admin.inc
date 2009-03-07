@@ -216,7 +216,6 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
   // Fix up the nodes array to remove unchecked nodes.
   $form_state['values']['nodes'] = array_filter($form_state['values']['nodes']);
   $vocabulary = (object) $form_state['values'];
-  dpm($vocabulary);
   switch (taxonomy_vocabulary_save($vocabulary)) {
     case SAVED_NEW:
       drupal_set_message(t('Created new vocabulary %name.', array('%name' => $vocabulary->name)));
