@@ -1,0 +1,58 @@
+/* $Id: layout.css,v 1.2 2009/02/24 17:50:22 webchick Exp $ */
+
+/**
+ * @file
+ * Stark layout method
+ *
+ * To avoid obscuring CSS added to the page by Drupal or a contrib module, the
+ * Stark theme itself has no styling, except just enough CSS to arrange the page
+ * in a traditional "Header, sidebars, content, and footer" layout.
+ *
+ * This layout method works reasonably well, but shouldn't be used on a
+ * production site because it can break. For example, if an over-large image
+ * (one that is wider than 20% of the viewport) is in the left sidebar, the
+ * image will overlap with the #content to the right. The exception to this
+ * is IE6 which will just hide the navigation block completely in these
+ * instances due to a positioning bug.
+ */
+
+#content,
+#sidebar-left,
+#sidebar-right {
+  float: left;
+  display: inline;
+  position: relative;
+}
+
+#content {
+  width: 100%;
+}
+body.sidebar-left #content {
+  width: 80%;
+  left: 20%;
+}
+body.sidebar-right #content {
+  width: 80%;
+}
+body.two-sidebars #content {
+  width: 60%;
+  left: 20%;
+}
+
+#sidebar-left {
+  width: 20%;
+  left: -80%;
+}
+
+body.two-sidebars #sidebar-left {
+  left: -60%;
+}
+
+#sidebar-right {
+  float: right;
+  width: 20%;
+}
+
+.section {
+  margin: 10px;
+}

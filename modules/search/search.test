@@ -1,0 +1,401 @@
+<?php
+// $Id: search.test,v 1.15 2009/01/22 04:49:58 webchick Exp $
+
+// The search index can contain different types of content. Typically the type is 'node'.
+// Here we test with _test_ and _test2_ as the type.
+define('SEARCH_TYPE', '_test_');
+define('SEARCH_TYPE_2', '_test2_');
+
+class SearchMatchTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Search engine queries'),
+      'description' => t('Indexes content and queries it.'),
+      'group' => t('Search'),
+    );
+  }
+
+  /**
+   * Implementation setUp().
+   */
+  function setUp() {
+    parent::setUp('search');
+  }
+
+  /**
+   * Test search indexing.
+   */
+  function testMatching() {
+    $this->_setup();
+    $this->_testQueries();
+  }
+
+  /**
+   * Set up a small index of items to test against.
+   */
+  function _setup() {
+    variable_set('minimum_word_size', 3);
+
+    for ($i = 1; $i <= 7; ++$i) {
+      search_index($i, SEARCH_TYPE, $this->getText($i));
+    }
+    for ($i = 1; $i <= 5; ++$i) {
+      search_index($i + 7, SEARCH_TYPE_2, $this->getText2($i));
+    }
+    search_update_totals();
+  }
+
+  /**
+   * _test_: Helper method for generating snippets of content.
+   *
+   * Generated items to test against:
+   *   1  ipsum
+   *   2  dolore sit
+   *   3  sit am ut
+   *   4  am ut enim am
+   *   5  ut enim am minim veniam
+   *   6  enim am minim veniam es cillum
+   *   7  am minim veniam es cillum dolore eu
+   */
+  function getText($n) {
+    $words = explode(' ', "Ipsum dolore sit am. Ut enim am minim veniam. Es cillum dolore eu.");
+    return implode(' ', array_slice($words, $n - 1, $n));
+  }
+
+  /**
+   * _test2_: Helper method for generating snippets of content.
+   *
+   * Generated items to test against:
+   *   8  dear
+   *   9  king philip
+   *   10 philip came over
+   *   11 came over from germany
+   *   12 over from germany swimming
+   */
+  function getText2($n) {
+    $words = explode(' ', "Dear King Philip came over from Germany swimming.");
+    return implode(' ', array_slice($words, $n - 1, $n));
+  }
+
+  /**
+   * Run predefine queries looking for indexed terms.
+   */
+  function _testQueries() {
+    /*
+      Note: OR queries that include short words in OR groups are only accepted
+      if the ORed terms are ANDed with at least one long word in the rest of the query.
+
+      e.g. enim dolore OR ut = enim (dolore OR ut) = (enim dolor) OR (enim ut) -> good
+      e.g. dolore OR ut = (dolore) OR (ut) -> bad
+
+      This is a design limitation to avoid full table scans.
+    */
+    $queries = array(
+      // Simple AND queries.
+      'ipsum' => array(1),
+      'enim' => array(4, 5, 6),
+      'xxxxx' => array(),
+      'enim minim' => array(5, 6),
+      'enim xxxxx' => array(),
+      'dolore eu' => array(7),
+      'dolore xx' => array(),
+      'ut minim' => array(5),
+      'xx minim' => array(),
+      'enim veniam am minim ut' => array(5),
+      // Simple OR queries.
+      'dolore OR ipsum' => array(1, 2, 7),
+      'dolore OR xxxxx' => array(2, 7),
+      'dolore OR ipsum OR enim' => array(1, 2, 4, 5, 6, 7),
+      'ipsum OR dolore sit OR cillum' => array(2, 7),
+      'minim dolore OR ipsum' => array(7),
+      'dolore OR ipsum veniam' => array(7),
+      'minim dolore OR ipsum OR enim' => array(5, 6, 7),
+      'dolore xx OR yy' => array(),
+      'xxxxx dolore OR ipsum' => array(),
+      // Negative queries.
+      'dolore -sit' => array(7),
+      'dolore -eu' => array(2),
+      'dolore -xxxxx' => array(2, 7),
+      'dolore -xx' => array(2, 7),
+      // Phrase queries.
+      '"dolore sit"' => array(2),
+      '"sit dolore"' => array(),
+      '"am minim veniam es"' => array(6, 7),
+      '"minim am veniam es"' => array(),
+      // Mixed queries.
+      '"am minim veniam es" OR dolore' => array(2, 6, 7),
+      '"minim am veniam es" OR "dolore sit"' => array(2),
+      '"minim am veniam es" OR "sit dolore"' => array(),
+      '"am minim veniam es" -eu' => array(6),
+      '"am minim veniam" -"cillum dolore"' => array(5, 6),
+      '"am minim veniam" -"dolore cillum"' => array(5, 6, 7),
+      'xxxxx "minim am veniam es" OR dolore' => array(),
+      'xx "minim am veniam es" OR dolore' => array()
+    );
+    foreach ($queries as $query => $results) {
+      $set = do_search($query, SEARCH_TYPE);
+      $this->_testQueryMatching($query, $set, $results);
+      $this->_testQueryScores($query, $set, $results);
+    }
+
+    // These queries are run against the second index type, SEARCH_TYPE_2.
+    $queries = array(
+      // Simple AND queries.
+      'ipsum' => array(),
+      'enim' => array(),
+      'enim minim' => array(),
+      'dear' => array(8),
+      'germany' => array(11, 12),
+    );
+    foreach ($queries as $query => $results) {
+      $set = do_search($query, SEARCH_TYPE_2);
+      $this->_testQueryMatching($query, $set, $results);
+      $this->_testQueryScores($query, $set, $results);
+    }
+  }
+
+  /**
+   * Test the matching abilities of the engine.
+   *
+   * Verify if a query produces the correct results.
+   */
+  function _testQueryMatching($query, $set, $results) {
+    // Get result IDs.
+    $found = array();
+    foreach ($set as $item) {
+      $found[] = $item->sid;
+    }
+
+    // Compare $results and $found.
+    sort($found);
+    sort($results);
+    $this->assertEqual($found, $results, "Query matching '$query'");
+  }
+
+  /**
+   * Test the scoring abilities of the engine.
+   *
+   * Verify if a query produces normalized, monotonous scores.
+   */
+  function _testQueryScores($query, $set, $results) {
+    // Get result scores.
+    $scores = array();
+    foreach ($set as $item) {
+      $scores[] = $item->calculated_score;
+    }
+
+    // Check order.
+    $sorted = $scores;
+    sort($sorted);
+    $this->assertEqual($scores, array_reverse($sorted), "Query order '$query'");
+
+    // Check range.
+    $this->assertEqual(!count($scores) || (min($scores) > 0.0 && max($scores) <= 1.0001), TRUE, "Query scoring '$query'");
+  }
+}
+
+class SearchBikeShed extends DrupalWebTestCase {
+  protected $searching_user;
+
+  function getInfo() {
+    return array(
+      'name' => t('Bike shed'),
+      'description' => t('Tests the bike shed text on the no results page.'),
+      'group' => t('Search')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('search');
+
+    // Create user.
+    $this->searching_user = $this->drupalCreateUser(array('search content'));
+  }
+
+  function testFailedSearch() {
+    $this->drupalLogin($this->searching_user);
+    $this->drupalGet('search/node');
+    $this->assertText(t('Enter your keywords'));
+
+    $edit = array();
+    $edit['keys'] = 'bike shed ' . $this->randomName();
+    $this->drupalPost('search/node', $edit, t('Search'));
+    $this->assertText(t('Consider loosening your query with OR. bike OR shed will often show more results than bike shed.'), t('Help text is displayed when search returns no results.'));
+  }
+}
+
+class SearchAdvancedSearchForm extends DrupalWebTestCase {
+  protected $node;
+
+  function getInfo() {
+    return array(
+      'name' => t('Advanced search form'),
+      'description' => t('Indexes content and tests the advanced search form.'),
+      'group' => t('Search'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('search');
+    // Create and login user.
+    $test_user = $this->drupalCreateUser(array('access content', 'search content', 'use advanced search', 'administer nodes'));
+    $this->drupalLogin($test_user);
+
+    // Create initial node.
+    $node = $this->drupalCreateNode();
+    $this->node = $this->drupalCreateNode();
+
+    // First update the index. This does the initial processing.
+    node_update_index();
+
+    // Then, run the shutdown function. Testing is a unique case where indexing
+    // and searching has to happen in the same request, so running the shutdown
+    // function manually is needed to finish the indexing process.
+    search_update_totals();
+  }
+
+  /**
+   * Test using the search form with GET and POST queries.
+   * Test using the advanced search form to limit search to pages.
+   */
+  function testNodeType() {
+    $this->assertTrue($this->node->type == 'page', t('Node type is page.'));
+
+    // Assert that the dummy title doesn't equal the real title.
+    $dummy_title = 'Lorem ipsum';
+    $this->assertNotEqual($dummy_title, $this->node->title, t("Dummy title doens't equal node title"));
+
+    // Search for the dummy title with a GET query.
+    $this->drupalGet('search/node/' . drupal_urlencode($dummy_title));
+    $this->assertNoText($this->node->title, t('Page node is not found with dummy title.'));
+
+    // Search for the title of the node with a GET query.
+    $this->drupalGet('search/node/' . drupal_urlencode($this->node->title));
+    $this->assertText($this->node->title, t('Page node is found with GET query.'));
+
+    // Search for the title of the node with a POST query.
+    $edit = array('or' => $this->node->title);
+    $this->drupalPost('search/node', $edit, t('Advanced search'));
+    $this->assertText($this->node->title, t('Page node is found with POST query.'));
+
+    // Advanced search type option.
+    $this->drupalPost('search/node', array_merge($edit, array('type[page]' => 'page')), t('Advanced search'));
+    $this->assertText($this->node->title, t('Page node is found with POST query and type:page.'));
+
+    $this->drupalPost('search/node', array_merge($edit, array('type[article]' => 'article')), t('Advanced search'));
+    $this->assertText('bike shed', t('Article node is not found with POST query and type:article.'));
+  }
+}
+
+class SearchRankingTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Search engine ranking'),
+      'description' => t('Indexes content and tests ranking factors.'),
+      'group' => t('Search'),
+    );
+  }
+
+  /**
+   * Implementation setUp().
+   */
+  function setUp() {
+    parent::setUp('search', 'statistics', 'comment');
+  }
+
+  function testRankings() {
+    // Login with sufficient privileges.
+    $this->drupalLogin($this->drupalCreateUser(array('post comments without approval', 'create page content')));
+
+    // Build a list of the rankings to test.
+    $node_ranks = array('sticky', 'promote', 'relevance', 'recent', 'comments', 'views');
+
+    // Create nodes for testing.
+    foreach ($node_ranks as $node_rank) {
+      $settings = array('type' => 'page', 'title' => 'Drupal rocks', 'body' => "Drupal's search rocks");
+      foreach (array(0, 1) as $num) {
+        if ($num == 1) {
+          switch ($node_rank) {
+            case 'sticky':
+            case 'promote':
+              $settings[$node_rank] = 1;
+              break;
+            case 'relevance':
+              $settings['body'] .= " really rocks";
+              break;
+            case 'recent':
+              $settings['created'] = REQUEST_TIME + 3600;
+              break;
+            case 'comments':
+              $settings['comment'] = 2;
+              break;
+          }
+        }
+        $nodes[$node_rank][$num] = $this->drupalCreateNode($settings);
+      }
+    }
+
+    // Update the search index.
+    module_invoke_all('update_index');
+    search_update_totals();
+
+    // Refresh variables after the treatment.
+    $this->refreshVariables();
+
+    // Add a comment to one of the nodes.
+    $edit = array('subject' => 'my comment title', 'comment' => 'some random comment');
+    $this->drupalGet('comment/reply/' . $nodes['comments'][1]->nid);
+    $this->drupalPost(NULL, $edit, t('Preview'));
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    // Enable counting of statistics.
+    variable_set('statistics_count_content_views', 1);
+
+    // Then View one of the nodes a bunch of times.
+    for ($i = 0; $i < 5; $i ++) {
+      $this->drupalGet('node/' . $nodes['views'][1]->nid);
+    }
+
+    // Test each of the possible rankings.
+    foreach ($node_ranks as $node_rank) {
+      // Disable all relevancy rankings except the one we are testing.
+      foreach ($node_ranks as $var) {
+        variable_set('node_rank_' . $var, $var == $node_rank ? 10 : 0);
+      }
+
+      // Do the search and assert the results.
+      $set = node_search('search', 'rocks');
+      $this->assertEqual($set[0]['node']->nid, $nodes[$node_rank][1]->nid, 'Search ranking "' . $node_rank . '" order.');
+    }
+  }
+}
+
+class SearchBlockTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Block availability'),
+      'description' => t('Check if the search form block is available.'),
+      'group' => t('Search'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('search');
+
+    // Create and login user
+    $admin_user = $this->drupalCreateUser(array('administer blocks'));
+    $this->drupalLogin($admin_user);
+  }
+
+  function testSearchFormBlock() {
+    // Set block title to confirm that the interface is availble.
+    $this->drupalPost('admin/build/block/configure/search/form', array('title' => $this->randomName(8)), t('Save block'));
+    $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
+
+    // Set the block to a region to confirm block is availble.
+    $edit = array();
+    $edit['search_form[region]'] = 'footer';
+    $this->drupalPost('admin/build/block', $edit, t('Save blocks'));
+    $this->assertText(t('The block settings have been updated.'), t('Block successfully move to footer region.'));
+  }
+}

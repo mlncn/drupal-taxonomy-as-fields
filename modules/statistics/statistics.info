@@ -1,0 +1,10 @@
+; $Id: statistics.info,v 1.8 2008/10/11 02:33:02 webchick Exp $
+name = Statistics
+description = Logs access statistics for your site.
+package = Core
+version = VERSION
+core = 7.x
+files[] = statistics.module
+files[] = statistics.admin.inc
+files[] = statistics.pages.inc
+files[] = statistics.install

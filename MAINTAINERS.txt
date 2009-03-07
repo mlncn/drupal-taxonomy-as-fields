@@ -1,0 +1,64 @@
+// $Id: MAINTAINERS.txt,v 1.29 2009/01/08 03:32:42 webchick Exp $
+
+List of maintainers
+--------------------------------------------------------------------------------
+
+BLOG API
+James Walker 'walkah' <http://drupal.org/user/1531>
+
+DATABASE SYSTEM
+Larry Garfield 'Crell' <http://drupal.org/user/26398>
+
+ - MYSQL DRIVER
+   Larry Garfield 'Crell' <http://drupal.org/user/26398>
+   David Strauss 'David Strauss' <hhttp://drupal.org/user/93254>
+
+ - POSTGRESQL DRIVER
+   Damien Tournoud 'DamZ' <http://drupal.org/user/22211>
+   Josh Waihi 'fiasco' <http://drupal.org/user/188162>
+
+ - SQLITE DRIVER
+   Damien Tournoud 'DamZ' <http://drupal.org/user/22211>
+   Károly Négyesi 'chx' <http://drupal.org/user/9446>
+
+DOCUMENTATION COORDINATOR
+Addison Berry 'add1sun' <http://drupal.org/user/65088>
+
+FILE MANAGEMENT SYSTEM
+Andrew Morton 'drewish' <http://drupal.org/user/34869>
+
+FORM SYSTEM
+Károly Négyesi 'chx' <http://drupal.org/user/9446>
+
+LOCALE MODULE
+Gabor Hojtsy 'goba' <http://drupal.org/user/4166>
+
+LOGGING
+Khalid Baheyeldin 'kbahey' <http://drupal.org/user/4063>
+
+MENU SYSTEM
+Peter Wolanin <http://drupal.org/user/49851>
+
+SECURITY COORDINATOR
+Heine Deelstra 'heine' <http://drupal.org/user/17943>
+
+TESTING SUBSYSTEM
+Károly Négyesi 'chx' <http://drupal.org/user/9446>
+Jimmy Berry 'boombatower' <http://drupal.org/user/214218>
+
+THEME SYSTEM
+Earl Miles 'merlinofchaos' <http://drupal.org/user/26979>
+Joon Park 'dvessel' <http://drupal.org/user/56782>
+
+UPDATE MODULE
+Derek Wright 'dww' <http://drupal.org/user/46549>
+Earl Miles 'merlinofchaos' <http://drupal.org/user/26979>
+
+TRANSLATIONS COORDINATOR
+Gerhard Killesreiter 'killes' <http://drupal.org/user/83>
+
+GARLAND THEME
+Stefan Nagtegaal 'steef' <http://drupal.org/user/612>
+
+THE REST:
+Dries Buytaert 'dries' <http://drupal.org/user/1>

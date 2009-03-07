@@ -1,0 +1,9 @@
+; $Id: trigger.info,v 1.5 2008/10/11 02:33:10 webchick Exp $
+name = Trigger
+description = Enables actions to be fired on certain system events, such as when new content is created.
+package = Core
+version = VERSION
+core = 7.x
+files[] = trigger.module
+files[] = trigger.admin.inc
+files[] = trigger.install

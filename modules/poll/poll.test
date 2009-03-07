@@ -1,0 +1,208 @@
+<?php
+// $Id: poll.test,v 1.15 2009/02/01 06:48:15 webchick Exp $
+
+class PollTestCase extends DrupalWebTestCase {
+
+  /**
+   * Creates a poll.
+   *
+   * @param string $title The title of the poll.
+   * @param array $choices Choices.
+   * @param boolean $test_preview Whether to test if the preview is working or not.
+   * @return integer The nid of the created poll, or FALSE on error.
+   */
+  function pollCreate($title, $choices, $test_preview = TRUE) {
+    $this->assertTrue(TRUE, 'Create a poll');
+
+    $web_user = $this->drupalCreateUser(array('create poll content', 'access content'));
+    $this->drupalLogin($web_user);
+
+    // Get the form first to initialize the state of the internal browser
+    $this->drupalGet('node/add/poll');
+
+    // Prepare a form with two choices
+    list($edit, $index) = $this->_pollGenerateEdit($title, $choices);
+
+    if (count($choices) > 2) {
+      // Re-submit the form while the choices are all in
+      while($index < count($choices)) {
+        $this->drupalPost(NULL, $edit, t('More choices'));
+        list($edit, $index) = $this->_pollGenerateEdit($title, $choices, $index);
+      }
+    }
+
+    if ($test_preview) {
+      $this->drupalPost(NULL, $edit, t('Preview'));
+      foreach($choices as $k => $choice_text) {
+        $this->assertRaw($choice_text, t('Choice @choice found was in preview.', array('@choice' => $k)));
+      }
+      list($edit, $index) = $this->_pollGenerateEdit($title, $choices, $index);
+    }
+
+    $this->drupalPost(NULL, $edit, t('Save'));
+    $node = $this->drupalGetNodeByTitle($title);
+    $this->assertRaw(t('@type %title has been created.', array('@type' => node_get_types('name', 'poll'), '%title' => $title)), 'Poll has been created.');
+    $this->assertTrue($node->nid, t('Poll has been found in the database'));
+
+    return isset($node->nid) ? $node->nid : FALSE;
+  }
+
+  function _pollGenerateEdit($title, $choices, $index = 0) {
+    $max_new_choices = $index == 0 ? 2 : 5;
+    $already_submitted_choices = array_slice($choices, 0, $index);
+    $new_choices = array_values(array_slice($choices, $index, $max_new_choices));
+
+    $edit = array(
+      'title' => $title
+    );
+    foreach($already_submitted_choices as $k => $text) {
+      $edit['choice[chid:' . $k . '][chtext]'] = $text;
+    }
+    foreach($new_choices as $k => $text) {
+      $edit['choice[new:' . $k . '][chtext]'] = $text;
+    }
+    return array($edit, count($already_submitted_choices) + count($new_choices));
+  }
+
+  function _generateChoices($count = 7) {
+    $choices = array();
+    for($i = 1; $i <= $count; $i++) {
+      $choices[] = $this->randomName();
+    }
+    return $choices;
+  }
+}
+
+class PollCreateTestCase extends PollTestCase {
+  function getInfo() {
+    return array('name' => t('Poll create'), 'description' => 'Adds "more choices", previews and creates a poll.', 'group' => t('Poll'));
+  }
+
+  function setUp() {
+    parent::setUp('poll');
+  }
+
+  function testPollCreate() {
+    $title = $this->randomName();
+    $choices = $this->_generateChoices(7);
+    $this->pollCreate($title, $choices, TRUE);
+  }
+}
+
+class PollVoteTestCase extends PollTestCase {
+  function getInfo() {
+    return array('name' => t('Poll vote'), 'description' => 'Vote on a poll', 'group' => t('Poll'));
+  }
+
+  function setUp() {
+    parent::setUp('poll');
+  }
+
+  function tearDown() {
+    parent::tearDown();
+  }
+
+  function testPollVote() {
+    $title = $this->randomName();
+    $choices = $this->_generateChoices(7);
+    $poll_nid = $this->pollCreate($title, $choices, FALSE);
+    $this->drupalLogout();
+
+    $web_user = $this->drupalCreateUser(array('cancel own vote', 'inspect all votes', 'vote on polls', 'access content'));
+    $this->drupalLogin($web_user);
+
+    // Record a vote for the first choice.
+    $edit = array (
+      'choice' => '1',
+    );
+    $this->drupalPost('node/'. $poll_nid, $edit, t('Vote'));
+    $this->assertText('Your vote was recorded.', 'Your vote was recorded.');
+
+    $this->drupalGet("node/$poll_nid/votes");
+    $this->assertText(t('This table lists all the recorded votes for this poll. If anonymous users are allowed to vote, they will be identified by the IP address of the computer they used when they voted.'), 'Vote table text.');
+    $this->assertText($choices[0], 'Vote recorded');
+  }
+}
+
+class PollBlockTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Block availability'),
+      'description' => t('Check if the most recent poll block is available.'),
+      'group' => t('Poll'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('poll');
+
+    // Create and login user
+    $admin_user = $this->drupalCreateUser(array('administer blocks'));
+    $this->drupalLogin($admin_user);
+  }
+
+  function testRecentBlock() {
+    // Set block title to confirm that the interface is availble.
+    $this->drupalPost('admin/build/block/configure/poll/recent', array('title' => $this->randomName(8)), t('Save block'));
+    $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
+
+    // Set the block to a region to confirm block is availble.
+    $edit = array();
+    $edit['poll_recent[region]'] = 'footer';
+    $this->drupalPost('admin/build/block', $edit, t('Save blocks'));
+    $this->assertText(t('The block settings have been updated.'), t('Block successfully move to footer region.'));
+  }
+}
+
+/**
+ * Test adding new choices.
+ */
+class PollJSAddChoice extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('Poll add choice'),
+      'description' => t('Submits a POST request for an additional poll choice.'),
+      'group' => t('Poll')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('poll');
+  }
+
+  /**
+   * Test adding a new choice.
+   */
+  function testAddChoice() {
+    $web_user = $this->drupalCreateUser(array('create poll content', 'access content'));
+    $this->drupalLogin($web_user);
+    $this->drupalGet('node/add/poll');
+    $edit = array(
+      'title' => $this->randomName(),
+      'choice[new:0][chtext]' => $this->randomName(),
+      'choice[new:1][chtext]' => $this->randomName(),
+    );
+
+    // @TODO: the framework should make it possible to submit a form to a
+    // different URL than its action or the current. For now, we can just force
+    // it.
+    $this->additionalCurlOptions[CURLOPT_URL] = url('system/ahah', array('absolute' => TRUE));
+    $this->drupalPost(NULL, $edit, t('More choices'));
+    unset($this->additionalCurlOptions[CURLOPT_URL]);
+
+    // The response is drupal_json, so we need to undo some escaping.
+    $response = json_decode(str_replace(array('\x3c', '\x3e', '\x26'), array("<", ">", "&"), $this->drupalGetContent()));
+    $this->assertTrue(is_object($response), t('The response is an object'));
+    $this->assertIdentical($response->status, TRUE, t('Response status is true'));
+    // This response data is valid HTML so we will can reuse everything we have
+    // for HTML pages.
+    $this->content = $response->data;
+
+    // Needs to be emptied out so the new content will be parsed.
+    $this->elements = '';
+    $this->assertFieldByName('choice[chid:0][chtext]', $edit['choice[new:0][chtext]'], t('Field !i found', array('!i' => 0)));
+    $this->assertFieldByName('choice[chid:1][chtext]', $edit['choice[new:1][chtext]'], t('Field !i found', array('!i' => 1)));
+    $this->assertFieldByName('choice[new:0][chtext]', '', t('Field !i found', array('!i' => 2)));
+  }
+}

@@ -1,0 +1,88 @@
+<?php
+// $Id: menu.test,v 1.6 2009/02/05 01:05:17 webchick Exp $
+
+/**
+ * @file
+ * Provides SimpleTests for menu.inc.
+ */
+
+class MenuIncTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Hook menu tests'),
+      'description' => t('Test menu hook functionality.'),
+      'group' => t('Menu'),
+    );
+  }
+
+  function setUp() {
+    // Enable dummy module that implements hook_menu.
+    parent::setUp('menu_test');
+  }
+
+  /**
+   * Test title callback set to FALSE.
+   */
+  function testTitleCallbackFalse() {
+    $this->drupalGet('node');
+    $this->assertText('A title with @placeholder', t('Raw text found on the page'));
+    $this->assertNoText(t('A title with @placeholder', array('@placeholder' => 'some other text')), t('Text with placeholder substitutions not found.'));
+  }
+
+  /**
+   * Tests for menu_name parameter for hook_menu().
+   */
+  function testMenuName() {
+    $admin_user = $this->drupalCreateUser(array('administer site configuration'));
+    $this->drupalLogin($admin_user);
+
+    $sql = "SELECT menu_name FROM {menu_links} WHERE router_path = 'menu_name_test'";
+    $name = db_result(db_query($sql));
+    $this->assertEqual($name, 'original', t('Menu name is "original".'));
+
+    // Force a menu rebuild by going to the modules page.
+    $this->drupalGet('admin/build/modules', array('query' => array("hook_menu_name" => 'changed')));
+
+    $sql = "SELECT menu_name FROM {menu_links} WHERE router_path = 'menu_name_test'";
+    $name = db_result(db_query($sql));
+    $this->assertEqual($name, 'changed', t('Menu name was successfully changed after rebuild.'));
+  }
+}
+
+/**
+ * Tests rebuilding the menu by setting 'menu_rebuild_needed.'
+ */
+class MenuRebuildTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Menu rebuild test'),
+      'description' => t('Test rebuilding of menu.'),
+      'group' => t('Menu'),
+    );
+  }
+
+  /**
+   * Test if the 'menu_rebuild_needed' variable triggers a menu_rebuild() call.
+   */
+  function testMenuRebuildByVariable() {
+    // Check if 'admin' path exists.
+    $admin_exists = db_result(db_query("SELECT path from {menu_router} WHERE path = 'admin'"));
+    $this->assertEqual($admin_exists, 'admin', t("The path 'admin/' exists prior to deleting."));
+
+    // Delete the path item 'admin', and test that the path doesn't exist in the database.
+    $delete = db_delete('menu_router')
+      ->condition('path', 'admin')
+      ->execute();
+    $admin_exists = db_result(db_query("SELECT path from {menu_router} WHERE path = 'admin'"));
+    $this->assertFalse($admin_exists, t("The path 'admin/' has been deleted and doesn't exist in the database."));
+
+    // Now we enable the rebuild variable and trigger menu_execute_active_handler()
+    // to rebuild the menu item. Now 'admin' should exist.
+    variable_set('menu_rebuild_needed', TRUE);
+    // menu_execute_active_handler() should trigger the rebuild.
+    $this->drupalGet('<front>');
+    $admin_exists = db_result(db_query("SELECT path from {menu_router} WHERE path = 'admin'"));
+    $this->assertEqual($admin_exists, 'admin', t("The menu has been rebuilt, the path 'admin' now exists again."));
+  }
+
+}

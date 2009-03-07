@@ -1,0 +1,232 @@
+<?php
+// $Id: bootstrap.test,v 1.12 2009/01/31 16:50:57 webchick Exp $
+
+class BootstrapIPAddressTestCase extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('IP address and HTTP_HOST test'),
+      'description' => t('Get the IP address from the current visitor from the server variables, check hostname validation.'),
+      'group' => t('Bootstrap')
+    );
+  }
+
+  function setUp() {
+    $this->oldserver = $_SERVER;
+
+    $this->remote_ip = '127.0.0.1';
+    $this->proxy_ip = '127.0.0.2';
+    $this->forwarded_ip = '127.0.0.3';
+    $this->cluster_ip = '127.0.0.4';
+    $this->untrusted_ip = '0.0.0.0';
+
+    $_SERVER['REMOTE_ADDR'] = $this->remote_ip;
+    unset($_SERVER['HTTP_X_FORWARDED_FOR']);
+    unset($_SERVER['HTTP_X_CLUSTER_CLIENT_IP']);
+
+    parent::setUp();
+  }
+
+  function tearDown() {
+    $_SERVER = $this->oldserver;
+    parent::tearDown();
+  }
+
+  /**
+   * test IP Address and hostname
+   */
+  function testIPAddressHost() {
+    // Test the normal IP address.
+    $this->assertTrue(
+      ip_address(true) == $this->remote_ip,
+      t('Got remote IP address')
+    );
+
+    // Proxy forwarding on but no proxy addresses defined.
+    variable_set('reverse_proxy', 1);
+    $this->assertTrue(
+      ip_address(true) == $this->remote_ip,
+      t('Proxy forwarding without trusted proxies got remote IP address')
+    );
+
+    // Proxy forwarding on and proxy address not trusted.
+    variable_set('reverse_proxy_addresses', array($this->proxy_ip));
+    $_SERVER['REMOTE_ADDR'] = $this->untrusted_ip;
+    $this->assertTrue(
+      ip_address(true) == $this->untrusted_ip,
+      t('Proxy forwarding with untrusted proxy got remote IP address')
+    );
+
+    // Proxy forwarding on and proxy address trusted.
+    $_SERVER['REMOTE_ADDR'] = $this->proxy_ip;
+    $_SERVER['HTTP_X_FORWARDED_FOR'] = $this->forwarded_ip;
+    $this->assertTrue(
+      ip_address(true) == $this->forwarded_ip,
+      t('Proxy forwarding with trusted proxy got forwarded IP address')
+    );
+
+    // Cluster environment.
+    $_SERVER['HTTP_X_CLUSTER_CLIENT_IP'] = $this->cluster_ip;
+    $this->assertTrue(
+      ip_address(TRUE) == $this->cluster_ip,
+      t('Cluster environment got cluster client IP')
+    );
+    $this->assertFalse(drupal_valid_http_host('security/.drupal.org:80'), t('HTTP_HOST with / is invalid'));
+    $this->assertFalse(drupal_valid_http_host('security\\.drupal.org:80'), t('HTTP_HOST with \\ is invalid'));
+    $this->assertFalse(drupal_valid_http_host('security<.drupal.org:80'), t('HTTP_HOST with &lt; is invalid'));
+    $this->assertFalse(drupal_valid_http_host('security..drupal.org:80'), t('HTTP_HOST with .. is invalid'));
+    // IPv6 loopback address
+    $this->assertTrue(drupal_valid_http_host('[::1]:80'), t('HTTP_HOST containing IPv6 loopback is valid'));
+  }
+}
+
+class BootstrapPageCacheTestCase extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('Page cache test'),
+      'description' => t('Enable the page cache and test it with conditional HTTP requests.'),
+      'group' => t('Bootstrap')
+    );
+  }
+
+  /**
+   * Enable cache and examine HTTP headers.
+   */
+  function testPageCache() {
+    variable_set('cache', CACHE_NORMAL);
+
+    // Fill the cache.
+    $this->drupalGet('');
+
+    $this->drupalHead('');
+    $etag = $this->drupalGetHeader('ETag');
+    $this->assertTrue($etag, t('An ETag header was sent, indicating that page was cached.'));
+    $last_modified = $this->drupalGetHeader('Last-Modified');
+
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified, 'If-None-Match: ' . $etag));
+    $this->assertResponse(304, t('Conditional request returned 304 Not Modified.'));
+
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . gmdate(DATE_RFC822, strtotime($last_modified)), 'If-None-Match: ' . $etag));
+    $this->assertResponse(304, t('Conditional request with obsolete If-Modified-Since date returned 304 Not Modified.'));
+
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . gmdate(DATE_RFC850, strtotime($last_modified)), 'If-None-Match: ' . $etag));
+    $this->assertResponse(304, t('Conditional request with obsolete If-Modified-Since date returned 304 Not Modified.'));
+
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified));
+    $this->assertResponse(200, t('Conditional request without If-None-Match returned 200 OK.'));
+    $this->assertTrue($this->drupalGetHeader('ETag'), t('An ETag header was sent, indicating that page was cached.'));
+
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . gmdate(DATE_RFC1123, strtotime($last_modified) + 1), 'If-None-Match: ' . $etag));
+    $this->assertResponse(200, t('Conditional request with new a If-Modified-Since date newer than Last-Modified returned 200 OK.'));
+    $this->assertTrue($this->drupalGetHeader('ETag'), t('An ETag header was sent, indicating that page was cached.'));
+
+    $user = $this->drupalCreateUser();
+    $this->drupalLogin($user);
+    $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified, 'If-None-Match: ' . $etag));
+    $this->assertResponse(200, t('Conditional request returned 200 OK for authenticated user.'));
+    $this->assertFalse($this->drupalGetHeader('ETag'), t('An ETag header was not sent, indicating that page was not cached.'));
+  }
+
+}
+
+class BootstrapVariableTestCase extends DrupalWebTestCase {
+
+  function setUp() {
+    parent::setUp('system_test');
+  }
+
+  function getInfo() {
+    return array(
+      'name' => t('Variable test'),
+      'description' => t('Make sure the variable system functions correctly.'),
+      'group' => t('Bootstrap')
+    );
+  }
+
+  /**
+   * testVariable
+   */
+  function testVariable() {
+    // Setting and retrieving values.
+    $variable = $this->randomName();
+    variable_set('simpletest_bootstrap_variable_test', $variable);
+    $this->assertIdentical($variable, variable_get('simpletest_bootstrap_variable_test'), t('Setting and retrieving values'));
+
+    // Make sure the variable persists across multiple requests.
+    $this->drupalGet('system-test/variable-get');
+    $this->assertText($variable, t('Variable persists across multiple requests'));
+
+    // Deleting variables.
+    $default_value = $this->randomName();
+    variable_del('simpletest_bootstrap_variable_test');
+    $variable = variable_get('simpletest_bootstrap_variable_test', $default_value);
+    $this->assertIdentical($variable, $default_value, t('Deleting variables'));
+  }
+
+  /**
+   * Makes sure that the default variable parameter is passed through okay.
+   */
+  function testVariableDefaults() {
+    // Tests passing nothing through to the default.
+    $this->assertIdentical(NULL, variable_get('simpletest_bootstrap_variable_test'), t('Variables are correctly defaulting to NULL.'));
+
+    // Tests passing 5 to the default parameter.
+    $this->assertIdentical(5, variable_get('simpletest_bootstrap_variable_test', 5), t('The default variable parameter is passed through correctly.'));
+  }
+
+}
+
+/**
+ * Test hook_boot and hook_exit.
+ */
+class HookBootExitTestCase extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('Boot and exit hook invocation'),
+      'description' => t('Test that hook_boot() and hook_exit() are called correctly.'),
+      'group' => t('Bootstrap'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('system_test', 'dblog');
+  }
+
+  /**
+   * Test calling of hook_boot() and hook_exit().
+   */
+  function testHookBootExit() {
+    // Test with cache disabled. Boot and exit should always fire.
+    variable_set('cache', CACHE_DISABLED);
+    $this->drupalGet('');
+    $calls = 1;
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_boot'")->fetchField(), $calls, t('hook_boot called with disabled cache.'));
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_exit'")->fetchField(), $calls, t('hook_exit called with disabled cache.'));
+
+    // Test with normal cache. Boot and exit should be called.
+    variable_set('cache', CACHE_NORMAL);
+    $this->drupalGet('');
+    $calls++;
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_boot'")->fetchField(), $calls, t('hook_boot called with normal cache.'));
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_exit'")->fetchField(), $calls, t('hook_exit called with normal cache.'));
+
+    // Test with aggressive cache. Boot and exit should not fire since the
+    // page is cached.
+    variable_set('cache', CACHE_AGGRESSIVE);
+    $this->assertTrue(cache_get(url('', array('absolute' => TRUE)), 'cache_page'), t('Page has been cached.'));
+    $this->drupalGet('');
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_boot'")->fetchField(), $calls, t('hook_boot not called with agressive cache and a cached page.'));
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_exit'")->fetchField(), $calls, t('hook_exit not called with agressive cache and a cached page.'));
+
+    // Test with aggressive cache and page cache cleared. Boot and exit should
+    // be called.
+    $this->assertTrue(db_delete('cache_page')->execute(), t('Page cache cleared.'));
+    $this->drupalGet('');
+    $calls++;
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_boot'")->fetchField(), $calls, t('hook_boot called with agressive cache and no cached page.'));
+    $this->assertEqual(db_query("SELECT COUNT(*) FROM {watchdog} WHERE type = 'system_test' AND message = 'hook_exit'")->fetchField(), $calls, t('hook_exit called with agressive cache and no cached page.'));
+  }
+}
+

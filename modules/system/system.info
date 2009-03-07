@@ -1,0 +1,11 @@
+; $Id: system.info,v 1.11 2008/10/12 01:23:06 webchick Exp $
+name = System
+description = Handles general site configuration for administrators.
+package = Core
+version = VERSION
+core = 7.x
+files[] = system.module
+files[] = system.admin.inc
+files[] = image.gd.inc
+files[] = system.install
+required = TRUE

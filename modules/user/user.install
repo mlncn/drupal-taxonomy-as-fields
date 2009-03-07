@@ -1,0 +1,470 @@
+<?php
+// $Id: user.install,v 1.19 2009/02/26 07:30:29 webchick Exp $
+
+/**
+ * Implementation of hook_schema().
+ */
+function user_schema() {
+  $schema['authmap'] = array(
+    'description' => 'Stores distributed authentication mapping.',
+    'fields' => array(
+      'aid' => array(
+        'description' => 'Primary Key: Unique authmap ID.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => "User's {users}.uid.",
+      ),
+      'authname' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Unique authentication name.',
+      ),
+      'module' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Module which is controlling the authentication.',
+      ),
+    ),
+    'unique keys' => array(
+      'authname' => array('authname'),
+    ),
+    'primary key' => array('aid'),
+  );
+
+  $schema['role_permission'] = array(
+    'description' => 'Stores the permissions assigned to user roles.',
+    'fields' => array(
+      'rid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Foreign Key: {role}.rid.',
+      ),
+      'permission' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'A single permission granted to the role identified by rid.',
+      ),
+    ),
+    'primary key' => array('rid', 'permission'),
+    'indexes' => array(
+      'permission' => array('permission'),
+    ),
+  );
+
+  $schema['role'] = array(
+    'description' => 'Stores user roles.',
+    'fields' => array(
+      'rid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique role ID.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Unique role name.',
+      ),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'primary key' => array('rid'),
+  );
+
+  $schema['users'] = array(
+    'description' => 'Stores user data.',
+    'fields' => array(
+      'uid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique user ID.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'Unique user name.',
+      ),
+      'pass' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => "User's password (hashed).",
+      ),
+      'mail' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => "User's email address.",
+      ),
+      'theme' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => "User's default theme.",
+      ),
+      'signature' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => "User's signature.",
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp for when user was created.',
+      ),
+      'access' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp for previous time user accessed the site.',
+      ),
+      'login' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => "Timestamp for user's last login.",
+      ),
+      'status' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => 'Whether the user is active(1) or blocked(0).',
+      ),
+      'timezone' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => FALSE,
+        'description' => "User's time zone.",
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => "User's default language.",
+      ),
+      'picture' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => "Foreign key: {files}.fid of user's picture.",
+      ),
+      'init' => array(
+        'type' => 'varchar',
+        'length' => 64,
+        'not null' => FALSE,
+        'default' => '',
+        'description' => 'Email address used for initial account creation.',
+      ),
+      'data' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'A serialized array of name value pairs that are related to the user. Any form values posted during user edit are stored and are loaded into the $user object during user_load(). Use of this field is discouraged and it will likely disappear in a future version of Drupal.',
+      ),
+    ),
+    'indexes' => array(
+      'access' => array('access'),
+      'created' => array('created'),
+      'mail' => array('mail'),
+    ),
+    'unique keys' => array(
+      'name' => array('name'),
+    ),
+    'primary key' => array('uid'),
+  );
+
+  $schema['users_roles'] = array(
+    'description' => 'Maps users to roles.',
+    'fields' => array(
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Primary Key: {users}.uid for user.',
+      ),
+      'rid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Primary Key: {role}.rid for role.',
+      ),
+    ),
+    'primary key' => array('uid', 'rid'),
+    'indexes' => array(
+      'rid' => array('rid'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * @defgroup user-updates-6.x-to-7.x User updates from 6.x to 7.x
+ * @{
+ */
+
+/**
+ * Increase the length of the password field to accommodate better hashes.
+ *
+ * Also re-hashes all current passwords to improve security. This may be a
+ * lengthy process, and is performed batch-wise.
+ */
+function user_update_7000(&$sandbox) {
+  $ret = array('#finished' => 0);
+  // Lower than DRUPAL_HASH_COUNT to make the update run at a reasonable speed.
+  $hash_count_log2 = 11;
+  // Multi-part update.
+  if (!isset($sandbox['user_from'])) {
+    db_change_field($ret, 'users', 'pass', 'pass', array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''));
+    $sandbox['user_from'] = 0;
+    $sandbox['user_count'] = db_result(db_query("SELECT COUNT(uid) FROM {users}"));
+  }
+  else {
+    require_once DRUPAL_ROOT . '/' . variable_get('password_inc', 'includes/password.inc');
+    //  Hash again all current hashed passwords.
+    $has_rows = FALSE;
+    // Update this many per page load.
+    $count = 1000;
+    $result = db_query_range("SELECT uid, pass FROM {users} WHERE uid > 0 ORDER BY uid", $sandbox['user_from'], $count);
+    while ($account = db_fetch_array($result)) {
+       $has_rows = TRUE;
+       $new_hash = user_hash_password($account['pass'], $hash_count_log2);
+       if ($new_hash) {
+         // Indicate an updated password.
+         $new_hash  = 'U' . $new_hash;
+         db_query("UPDATE {users} SET pass = '%s' WHERE uid = %d", $new_hash, $account['uid']);
+       }
+    }
+    $ret['#finished'] = $sandbox['user_from']/$sandbox['user_count'];
+    $sandbox['user_from'] += $count;
+    if (!$has_rows) {
+      $ret['#finished'] = 1;
+      $ret[] = array('success' => TRUE, 'query' => "UPDATE {users} SET pass = 'U' . user_hash_password(pass) WHERE uid > 0");
+    }
+  }
+  return $ret;
+}
+
+/**
+ * Remove the 'threshold', 'mode' and 'sort' columns from the {users} table.
+ *
+ * These fields were previously used to store per-user comment settings.
+ */
+
+function user_update_7001() {
+  $ret = array();
+  db_drop_field($ret, 'users', 'threshold');
+  db_drop_field($ret, 'users', 'mode');
+  db_drop_field($ret, 'users', 'sort');
+
+  return $ret;
+}
+
+/**
+ * Convert user time zones from time zone offsets to time zone names.
+ */
+function user_update_7002(&$sandbox) {
+  $ret = array('#finished' => 0);
+
+  // Multi-part update.
+  if (!isset($sandbox['user_from'])) {
+    db_change_field($ret, 'users', 'timezone', 'timezone', array('type' => 'varchar', 'length' => 32, 'not null' => FALSE));
+    $sandbox['user_from'] = 0;
+    $sandbox['user_count'] = db_result(db_query("SELECT COUNT(uid) FROM {users}"));
+    $sandbox['user_not_migrated'] = 0;
+  }
+  else {
+    $timezones = system_time_zones();
+    // Update this many per page load.
+    $count = 10000;
+    $contributed_date_module = db_column_exists('users', 'timezone_name');
+    $contributed_event_module = db_column_exists('users', 'timezone_id');
+
+    $results = db_query_range("SELECT uid FROM {users} ORDER BY uid", array(), $sandbox['user_from'], $count);
+    foreach ($results as $account) {
+      $timezone = NULL;
+      // If the contributed Date module has created a users.timezone_name
+      // column, use this data to set each user's time zone.
+      if ($contributed_date_module) {
+        $date_timezone = db_query("SELECT timezone_name FROM {users} WHERE uid = :uid", array(':uid' => $account->uid))->fetchField();
+        if (isset($timezones[$date_timezone])) {
+          $timezone = $date_timezone;
+        }
+      }
+      // If the contributed Event module has stored user time zone information
+      // use that information to update the user accounts.
+      if (!$timezone && $contributed_event_module) {
+        try {
+          $event_timezone = db_query("SELECT t.name FROM {users} u LEFT JOIN {event_timezones} t ON u.timezone_id = t.timezone WHERE u.uid = :uid", array(':uid' => $account->uid))->fetchField();
+          $event_timezone = str_replace(' ', '_', $event_timezone);
+          if (isset($timezones[$event_timezone])) {
+            $timezone = $event_timezone;
+          }
+        }
+        catch (PDOException $e) {
+          // Ignore error if event_timezones table does not exist or unexpected
+          // schema found.
+        }
+      }
+      if ($timezone) {
+        db_query("UPDATE {users} SET timezone = :timezone WHERE uid = :uid", array(':timezone' => $timezone, ':uid' => $account->uid));
+      }
+      else {
+        $sandbox['user_not_migrated']++;
+        db_query("UPDATE {users} SET timezone = NULL WHERE uid = :uid", array(':uid' => $account->uid));
+      }
+      $sandbox['user_from']++;
+    }
+
+    $ret['#finished'] = $sandbox['user_from'] / $sandbox['user_count'];
+    if ($sandbox['user_from'] == $sandbox['user_count']) {
+      $ret[] = array('success' => TRUE, 'query' => "Migrate user time zones.");
+      if ($sandbox['user_not_migrated'] > 0) {
+        variable_set('empty_timezone_message', 1);
+        drupal_set_message('Some user time zones have been emptied and need to be set to the correct values. Use the new ' . l('time zone options', 'admin/settings/date-time') . ' to choose whether to remind users at login to set the correct time zone.', 'warning');
+      }
+    }
+  }
+  return $ret;
+}
+
+/**
+ * Update user settings for cancelling user accounts.
+ *
+ * Prior to 7.x, users were not able to cancel their accounts. When
+ * administrators deleted an account, all contents were assigned to uid 0,
+ * which is the same as the 'user_cancel_reassign' method now.
+ */
+function user_update_7003() {
+  $ret = array();
+  // Set the default account cancellation method.
+  variable_set('user_cancel_method', 'user_cancel_reassign');
+  // Re-assign notification setting.
+  if ($setting = variable_get('user_mail_status_deleted_notify', FALSE)) {
+    variable_set('user_mail_status_canceled_notify', $setting);
+    variable_del('user_mail_status_deleted_notify');
+  }
+  // Re-assign "Account deleted" mail strings to "Account canceled" mail.
+  if ($setting = variable_get('user_mail_status_deleted_subject', FALSE)) {
+    variable_set('user_mail_status_canceled_subject', $setting);
+    variable_del('user_mail_status_deleted_subject');
+  }
+  if ($setting = variable_get('user_mail_status_deleted_body', FALSE)) {
+    variable_set('user_mail_status_canceled_body', $setting);
+    variable_del('user_mail_status_deleted_body');
+  }
+  return $ret;
+}
+
+/**
+ * Add the user's pictures to the {files} table and make them managed files.
+ */
+function user_update_7004(&$sandbox) {
+  $ret = array();
+
+  $picture_field = array(
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+    'description' => t("Foriegn key: {files}.fid of user's picture."),
+  );
+
+  if (!isset($sandbox['progress'])) {
+    // Check that the field hasn't been updated in an aborted run of this
+    // update.
+    if (!db_column_exists('users', 'picture_fid')) {
+      // Add a new field for the fid.
+      db_add_field($ret, 'users', 'picture_fid', $picture_field);
+    }
+
+    // Initialize batch update information.
+    $sandbox['progress'] = 0;
+    $sandbox['last_user_processed'] = -1;
+    $sandbox['max'] = db_query("SELECT COUNT(*) FROM {users} WHERE picture <> ''")->fetchField();
+  }
+
+  // As a batch operation move the photos into the {files} table and update the
+  // {users} records.
+  $limit = 500;
+  $result = db_query_range("SELECT uid, picture FROM {users} WHERE picture <> '' AND uid > :uid ORDER BY uid", array(':uid' => $sandbox['last_user_processed']), 0, $limit);
+  foreach ($result as $user) {
+    // Don't bother adding files that don't exist.
+    if (!file_exists($user->picture)) {
+      continue;
+    }
+
+    // Check if the file already exists.
+    $files = file_load_multiple(array(), array('filepath' => $user->picture));
+    if (count($files)) {
+      $file = reset($files);
+    }
+    else {
+      // Create a file object.
+      $file = new stdClass();
+      $file->filepath = $user->picture;
+      $file->filename = basename($file->filepath);
+      $file->filemime = file_get_mimetype($file->filepath);
+      $file->uid      = $user->uid;
+      $file->status   = FILE_STATUS_PERMANENT;
+      $file = file_save($file);
+    }
+
+    db_update('users')
+      ->fields(array('picture_fid' => $file->fid))
+      ->condition('uid', $user->uid)
+      ->execute();
+
+    // Update our progress information for the batch update.
+    $sandbox['progress']++;
+    $sandbox['last_user_processed'] = $user->uid;
+  }
+
+  // Indicate our current progress to the batch update system. If there's no
+  // max value then there's nothing to update and we're finished.
+  $ret['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+
+  // When we're finished, drop the old picture field and rename the new one to
+  // replace it.
+  if (isset($ret['#finished']) && $ret['#finished'] == 1) {
+    db_drop_field($ret, 'users', 'picture');
+    db_change_field($ret, 'users', 'picture_fid', 'picture', $picture_field);
+  }
+
+  return $ret;
+}
+
+/**
+ * @} End of "defgroup user-updates-6.x-to-7.x"
+ * The next series of updates should start at 8000.
+ */
+

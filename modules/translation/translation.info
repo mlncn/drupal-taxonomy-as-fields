@@ -1,0 +1,9 @@
+; $Id: translation.info,v 1.4 2008/10/11 02:33:09 webchick Exp $
+name = Content translation
+description = Allows content to be translated into different languages.
+dependencies[] = locale
+package = Core
+version = VERSION
+core = 7.x
+files[] = translation.module
+files[] = translation.pages.inc

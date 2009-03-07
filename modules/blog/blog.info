@@ -1,0 +1,9 @@
+; $Id: blog.info,v 1.10 2008/10/11 02:32:36 webchick Exp $
+
+name = Blog
+description = Enables multi-user blogs.
+package = Core
+version = VERSION
+core = 7.x
+files[] = blog.module
+files[] = blog.pages.inc

@@ -1,0 +1,921 @@
+<?php
+// $Id: common.test,v 1.30 2009/02/28 07:36:06 webchick Exp $
+
+/**
+ * Tests for the l() function.
+ */
+class CommonLUnitTest extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('Tests for the l() function'),
+      'description' => t('Confirm that url() works correctly with various input.'),
+      'group' => t('System'),
+    );
+  }
+
+  /**
+   * Confirm that invalid text given as $path is filtered.
+   */
+  function testLXSS() {
+    $text = $this->randomName();
+    $path = "<SCRIPT>alert('XSS')</SCRIPT>";
+    $link = l($text, $path);
+    $sanitized_path = check_url(url($path));
+    $this->assertTrue(strpos($link, $sanitized_path) != FALSE, t('XSS attack @path was filtered', array('@path' => $path)));
+  }
+}
+
+class CommonSizeTestCase extends DrupalWebTestCase {
+  protected $exact_test_cases;
+  protected $rounded_test_cases;
+
+  function getInfo() {
+    return array(
+      'name' => t('Size parsing test'),
+      'description' => t('Parse a predefined amount of bytes and compare the output with the expected value.'),
+      'group' => t('System')
+    );
+  }
+
+  function setUp() {
+    $kb = DRUPAL_KILOBYTE;
+    $this->exact_test_cases = array(
+      '1 byte' => 1,
+      '1 KB'   => $kb,
+      '1 MB'   => $kb * $kb,
+      '1 GB'   => $kb * $kb * $kb,
+      '1 TB'   => $kb * $kb * $kb * $kb,
+      '1 PB'   => $kb * $kb * $kb * $kb * $kb,
+      '1 EB'   => $kb * $kb * $kb * $kb * $kb * $kb,
+      '1 ZB'   => $kb * $kb * $kb * $kb * $kb * $kb * $kb,
+      '1 YB'   => $kb * $kb * $kb * $kb * $kb * $kb * $kb * $kb,
+    );
+    $this->rounded_test_cases = array(
+      '2 bytes' => 2,
+      '1 MB' => ($kb * $kb) - 1, // rounded to 1 MB (not 1000 or 1024 kilobyte!)
+      round(3623651 / ($this->exact_test_cases['1 MB']), 2) . ' MB' => 3623651, // megabytes
+      round(67234178751368124 / ($this->exact_test_cases['1 PB']), 2) . ' PB' => 67234178751368124, // petabytes
+      round(235346823821125814962843827 / ($this->exact_test_cases['1 YB']), 2) . ' YB' => 235346823821125814962843827, // yottabytes
+    );
+    parent::setUp();
+  }
+
+  /**
+   * Check that format_size() returns the expected string.
+   */
+  function testCommonFormatSize() {
+    foreach (array($this->exact_test_cases, $this->rounded_test_cases) as $test_cases) {
+      foreach ($test_cases as $expected => $input) {
+        $this->assertEqual(
+          ($result = format_size($input, NULL)),
+          $expected,
+          $expected . ' == ' . $result . ' (' . $input . ' bytes)'
+        );
+      }
+    }
+  }
+
+  /**
+   * Check that parse_size() returns the proper byte sizes.
+   */
+  function testCommonParseSize() {
+    foreach ($this->exact_test_cases as $string => $size) {
+      $this->assertEqual(
+        $parsed_size = parse_size($string),
+        $size,
+        $size . ' == ' . $parsed_size . ' (' . $string . ')'
+      );
+    }
+
+    // Some custom parsing tests
+    $string = '23476892 bytes';
+    $this->assertEqual(
+      ($parsed_size = parse_size($string)),
+      $size = 23476892,
+      $string . ' == ' . $parsed_size . ' bytes'
+    );
+    $string = '76MRandomStringThatShouldBeIgnoredByParseSize.'; // 76 MB
+    $this->assertEqual(
+      $parsed_size = parse_size($string),
+      $size = 79691776,
+      $string . ' == ' . $parsed_size . ' bytes'
+    );
+    $string = '76.24 Giggabyte'; // Misspeld text -> 76.24 GB
+    $this->assertEqual(
+      $parsed_size = parse_size($string),
+      $size = 81862076662,
+      $string . ' == ' . $parsed_size . ' bytes'
+    );
+  }
+
+  /**
+   * Cross-test parse_size() and format_size().
+   */
+  function testCommonParseSizeFormatSize() {
+    foreach ($this->exact_test_cases as $size) {
+      $this->assertEqual(
+        $size,
+        ($parsed_size = parse_size($string = format_size($size, NULL))),
+        $size . ' == ' . $parsed_size . ' (' . $string . ')'
+      );
+    }
+  }
+}
+
+/**
+ * Test drupal_explode_tags() and drupal_implode_tags().
+ */
+class DrupalTagsHandlingTestCase extends DrupalWebTestCase {
+  var $validTags = array(
+    'Drupal' => 'Drupal',
+    'Drupal with some spaces' => 'Drupal with some spaces',
+    '"Legendary Drupal mascot of doom: ""Druplicon"""' => 'Legendary Drupal mascot of doom: "Druplicon"',
+    '"Drupal, although it rhymes with sloopal, is as awesome as a troopal!"' => 'Drupal, although it rhymes with sloopal, is as awesome as a troopal!',
+  );
+
+  function getInfo() {
+    return array(
+      'name' => t('Drupal tags handling'),
+      'description' => t("Performs tests on Drupal's handling of tags, both explosion and implosion tactics used."),
+      'group' => t('System')
+    );
+  }
+
+  /**
+   * Explode a series of tags.
+   */
+  function testDrupalExplodeTags() {
+    $string = implode(', ', array_keys($this->validTags));
+    $tags = drupal_explode_tags($string);
+    $this->assertTags($tags);
+  }
+
+  /**
+   * Implode a series of tags.
+   */
+  function testDrupalImplodeTags() {
+    $tags = array_values($this->validTags);
+    // Let's explode and implode to our heart's content.
+    for ($i = 0; $i < 10; $i++) {
+      $string = drupal_implode_tags($tags);
+      $tags = drupal_explode_tags($string);
+    }
+    $this->assertTags($tags);
+  }
+
+  /**
+   * Helper function: asserts that the ending array of tags is what we wanted.
+   */
+  function assertTags($tags) {
+    $original = $this->validTags;
+    foreach ($tags as $tag) {
+      $key = array_search($tag, $original);
+      $this->assertTrue($key, t('Make sure tag %tag shows up in the final tags array (originally %original)', array('%tag' => $tag, '%original' => $key)));
+      unset($original[$key]);
+    }
+    foreach ($original as $leftover) {
+      $this->fail(t('Leftover tag %leftover was left over.', array('%leftover' => $leftover)));
+    }
+  }
+}
+
+/**
+ * Test the Drupal CSS system.
+ */
+class CascadingStylesheetsTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Cascading stylesheets'),
+      'description' => t('Tests adding various cascading stylesheets to the page.'),
+      'group' => t('System')
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+    // Reset drupal_add_css() before each test.
+    drupal_add_css(NULL, 'reset');
+  }
+
+  /**
+   * Check default stylesheets as empty.
+   */
+  function testDefault() {
+    $this->assertEqual(array(), drupal_add_css(), t('Default CSS is empty.'));
+  }
+
+  /**
+   * Tests adding a file stylesheet.
+   */
+  function testAddFile() {
+    $path = drupal_get_path('module', 'simpletest') . '/simpletest.css';
+    $css = drupal_add_css($path);
+    $this->assertEqual($css['all']['module'][$path], TRUE, t('Adding a CSS file caches it properly.'));
+  }
+
+  /**
+   * Makes sure that reseting the CSS empties the cache.
+   */
+  function testReset() {
+    drupal_add_css(NULL, 'reset');
+    $this->assertEqual(array(), drupal_add_css(), t('Resetting the CSS empties the cache.'));
+  }
+
+  /**
+   * Tests rendering the stylesheets.
+   */
+  function testRenderFile() {
+    $css = drupal_get_path('module', 'simpletest') . '/simpletest.css';
+    drupal_add_css($css);
+    $this->assertTrue(strpos(drupal_get_css(), $css) > 0, t('Rendered CSS includes the added stylesheet.'));
+  }
+}
+
+/**
+ * Test drupal_http_request().
+ */
+class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Drupal HTTP request'),
+      'description' => t("Performs tests on Drupal's HTTP request mechanism."),
+      'group' => t('System')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('system_test');
+  }
+
+  function testDrupalHTTPRequest() {
+    // Parse URL schema.
+    $missing_scheme = drupal_http_request('example.com/path');
+    $this->assertEqual($missing_scheme->error, 'missing schema', t('Returned with "missing schema" error.'));
+
+    $unable_to_parse = drupal_http_request('http:///path');
+    $this->assertEqual($unable_to_parse->error, 'unable to parse URL', t('Returned with "unable to parse URL" error.'));
+
+    // Fetch page.
+    $result = drupal_http_request(url('node', array('absolute' => TRUE)));
+    $this->assertEqual($result->code, 200, t('Fetched page successfully.'));
+    $this->drupalSetContent($result->data);
+    $this->assertTitle(variable_get('site_name', 'Drupal'), t('Site title matches.'));
+  }
+
+  function testDrupalHTTPRequestBasicAuth() {
+    $username = $this->randomName();
+    $password = $this->randomName();
+    $url = url('system-test/auth', array('absolute' => TRUE));
+
+    $auth = str_replace('http://', 'http://' . $username . ':' . $password .'@', $url);
+    $result = drupal_http_request($auth);
+
+    $this->drupalSetContent($result->data);
+    $this->assertRaw($username, t('$_SERVER["PHP_AUTH_USER"] is passed correctly.'));
+    $this->assertRaw($password, t('$_SERVER["PHP_AUTH_PW"] is passed correctly.'));
+  }
+
+  function testDrupalHTTPRequestRedirect() {
+    $redirect_301 = drupal_http_request(url('system-test/redirect/301', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_301->redirect_code, 301, t('drupal_http_request follows the 301 redirect.'));
+
+    $redirect_301 = drupal_http_request(url('system-test/redirect/301', array('absolute' => TRUE)), array('max_redirects' => 0));
+    $this->assertFalse(isset($redirect_301->redirect_code), t('drupal_http_request does not follow 301 redirect if max_redirects = 0.'));
+
+    $redirect_invalid = drupal_http_request(url('system-test/redirect-noscheme', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_invalid->error, 'missing schema', t('301 redirect to invalid URL returned with error "!error".', array('!error' => $redirect_invalid->error)));
+
+    $redirect_invalid = drupal_http_request(url('system-test/redirect-noparse', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_invalid->error, 'unable to parse URL', t('301 redirect to invalid URL returned with error "!error".', array('!error' => $redirect_invalid->error)));
+
+    $redirect_invalid = drupal_http_request(url('system-test/redirect-invalid-scheme', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_invalid->error, 'invalid schema ftp', t('301 redirect to invalid URL returned with error "!error".', array('!error' => $redirect_invalid->error)));
+
+    $redirect_302 = drupal_http_request(url('system-test/redirect/302', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_302->redirect_code, 302, t('drupal_http_request follows the 302 redirect.'));
+
+    $redirect_302 = drupal_http_request(url('system-test/redirect/302', array('absolute' => TRUE)), array('max_redirects' => 0));
+    $this->assertFalse(isset($redirect_302->redirect_code), t('drupal_http_request does not follow 302 redirect if $retry = 0.'));
+
+    $redirect_307 = drupal_http_request(url('system-test/redirect/307', array('absolute' => TRUE)), array('max_redirects' => 1));
+    $this->assertEqual($redirect_307->redirect_code, 307, t('drupal_http_request follows the 307 redirect.'));
+
+    $redirect_307 = drupal_http_request(url('system-test/redirect/307', array('absolute' => TRUE)), array('max_redirects' => 0));
+    $this->assertFalse(isset($redirect_307->redirect_code), t('drupal_http_request does not follow 307 redirect if max_redirects = 0.'));
+  }
+
+  function testDrupalGetDestination() {
+    $query = $this->randomName(10);
+    $url = url('system-test/destination', array('absolute' => TRUE, 'query' => $query));
+    $this->drupalGet($url);
+    $this->assertText($query, t('The query passed to the page is correctly represented by drupal_get_detination().'));
+  }
+}
+
+/**
+ * Testing drupal_set_content and drupal_get_content.
+ */
+class DrupalSetContentTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Drupal set/get content'),
+      'description' => t('Performs tests on setting and retrieiving content from theme regions.'),
+      'group' => t('System')
+    );
+  }
+
+
+  /**
+   * Test setting and retrieving content for theme regions.
+   */
+  function testRegions() {
+    global $theme_key;
+
+    $block_regions = array_keys(system_region_list($theme_key));
+    $delimiter = $this->randomName(32);
+    $values = array();
+    // Set some random content for each region available.
+    foreach ($block_regions as $region) {
+      $first_chunk = $this->randomName(32);
+      drupal_set_content($region, $first_chunk);
+      $second_chunk = $this->randomName(32);
+      drupal_set_content($region, $second_chunk);
+      // Store the expected result for a drupal_get_content call for this region.
+      $values[$region] = $first_chunk . $delimiter . $second_chunk;
+    }
+
+    // Ensure drupal_get_content returns expected results when fetching all regions.
+    $content = drupal_get_content(NULL, $delimiter);
+    foreach ($content as $region => $region_content) {
+      $this->assertEqual($region_content, $values[$region], t('@region region text verified when fetching all regions', array('@region' => $region)));
+    }
+
+    // Ensure drupal_get_content returns expected results when fetching a single region.
+    foreach ($block_regions as $region) {
+      $region_content = drupal_get_content($region, $delimiter);
+      $this->assertEqual($region_content, $values[$region], t('@region region text verified when fetching single region.', array('@region' => $region)));
+    }
+  }
+}
+
+/**
+ * Tests for the JavaScript system.
+ */
+class JavaScriptTestCase extends DrupalWebTestCase {
+  /**
+   * Store configured value for JavaScript preprocessing.
+   */
+  var $preprocess_js = NULL;
+
+  function getInfo() {
+    return array(
+      'name' => t('JavaScript'),
+      'description' => t('Tests the JavaScript system.'),
+      'group' => t('System')
+    );
+  }
+
+  function setUp() {
+    // Enable Locale and SimpleTest in the test environment.
+    parent::setUp('locale', 'simpletest');
+
+    // Disable preprocessing
+    $this->preprocess_js = variable_get('preprocess_js', 0);
+    variable_set('preprocess_js', 0);
+
+    // Reset drupal_add_js() before each test.
+    drupal_add_js(NULL, 'reset');
+  }
+
+  function tearDown() {
+    // Restore configured value for JavaScript preprocessing.
+    variable_set('preprocess_js', $this->preprocess_js);
+    parent::tearDown();
+  }
+
+  /**
+   * Test default JavaScript is empty.
+   */
+  function testDefault() {
+    $this->assertEqual(array(), drupal_add_js(), t('Default JavaScript is empty.'));
+  }
+
+  /**
+   * Test adding a JavaScript file.
+   */
+  function testAddFile() {
+    $javascript = drupal_add_js('misc/collapse.js');
+    $this->assertTrue(array_key_exists('misc/jquery.js', $javascript), t('jQuery is added when a file is added.'));
+    $this->assertTrue(array_key_exists('misc/drupal.js', $javascript), t('Drupal.js is added when file is added.'));
+    $this->assertTrue(array_key_exists('misc/collapse.js', $javascript), t('JavaScript files are correctly added.'));
+    $this->assertEqual(base_path(), $javascript['settings']['data'][0]['basePath'], t('Base path JavaScript setting is correctly set.'));
+  }
+
+  /**
+   * Test adding settings.
+   */
+  function testAddSetting() {
+    $javascript = drupal_add_js(array('drupal' => 'rocks', 'dries' => 280342800), 'setting');
+    $this->assertEqual(280342800, $javascript['settings']['data'][1]['dries'], t('JavaScript setting is set correctly.'));
+    $this->assertEqual('rocks', $javascript['settings']['data'][1]['drupal'], t('The other JavaScript setting is set correctly.'));
+  }
+
+  /**
+   * Test drupal_get_js() for JavaScript settings.
+   */
+  function testHeaderSetting() {
+    drupal_add_js(array('testSetting' => 'testValue'), 'setting');
+    $javascript = drupal_get_js('header');
+    $this->assertTrue(strpos($javascript, 'basePath') > 0, t('Rendered JavaScript header returns basePath setting.'));
+    $this->assertTrue(strpos($javascript, 'testSetting') > 0, t('Rendered JavaScript header returns custom setting.'));
+    $this->assertTrue(strpos($javascript, 'misc/jquery.js') > 0, t('Rendered JavaScript header includes jQuery.'));
+  }
+
+  /**
+   * Test to see if resetting the JavaScript empties the cache.
+   */
+  function testReset() {
+    drupal_add_js('misc/collapse.js');
+    drupal_add_js(NULL, 'reset');
+    $this->assertEqual(array(), drupal_add_js(), t('Resetting the JavaScript correctly empties the cache.'));
+  }
+
+  /**
+   * Test adding inline scripts.
+   */
+  function testAddInline() {
+    $inline = 'jQuery(function(){});';
+    $javascript = drupal_add_js($inline, array('type' => 'inline', 'scope' => 'footer'));
+    $this->assertTrue(array_key_exists('misc/jquery.js', $javascript), t('jQuery is added when inline scripts are added.'));
+    $data = end($javascript);
+    $this->assertEqual($inline, $data['data'], t('Inline JavaScript is correctly added to the footer.'));
+  }
+
+  /**
+   * Test rendering an external JavaScript file.
+   */
+  function testRenderExternal() {
+    $external = 'http://example.com/example.js';
+    drupal_add_js($external, 'external');
+    $javascript = drupal_get_js();
+    // Local files have a base_path() prefix, external files should not.
+    $this->assertTrue(strpos($javascript, 'src="' . $external) > 0, t('Rendering an external JavaScript file.'));
+  }
+
+  /**
+   * Test drupal_get_js() with a footer scope.
+   */
+  function testFooterHTML() {
+    $inline = 'jQuery(function(){});';
+    drupal_add_js($inline, array('type' => 'inline', 'scope' => 'footer'));
+    $javascript = drupal_get_js('footer');
+    $this->assertTrue(strpos($javascript, $inline) > 0, t('Rendered JavaScript footer returns the inline code.'));
+  }
+
+  /**
+   * Test drupal_add_js() sets preproccess to false when cache is set to false.
+   */
+  function testNoCache() {
+    $javascript = drupal_add_js('misc/collapse.js', array('cache' => FALSE));
+    $this->assertFalse($javascript['misc/collapse.js']['preprocess'], t('Setting cache to FALSE sets proprocess to FALSE when adding JavaScript.'));
+  }
+
+  /**
+   * Test adding a JavaScript file with a different weight.
+   */
+  function testDifferentWeight() {
+    $javascript = drupal_add_js('misc/collapse.js', array('weight' => JS_THEME));
+    $this->assertEqual($javascript['misc/collapse.js']['weight'], JS_THEME, t('Adding a JavaScript file with a different weight caches the given weight.'));
+  }
+
+  /**
+   * Test rendering the JavaScript with a file's weight above jQuery's.
+   */
+  function testRenderDifferentWeight() {
+    drupal_add_js('misc/collapse.js', array('weight' => JS_LIBRARY - 10));
+    $javascript = drupal_get_js();
+    $this->assertTrue(strpos($javascript, 'misc/collapse.js') < strpos($javascript, 'misc/jquery.js'), t('Rendering a JavaScript file above jQuery.'));
+  }
+
+  /**
+   * Test altering a JavaScript's weight via hook_js_alter().
+   *
+   * @see simpletest_js_alter()
+   */
+  function testAlter() {
+    // Add both tableselect.js and simpletest.js, with a larger weight on SimpleTest.
+    drupal_add_js('misc/tableselect.js');
+    drupal_add_js(drupal_get_path('module', 'simpletest') . '/simpletest.js', array('weight' => JS_THEME));
+
+    // Render the JavaScript, testing if simpletest.js was altered to be before
+    // tableselect.js. See simpletest_js_alter() to see where this alteration
+    // takes place.
+    $javascript = drupal_get_js();
+    $this->assertTrue(strpos($javascript, 'simpletest.js') < strpos($javascript, 'misc/tableselect.js'), t('Altering JavaScript weight through the alter hook.'));
+  }
+}
+
+/**
+ * Tests for drupal_render().
+ */
+class DrupalRenderUnitTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Drupal render'),
+      'description' => t('Performs unit tests on drupal_render().'),
+      'group' => t('System'),
+    );
+  }
+
+  /**
+   * Test sorting by weight.
+   */
+  function testDrupalRenderSorting() {
+    $first = $this->randomName();
+    $second = $this->randomName();
+    // Build an array with '#weight' set for each element.
+    $elements = array(
+      'second' => array(
+        '#weight' => 10,
+        '#markup' => $second,
+      ),
+      'first' => array(
+        '#weight' => 0,
+        '#markup' => $first,
+      ),
+    );
+    $output = drupal_render($elements);
+
+    // The lowest weight element should appear last in $output.
+    $this->assertTrue(strpos($output, $second) > strpos($output, $first), t('Elements were sorted correctly by weight.'));
+
+    // Confirm that the $elements array has '#sorted' set to TRUE.
+    $this->assertTrue($elements['#sorted'], t("'#sorted' => TRUE was added to the array"));
+
+    // Pass $elements through element_children() and ensure it remains
+    // sorted in the correct order. drupal_render() will return an empty string
+    // if used on the same array in the same request.
+    $children = element_children($elements);
+    $this->assertTrue(array_shift($children) == 'first', t('Child found in the correct order.'));
+    $this->assertTrue(array_shift($children) == 'second', t('Child found in the correct order.'));
+
+
+    // The same array structure again, but with #sorted set to TRUE.
+    $elements = array(
+      'second' => array(
+        '#weight' => 10,
+        '#markup' => $second,
+      ),
+      'first' => array(
+        '#weight' => 0,
+        '#markup' => $first,
+      ),
+      '#sorted' => TRUE,
+    );
+    $output = drupal_render($elements);
+
+    // The elements should appear in output in the same order as the array.
+    $this->assertTrue(strpos($output, $second) < strpos($output, $first), t('Elements were not sorted.'));
+  }
+}
+
+
+/**
+ * Tests Drupal error and exception handlers.
+ */
+class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Drupal error handlers'),
+      'description' => t('Performs tests on the Drupal error and exception handler.'),
+      'group' => t('System'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('system_test');
+  }
+
+  /**
+   * Test the error handler.
+   */
+  function testErrorHandler() {
+    $error_notice = array(
+      '%type' => 'Notice',
+      '%message' => 'Undefined variable: bananas',
+      '%function' => 'system_test_generate_warnings()',
+      '%line' => 184,
+      '%file' => realpath('modules/simpletest/tests/system_test.module'),
+    );
+    $error_warning = array(
+      '%type' => 'Warning',
+      '%message' => 'Division by zero',
+      '%function' => 'system_test_generate_warnings()',
+      '%line' => 186,
+      '%file' => realpath('modules/simpletest/tests/system_test.module'),
+    );
+    $error_user_notice = array(
+      '%type' => 'User notice',
+      '%message' => 'Drupal is awesome',
+      '%function' => 'system_test_generate_warnings()',
+      '%line' => 188,
+      '%file' => realpath('modules/simpletest/tests/system_test.module'),
+    );
+
+    // Set error reporting to collect notices.
+    variable_set('error_level', 2);
+    $this->drupalGet('system-test/generate-warnings');
+    $this->assertErrorMessage($error_notice);
+    $this->assertErrorMessage($error_warning);
+    $this->assertErrorMessage($error_user_notice);
+
+    // Set error reporting to not collect notices.
+    variable_set('error_level', 1);
+    $this->drupalGet('system-test/generate-warnings');
+    $this->assertNoErrorMessage($error_notice);
+    $this->assertErrorMessage($error_warning);
+    $this->assertErrorMessage($error_user_notice);
+
+    // Set error reporting to not show any errors.
+    variable_set('error_level', 0);
+    $this->drupalGet('system-test/generate-warnings');
+    $this->assertNoErrorMessage($error_notice);
+    $this->assertNoErrorMessage($error_warning);
+    $this->assertNoErrorMessage($error_user_notice);
+  }
+
+  /**
+   * Test the exception handler.
+   */
+  function testExceptionHandler() {
+    $error_exception = array(
+      '%type' => 'Exception',
+      '%message' => 'Drupal is awesome',
+      '%function' => 'system_test_trigger_exception()',
+      '%line' => 197,
+      '%file' => realpath('modules/simpletest/tests/system_test.module'),
+    );
+    $error_pdo_exception = array(
+      '%type' => 'PDOException',
+      '%message' => 'SQLSTATE',
+      '%function' => 'system_test_trigger_pdo_exception()',
+      '%line' => 205,
+      '%file' => realpath('modules/simpletest/tests/system_test.module'),
+    );
+
+    $this->drupalGet('system-test/trigger-exception');
+    $this->assertErrorMessage($error_exception);
+
+    $this->drupalGet('system-test/trigger-pdo-exception');
+    // We cannot use assertErrorMessage() since the extact error reported
+    // varies from database to database. Check for the error keyword 'SQLSTATE'.
+    $this->assertText($error_pdo_exception['%type'], t('Found %type in error page.', $error_pdo_exception));
+    $this->assertText($error_pdo_exception['%message'], t('Found %message in error page.', $error_pdo_exception));
+    $error_details = t('in %function (line %line of %file)', $error_pdo_exception);
+    $this->assertRaw($error_details, t("Found '!message' in error page.", array('!message' => $error_details)));
+  }
+
+  /**
+   * Helper function: assert that the error message is found.
+   */
+  function assertErrorMessage(array $error) {
+    $message = t('%type: %message in %function (line %line of %file).', $error);
+    $this->assertRaw($message, t('Error !message found.', array('!message' => $message)));
+  }
+
+  /**
+   * Helper function: assert that the error message is not found.
+   */
+  function assertNoErrorMessage(array $error) {
+    $message = t('%type: %message in %function (line %line of %file).', $error);
+    $this->assertNoRaw($message, t('Error !message not found.', array('!message' => $message)));
+  }
+}
+
+/**
+ * Test for valid_url().
+ */
+class ValidUrlTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Valid Url'),
+      'description' => t("Performs tests on Drupal's valid url function."),
+      'group' => t('System')
+    );
+  }
+
+  /**
+   * Test valid absolute urls.
+   */
+  function testValidAbsolute() {
+    $url_schemes = array('http', 'https', 'ftp');
+    $valid_absolute_urls = array(
+      'example.com',
+      'www.example.com',
+      'ex-ample.com',
+      '3xampl3.com',
+      'example.com/paren(the)sis',
+      'example.com/index.html#pagetop',
+      'example.com:8080',
+      'subdomain.example.com',
+      'example.com/index.php?q=node',
+      'example.com/index.php?q=node&param=false',
+      'user@www.example.com',
+      'user:pass@www.example.com:8080/login.php?do=login&style=%23#pagetop',
+      '127.0.0.1',
+      'example.org?',
+      'john%20doe:secret:foo@example.org/',
+      'example.org/~,$\'*;',
+      'caf%C3%A9.example.org',
+      '[FEDC:BA98:7654:3210:FEDC:BA98:7654:3210]:80/index.html',
+    );
+
+    foreach ($url_schemes as $scheme) {
+      foreach ($valid_absolute_urls as $url) {
+        $test_url = $scheme . '://' . $url;
+        $valid_url = valid_url($test_url, TRUE);
+        $this->assertTrue($valid_url, t('@url is a valid url.', array('@url' => $test_url)));
+      }
+    }
+  }
+
+  /**
+   * Test invalid absolute urls.
+   */
+  function testInvalidAbsolute() {
+    $url_schemes = array('http', 'https', 'ftp');
+    $invalid_ablosule_urls = array(
+      '',
+      'ex!ample.com',
+      'ex%ample.com',
+    );
+
+    foreach ($url_schemes as $scheme) {
+      foreach ($invalid_ablosule_urls as $url) {
+        $test_url = $scheme . '://' . $url;
+        $valid_url = valid_url($test_url, TRUE);
+        $this->assertFalse($valid_url, t('@url is NOT a valid url.', array('@url' => $test_url)));
+      }
+    }
+  }
+
+  /**
+   * Test valid relative urls.
+   */
+  function testValidRelative() {
+    $valid_relative_urls = array(
+      'paren(the)sis',
+      'index.html#pagetop',
+      'index.php?q=node',
+      'index.php?q=node&param=false',
+      'login.php?do=login&style=%23#pagetop',
+    );
+
+    foreach (array('', '/') as $front) {
+      foreach ($valid_relative_urls as $url) {
+        $test_url = $front . $url;
+        $valid_url = valid_url($test_url);
+        $this->assertTrue($valid_url,t('@url is a valid url.', array('@url' => $test_url)));
+      }
+    }
+  }
+
+  /**
+   * Test invalid relative urls.
+   */
+  function testInvalidRelative() {
+    $invalid_relative_urls = array(
+      'ex^mple',
+      'example<>',
+      'ex%ample',
+    );
+
+    foreach (array('', '/') as $front) {
+      foreach ($invalid_relative_urls as $url) {
+        $test_url = $front . $url;
+        $valid_url = valid_url($test_url);
+        $this->assertFALSE($valid_url,t('@url is NOT a valid url.', array('@url' => $test_url)));
+      }
+    }
+  }
+}
+
+/**
+ * Tests for CRUD API functions.
+ */
+class DrupalDataApiTest extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Data API functions'),
+      'description' => t('Tests the performance of CRUD APIs.'),
+      'group' => t('System'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('taxonomy');
+  }
+
+  /**
+   * Test the drupal_write_record() API function.
+   */
+  function testDrupalWriteRecord() {
+    // Insert an object record for a table with a single-field primary key.
+    $vocabulary = new StdClass();
+    $vocabulary->name = 'test';
+    $insert_result = drupal_write_record('taxonomy_vocabulary', $vocabulary);
+    $this->assertTrue($insert_result == SAVED_NEW, t('Correct value returned when a record is inserted with drupal_write_record() for a table with a single-field primary key.'));
+    $this->assertTrue(isset($vocabulary->vid), t('Primary key is set on record created with drupal_write_record().'));
+
+    // Update the initial record after changing a property.
+    $vocabulary->name = 'testing';
+    $update_result = drupal_write_record('taxonomy_vocabulary', $vocabulary, array('vid'));
+    $this->assertTrue($update_result == SAVED_UPDATED, t('Correct value returned when a record updated with drupal_write_record() for table with single-field primary key.'));
+
+    // Insert an object record for a table with a multi-field primary key.
+    $vocabulary_node_type = new StdClass();
+    $vocabulary_node_type->vid = $vocabulary->vid;
+    $vocabulary_node_type->type = 'page';
+    $insert_result = drupal_write_record('taxonomy_vocabulary_node_type', $vocabulary_node_type);
+    $this->assertTrue($insert_result == SAVED_NEW, t('Correct value returned when a record is inserted with drupal_write_record() for a table with a multi-field primary key.'));
+
+    // Update the record.
+    $update_result = drupal_write_record('taxonomy_vocabulary_node_type', $vocabulary_node_type, array('vid', 'type'));
+    $this->assertTrue($update_result == SAVED_UPDATED, t('Correct value returned when a record is updated with drupal_write_record() for a table with a multi-field primary key.'));
+  }
+
+}
+
+/**
+ * Tests Simpletest error and exception collecter.
+ */
+class DrupalErrorCollectionUnitTest extends DrupalWebTestCase {
+
+  /**
+   * Errors triggered during the test.
+   *
+   * Errors are intercepted by the overriden implementation
+   * of DrupalWebTestCase::error below.
+   *
+   * @var Array
+   */
+  protected $collectedErrors = array();
+
+  function getInfo() {
+    return array(
+      'name' => t('SimpleTest error collecter'),
+      'description' => t('Performs tests on the Simpletest error and exception collecter.'),
+      'group' => t('SimpleTest'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp('system_test');
+  }
+
+  /**
+   * Test that simpletest collects errors from the tested site.
+   */
+  function testErrorCollect() {
+    $this->collectedErrors = array();
+    $this->drupalGet('system-test/generate-warnings-with-report');
+
+    $this->assertEqual(count($this->collectedErrors), 3, t('Three errors were collected'));
+
+    if (count($this->collectedErrors) == 3) {
+      $this->assertError($this->collectedErrors[0], 'Notice', 'system_test_generate_warnings()', 'system_test.module', 'Undefined variable: bananas');
+      $this->assertError($this->collectedErrors[1], 'Warning', 'system_test_generate_warnings()', 'system_test.module', 'Division by zero');
+      $this->assertError($this->collectedErrors[2], 'User notice', 'system_test_generate_warnings()', 'system_test.module', 'Drupal is awesome');
+    }
+    else {
+      // Give back the errors to the log report.
+      foreach ($this->collectedErrors as $error) {
+        parent::error($error['message'], $error['group'], $error['caller']);
+      }
+    }
+  }
+
+  protected function error($message = '', $group = 'Other', array $caller = NULL) {
+    // This function overiddes DrupalWebTestCase::error(). We collect an error...
+    $this->collectedErrors[] = array(
+      'message' => $message,
+      'group' => $group,
+      'caller' => $caller
+    );
+    // ... and ignore it.
+  }
+
+  /**
+   * Assert that a collected error matches what we are expecting.
+   */
+  function assertError($error, $group, $function, $file, $message = NULL) {
+    $this->assertEqual($error['group'], $group, t("Group was %group", array('%group' => $group)));
+    $this->assertEqual($error['caller']['function'], $function, t("Function was %function", array('%function' => $function)));
+    $this->assertEqual(basename($error['caller']['file']), $file, t("File was %file", array('%file' => $file)));
+    if (isset($message)) {
+      $this->assertEqual($error['message'], $message, t("Message was %message", array('%message' => $message)));
+    }
+  }
+}
+

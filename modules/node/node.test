@@ -1,0 +1,637 @@
+<?php
+// $Id: node.test,v 1.16 2009/01/28 07:34:30 webchick Exp $
+
+/**
+ * Test the node_load_multiple() function.
+ */
+class NodeLoadMultipleUnitTest extends DrupalWebTestCase {
+
+  function getInfo() {
+    return array(
+      'name' => t('Load multiple nodes'),
+      'description' => t('Test the loading of multiple nodes.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+    $web_user = $this->drupalCreateUser(array('create article content', 'create page content'));
+    $this->drupalLogin($web_user);
+  }
+
+  /**
+   * Create four nodes and ensure they're loaded correctly.
+   */
+  function testNodeMultipleLoad() {
+    $node1 = $this->drupalCreateNode(array('type' => 'article', 'promote' => 1));
+    $node2 = $this->drupalCreateNode(array('type' => 'article', 'promote' => 1));
+    $node3 = $this->drupalCreateNode(array('type' => 'article', 'promote' => 0));
+    $node4 = $this->drupalCreateNode(array('type' => 'page', 'promote' => 0));
+
+    // Confirm that promoted nodes appear in the default node listing.
+    $this->drupalGet('node');
+    $this->assertText($node1->title, t('Node title appears on the default listing.'));
+    $this->assertText($node2->title, t('Node title appears on the default listing.'));
+    $this->assertNoText($node3->title, t('Node title does not appear in the default listing.'));
+    $this->assertNoText($node4->title, t('Node title does not appear in the default listing.'));
+
+    // Load nodes with only a condition. Nodes 3 and 4 will be loaded.
+    $nodes = node_load_multiple(NULL, array('promote' => 0));
+    $this->assertEqual($node3->title, $nodes[$node3->nid]->title, t('Node was loaded.'));
+    $this->assertEqual($node4->title, $nodes[$node4->nid]->title, t('Node was loaded.'));
+    $count = count($nodes);
+    $this->assertTrue($count == 2, t('@count nodes loaded.', array('@count' => $count)));
+
+    // Load nodes by nid. Nodes 1, 2 and 4 will be loaded.
+    $nodes = node_load_multiple(array(1, 2, 4));
+    $count = count($nodes);
+    $this->assertTrue(count($nodes) == 3, t('@count nodes loaded', array('@count' => $count)));
+    $this->assertTrue(isset($nodes[$node1->nid]), t('Node is correctly keyed in the array'));
+    $this->assertTrue(isset($nodes[$node2->nid]), t('Node is correctly keyed in the array'));
+    $this->assertTrue(isset($nodes[$node4->nid]), t('Node is correctly keyed in the array'));
+    foreach ($nodes as $node) {
+      $this->assertTrue(is_object($node), t('Node is an object'));
+    }
+
+    // Load nodes by nid, where type = article. Nodes 1, 2 and 3 will be loaded.
+    $nodes = node_load_multiple(array(1, 2, 3, 4), array('type' => 'article'));
+    $count = count($nodes);
+    $this->assertTrue($count == 3, t('@count nodes loaded', array('@count' => $count)));
+    $this->assertEqual($nodes[$node1->nid]->title, $node1->title, t('Node successfully loaded.'));
+    $this->assertEqual($nodes[$node2->nid]->title, $node2->title, t('Node successfully loaded.'));
+    $this->assertEqual($nodes[$node3->nid]->title, $node3->title, t('Node successfully loaded.'));
+    $this->assertFalse(isset($nodes[$node4->nid]));
+
+    // Now that all nodes have been loaded into the static cache, ensure that
+    // they are loaded correctly again when a condition is passed.
+    $nodes = node_load_multiple(array(1, 2, 3, 4), array('type' => 'article'));
+    $count = count($nodes);
+    $this->assertTrue($count == 3, t('@count nodes loaded.', array('@count' => $count)));
+    $this->assertEqual($nodes[$node1->nid]->title, $node1->title, t('Node successfully loaded'));
+    $this->assertEqual($nodes[$node2->nid]->title, $node2->title, t('Node successfully loaded'));
+    $this->assertEqual($nodes[$node3->nid]->title, $node3->title, t('Node successfully loaded'));
+    $this->assertFalse(isset($nodes[$node4->nid]), t('Node was not loaded'));
+
+    // Load nodes by nid, where type = article and promote = 0.
+    $nodes = node_load_multiple(array(1, 2, 3, 4), array('type' => 'article', 'promote' => 0));
+    $count = count($nodes);
+    $this->assertTrue($count == 1, t('@count node loaded', array('@count' => $count)));
+    $this->assertEqual($nodes[$node3->nid]->title, $node3->title, t('Node successfully loaded.'));
+  }
+}
+
+class NodeRevisionsTestCase extends DrupalWebTestCase {
+  protected $nodes;
+  protected $logs;
+
+  function getInfo() {
+    return array(
+      'name' => t('Node revisions'),
+      'description' => t('Create a node with revisions and test viewing, reverting, and deleting revisions.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    // Create and login user.
+    $web_user = $this->drupalCreateUser(array('view revisions', 'revert revisions', 'edit any page content',
+                                               'delete revisions', 'delete any page content'));
+    $this->drupalLogin($web_user);
+
+    // Create initial node.
+    $node = $this->drupalCreateNode();
+    $settings = get_object_vars($node);
+    $settings['revision'] = 1;
+
+    $nodes = array();
+    $logs = array();
+
+    // Get original node.
+    $nodes[] = $node;
+
+    // Create three revisions.
+    $revision_count = 3;
+    for ($i = 0; $i < $revision_count; $i++) {
+      $logs[] = $settings['log'] = $this->randomName(32);
+
+      // Create revision with random title and body and update variables.
+      $this->drupalCreateNode($settings);
+      $node = node_load($node->nid); // Make sure we get revision information.
+      $settings = get_object_vars($node);
+
+      $nodes[] = $node;
+    }
+
+    $this->nodes = $nodes;
+    $this->logs = $logs;
+  }
+
+  /**
+   * Check node revision related operations.
+   */
+  function testRevisions() {
+    $nodes = $this->nodes;
+    $logs = $this->logs;
+
+    // Get last node for simple checks.
+    $node = $nodes[3];
+
+    // Confirm the correct revision text appears on "view revisions" page.
+    $this->drupalGet("node/$node->nid/revisions/$node->vid/view");
+    $this->assertText($node->body, t('Correct text displays for version.'));
+
+    // Confirm the correct log message appears on "revisions overview" page.
+    $this->drupalGet("node/$node->nid/revisions");
+    foreach ($logs as $log) {
+      $this->assertText($log, t('Log message found.'));
+    }
+
+    // Confirm that revisions revert properly.
+    $this->drupalPost("node/$node->nid/revisions/{$nodes[1]->vid}/revert", array(), t('Revert'));
+    $this->assertRaw(t('@type %title has been reverted back to the revision from %revision-date.',
+                        array('@type' => 'Page', '%title' => $nodes[1]->title,
+                              '%revision-date' => format_date($nodes[1]->revision_timestamp))), t('Revision reverted.'));
+    $reverted_node = node_load($node->nid);
+    $this->assertTrue(($nodes[1]->body == $reverted_node->body), t('Node reverted correctly.'));
+
+    // Confirm revisions delete properly.
+    $this->drupalPost("node/$node->nid/revisions/{$nodes[1]->vid}/delete", array(), t('Delete'));
+    $this->assertRaw(t('Revision from %revision-date of @type %title has been deleted.',
+                        array('%revision-date' => format_date($nodes[1]->revision_timestamp),
+                              '@type' => 'Page', '%title' => $nodes[1]->title)), t('Revision deleted.'));
+    $this->assertTrue(db_result(db_query('SELECT COUNT(vid) FROM {node_revision} WHERE nid = %d and vid = %d', $node->nid, $nodes[1]->vid)) == 0, t('Revision not found.'));
+  }
+}
+
+class NodeTeaserTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node teaser'),
+      'description' => t('Test node_teaser() with different strings and lengths.'),
+      'group' => t('Node'),
+    );
+  }
+
+  /**
+   * Tests an edge case where if the first sentence is a question and
+   * subsequent sentences are not. This is edge case is documented at
+   * http://drupal.org/node/180425.
+   */
+  function testFirstSentenceQuestion() {
+    $body = 'A question? A sentence. Another sentence.';
+    $expected = 'A question? A sentence.';
+    $this->callNodeTeaser($body, $expected, NULL, 30);
+  }
+
+  /**
+   * Test teaser with long example.
+   */
+  function testLongSentence() {
+    $body = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ' . // 125
+            'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ' . // 108
+            'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. ' . // 103
+            'Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'; // 110
+    $expected = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ' .
+                'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ' .
+                'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.';
+    // First three sentences add up to: 336, so add one for space and then 3 to get half-way into next word.
+    $this->callNodeTeaser($body, $expected, NULL, 340);
+  }
+
+  /**
+   * Test various teaser length edge cases.
+   */
+  function testLength() {
+    // This body string tests a number of edge cases.
+    $body = "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>";
+
+    // The teasers we expect node_teaser() to return when $size is the index
+    // of each array item.
+    // Using an text format with no line-break filter:
+    $teasers = array(
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<",
+      "<p",
+      "<p>",
+      "<p>\n",
+      "<p>\nH",
+      "<p>\nHi",
+      "<p>\nHi\n",
+      "<p>\nHi\n<",
+      "<p>\nHi\n</",
+      "<p>\nHi\n</p",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+    );
+
+    // And Using an text format WITH the line-break filter.
+    $teasers_lb = array(
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<",
+      "<p",
+      "<p>",
+      "<p>",
+      "<p>",
+      "<p>",
+      "<p>\nHi",
+      "<p>\nHi",
+      "<p>\nHi",
+      "<p>\nHi",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+    );
+
+    // Test node_teaser() for different sizes.
+    for ($i = 0; $i <= 37; $i++) {
+      $this->callNodeTeaser($body, $teasers[$i],    NULL, $i);
+      $this->callNodeTeaser($body, $teasers_lb[$i], 1,    $i);
+      $this->callNodeTeaser($body, $teasers_lb[$i], 2,    $i);
+    }
+  }
+
+  /**
+   * Calls node_teaser() and asserts that the expected teaser is returned.
+   */
+  function callNodeTeaser($body, $expected, $format = NULL, $size = NULL) {
+    $teaser = node_teaser($body, $format, $size);
+    $this->assertIdentical($teaser, $expected, t('Generated teaser "@teaser" matches expected teaser.', array('@teaser' => $teaser)));
+  }
+}
+
+class PageEditTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node edit'),
+      'description' => t('Create a node and test node edit functionality.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    $web_user = $this->drupalCreateUser(array('edit own page content', 'create page content'));
+    $this->drupalLogin($web_user);
+  }
+
+  /**
+   * Check node edit functionality.
+   */
+  function testPageEdit() {
+    // Create node to edit.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    $this->drupalPost('node/add/page', $edit, t('Save'));
+
+    // Check that the node exists in the database.
+    $node = $this->drupalGetNodeByTitle($edit['title']);
+    $this->assertTrue($node, t('Node found in database.'));
+
+    // Check that "edit" link points to correct page.
+    $this->clickLink(t('Edit'));
+    $edit_url = url("node/$node->nid/edit", array('absolute' => true));
+    $actual_url = $this->getURL();
+    $this->assertEqual($edit_url, $actual_url, t('On edit page.'));
+
+    // Check that the title and body fields are displayed with the correct values.
+    $this->assertLink(t('Edit'), 0, t('Edit tab found.'));
+    $this->assertFieldByName('title', $edit['title'], t('Title field displayed.'));
+    $this->assertFieldByName('body', '<!--break-->' . $edit['body'], t('Body field displayed.'));
+
+    // Edit the content of the node.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    // Stay on the current page, without reloading.
+    $this->drupalPost(NULL, $edit, t('Save'));
+
+    // Check that the title and body fields are displayed with the updated values.
+    $this->assertText($edit['title'], t('Title displayed.'));
+    $this->assertText($edit['body'], t('Body displayed.'));
+  }
+}
+
+class PagePreviewTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node preview'),
+      'description' => t('Test node preview functionality.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    $web_user = $this->drupalCreateUser(array('edit own page content', 'create page content'));
+    $this->drupalLogin($web_user);
+  }
+
+  /**
+   * Check the node preview functionality.
+   */
+  function testPagePreview() {
+    // Fill in node creation form and preview node.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    $this->drupalPost('node/add/page', $edit, t('Preview'));
+
+    // Check that the preview is displaying the title and body.
+    $this->assertTitle(t('Preview | Drupal'), t('Page title is preview.'));
+    $this->assertText($edit['title'], t('Title displayed.'));
+    $this->assertText($edit['body'], t('Body displayed.'));
+
+    // Check that the title and body fields are displayed with the correct values.
+    $this->assertFieldByName('title', $edit['title'], t('Title field displayed.'));
+    $this->assertFieldByName('body', '<!--break-->' . $edit['body'], t('Body field displayed.'));
+  }
+}
+
+class PageCreationTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node creation'),
+      'description' => t('Create a node and test saving it.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    $web_user = $this->drupalCreateUser(array('create page content', 'edit own page content'));
+    $this->drupalLogin($web_user);
+  }
+
+  /**
+   * Create a page node and verify its consistency in the database.
+   */
+  function testPageCreation() {
+    // Create a node.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    $this->drupalPost('node/add/page', $edit, t('Save'));
+
+    // Check that the page has been created.
+    $this->assertRaw(t('!post %title has been created.', array('!post' => 'Page', '%title' => $edit['title'])), t('Page created.'));
+
+    // Check that the node exists in the database.
+    $node = $this->drupalGetNodeByTitle($edit['title']);
+    $this->assertTrue($node, t('Node found in database.'));
+  }
+}
+
+class PageViewTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node edit permissions'),
+      'description' => t('Create a node and test edit permissions.'),
+      'group' => t('Node'),
+    );
+  }
+
+  /**
+   * Creates a node and then an anonymous and unpermissioned user attempt to edit the node.
+   */
+  function testPageView() {
+    // Create a node to view.
+    $node = $this->drupalCreateNode();
+    $this->assertTrue(node_load($node->nid), t('Node created.'));
+
+    // Try to edit with anonymous user.
+    $html = $this->drupalGet("node/$node->nid/edit");
+    $this->assertResponse(403);
+
+    // Create a user without permission to edit node.
+    $web_user = $this->drupalCreateUser(array('access content'));
+    $this->drupalLogin($web_user);
+
+    // Attempt to access edit page.
+    $this->drupalGet("node/$node->nid/edit");
+    $this->assertResponse(403);
+
+    // Create user with permission to edit node.
+    $web_user = $this->drupalCreateUser(array('bypass node access'));
+    $this->drupalLogin($web_user);
+
+    // Attempt to access edit page.
+    $this->drupalGet("node/$node->nid/edit");
+    $this->assertResponse(200);
+  }
+}
+
+class NodeTitleXSSTestCase extends DrupalWebTestCase {
+  function getInfo() {
+     return array(
+      'name' => t('Node title XSS filtering'),
+      'description' => t('Create a node with dangerous tags in its title and test that they are escaped.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function testNodeTitleXSS() {
+    // Prepare a user to do the stuff.
+    $web_user = $this->drupalCreateUser(array('create page content', 'edit any page content'));
+    $this->drupalLogin($web_user);
+
+    $xss = '<script>alert("xss")</script>';
+
+    $edit = array(
+      'title' => $xss . $this->randomName(),
+    );
+    $this->drupalPost('node/add/page', $edit, t('Preview'));
+    $this->assertNoRaw($xss, t('Harmful tags are escaped when previewing a node.'));
+
+    $node = $this->drupalCreateNode($edit);
+
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertNoRaw($xss, t('Harmful tags are escaped when viewing a node.'));
+
+    $this->drupalGet('node/' . $node->nid . '/edit');
+    $this->assertNoRaw($xss, t('Harmful tags are escaped when editing a node.'));
+  }
+}
+
+class NodeBlockTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Block availability'),
+      'description' => t('Check if the syndicate block is available.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    // Create and login user
+    $admin_user = $this->drupalCreateUser(array('administer blocks'));
+    $this->drupalLogin($admin_user);
+  }
+
+  function testSearchFormBlock() {
+    // Set block title to confirm that the interface is availble.
+    $this->drupalPost('admin/build/block/configure/node/syndicate', array('title' => $this->randomName(8)), t('Save block'));
+    $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
+
+    // Set the block to a region to confirm block is availble.
+    $edit = array();
+    $edit['node_syndicate[region]'] = 'footer';
+    $this->drupalPost('admin/build/block', $edit, t('Save blocks'));
+    $this->assertText(t('The block settings have been updated.'), t('Block successfully move to footer region.'));
+  }
+}
+
+/**
+ * Check that the post information displays when enabled for a content type.
+ */
+class NodePostSettingsTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node post information display'),
+      'description' => t('Check that the post information (submitted by Username on date) text displays appropriately.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    parent::setUp();
+
+    $web_user = $this->drupalCreateUser(array('create page content', 'administer content types', 'access user profiles'));
+    $this->drupalLogin($web_user);
+  }
+
+  /**
+   * Set page content type to display post information and confirm its presence on a new node.
+   */
+  function testPagePostInfo() {
+
+    // Set page content type to display post information.
+    $edit = array();
+    $edit['node_submitted'] = TRUE;
+    $this->drupalPost('admin/build/node-type/page', $edit, t('Save content type'));
+
+    // Create a node.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    $this->drupalPost('node/add/page', $edit, t('Save'));
+
+    // Check that the post information is displayed.
+    $node = $this->drupalGetNodeByTitle($edit['title']);
+    $this->assertRaw(theme('node_submitted', $node), t('Post information is displayed.'));
+  }
+
+  /**
+   * Set page content type to not display post information and confirm its absence on a new node.
+   */
+  function testPageNotPostInfo() {
+
+    // Set page content type to display post information.
+    $edit = array();
+    $edit['node_submitted'] = FALSE;
+    $this->drupalPost('admin/build/node-type/page', $edit, t('Save content type'));
+
+    // Create a node.
+    $edit = array();
+    $edit['title'] = $this->randomName(8);
+    $edit['body'] = $this->randomName(16);
+    $this->drupalPost('node/add/page', $edit, t('Save'));
+
+    // Check that the post information is displayed.
+    $node = $this->drupalGetNodeByTitle($edit['title']);
+    $this->assertNoRaw(theme('node_submitted', $node), t('Post information is not displayed.'));
+  }
+}
+
+/**
+ * Ensure that data added to nodes by other modules appears in RSS feeds.
+ * 
+ * Create a node, enable the node_test module to ensure that extra data is
+ * added to the node->content array, then verify that the data appears on the
+ * sitewide RSS feed at rss.xml.
+ */
+class NodeRSSContentTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Node RSS Content'),
+      'description' => t('Ensure that data added to nodes by other modules appears in RSS feeds.'),
+      'group' => t('Node'),
+    );
+  }
+
+  function setUp() {
+    // Enable dummy module that implements hook_nodeapi_view.
+    parent::setUp('node_test');
+  }
+
+  /**
+   * Create a new node and ensure that it includes the custom data when added
+   * to an RSS feed.
+   */
+  function testNodeRSSContent() {
+    // Create a node.
+    $node = $this->drupalCreateNode(array('type' => 'article', 'promote' => 1));
+
+    $test_text = t('Extra test data added to node !nid.', array('!nid' => $node->nid));
+
+    $this->drupalGet('rss.xml');
+    $this->assertText($test_text, t('Extra node content appears in RSS feed.'));
+  }
+}

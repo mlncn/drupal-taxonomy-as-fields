@@ -1,0 +1,12 @@
+; $Id: forum.info,v 1.11 2008/10/11 02:32:46 webchick Exp $
+name = Forum
+description = Provides discussion forums.
+dependencies[] = taxonomy
+dependencies[] = comment
+package = Core
+version = VERSION
+core = 7.x
+files[] = forum.module
+files[] = forum.admin.inc
+files[] = forum.pages.inc
+files[] = forum.install

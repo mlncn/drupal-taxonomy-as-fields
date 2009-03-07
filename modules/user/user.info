@@ -1,0 +1,11 @@
+; $Id: user.info,v 1.10 2008/10/12 01:23:07 webchick Exp $
+name = User
+description = Manages the user registration and login system.
+package = Core
+version = VERSION
+core = 7.x
+files[] = user.module
+files[] = user.admin.inc
+files[] = user.pages.inc
+files[] = user.install
+required = TRUE

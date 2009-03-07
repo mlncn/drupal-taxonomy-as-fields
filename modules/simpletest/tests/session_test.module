@@ -1,0 +1,137 @@
+<?php
+// $Id: session_test.module,v 1.6 2009/01/26 14:08:43 dries Exp $
+
+/**
+ * Implementation of hook_menu().
+ */
+function session_test_menu() {
+  $items['session-test/get'] = array(
+    'title' => t('Session value'),
+    'page callback' => '_session_test_get',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['session-test/id'] = array(
+    'title' => t('Session ID value'),
+    'page callback' => '_session_test_id',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['session-test/set/%'] = array(
+    'title' => t('Set Session value'),
+    'page callback' => '_session_test_set',
+    'page arguments' => array(2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['session-test/no-set/%'] = array(
+    'title' => t('Disabled session set value'),
+    'page callback' => '_session_test_no_set',
+    'page arguments' => array(2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['session-test/set-message'] = array(
+    'title' => t('Session value'),
+    'page callback' => '_session_test_set_message',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['session-test/set-not-started'] = array(
+    'title' => t('Session value'),
+    'page callback' => '_session_test_set_not_started',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implement hook_boot().
+ */
+function session_test_boot() {
+  header('X-Session-Cookie: ' . intval(isset($_COOKIE[session_name()])));
+  header('X-Session-Started: ' . intval(drupal_session_is_started()));
+  header('X-Session-Empty: ' . intval(empty($_SESSION)));
+}
+
+/**
+ * Implement hook_init().
+ */
+function session_test_init() {
+  // hook_init() is called later in the bootstrap process, but not in cached
+  // requests. Here the header set in hook_boot() is overwritten, so the
+  // session state is reported as late in the bootstrap process as possible.
+  header('X-Session-Started: ' . intval(drupal_session_is_started()));
+}
+
+/**
+ * Page callback, prints the stored session value to the screen.
+ */
+function _session_test_get() {
+  if (!empty($_SESSION['session_test_value'])) {
+    return t('The current value of the stored session variable is: %val', array('%val' => $_SESSION['session_test_value']));
+  }
+  else {
+    return "";
+  }
+}
+
+/**
+ * Page callback, stores a value in $_SESSION['session_test_value'].
+ */
+function _session_test_set($value) {
+  drupal_set_session('session_test_value', $value);
+  return t('The current value of the stored session variable has been set to %val', array('%val' => $value));
+}
+
+/**
+ * Menu callback: turns off session saving and then tries to save a value
+ * anyway.
+ */
+function _session_test_no_set($value) {
+  drupal_save_session(FALSE);
+  _session_test_set($value);
+  return t('session saving was disabled, and then %val was set', array('%val' => $value));
+}
+
+/**
+ * Menu callback: print the current session ID.
+ */
+function _session_test_id() {
+  return 'session_id:' . session_id() . "\n";
+}
+
+/**
+ * Menu callback, sets a message to me displayed on the following page.
+ */
+function _session_test_set_message() {
+  drupal_set_message(t('This is a dummy message.'));
+  print t('A message was set.');
+  // Do not return anything, so the current request does not result in a themed
+  // page with messages. The message will be displayed in the following request
+  // instead.
+}
+
+/**
+ * Menu callback, stores a value in $_SESSION['session_test_value'] without
+ * having started the session in advance.
+ */
+function _session_test_set_not_started() {
+  if (!drupal_session_is_started()) {
+    $_SESSION['session_test_value'] = t('Session was not started');
+  }
+}
+
+/**
+ * Implementation of hook_user().
+ */
+function session_test_user_login($edit = array(), $user = NULL) {
+  if ($edit['name'] == 'session_test_user') {
+    // Exit so we can verify that the session was regenerated
+    // before hook_user() was called.
+    exit;
+  }
+}
+

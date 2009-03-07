@@ -1,0 +1,41 @@
+<?php
+// $Id: syslog.test,v 1.5 2008/11/25 13:14:28 dries Exp $
+
+class SyslogTestCase extends DrupalWebTestCase {
+  function getInfo() {
+    return array(
+      'name' => t('Syslog functionality'),
+      'description' => t('Test syslog settings.'),
+      'group' => t('Syslog')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('syslog');
+  }
+
+  /**
+   * Test the syslog settings page.
+   */
+  function testSettings() {
+    $admin_user = $this->drupalCreateUser(array('administer site configuration'));
+    $this->drupalLogin($admin_user);
+
+    $edit = array();
+    // If we're on Windows, LOG_LOCAL6 will not be available.
+    if (defined('LOG_LOCAL6')) {
+      $edit['syslog_facility'] = LOG_LOCAL6;
+    }
+    else {
+      $edit['syslog_facility'] = LOG_USER;
+    }
+    $this->drupalPost('admin/settings/logging/syslog', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'));
+
+    $this->drupalGet('admin/settings/logging/syslog');
+    if ($this->parse()) {
+      $field = $this->xpath('//option[@value="' . $edit['syslog_facility'] . '"]'); // Should be one field.
+      $this->assertTrue($field[0]['selected'] == 'selected', t('Facility value saved.'));
+    }
+  }
+}

@@ -1,0 +1,9 @@
+; $Id: tracker.info,v 1.8 2008/10/11 02:33:07 webchick Exp $
+name = Tracker
+description = Enables tracking of recent posts for users.
+dependencies[] = comment
+package = Core
+version = VERSION
+core = 7.x
+files[] = tracker.module
+files[] = tracker.pages.inc
