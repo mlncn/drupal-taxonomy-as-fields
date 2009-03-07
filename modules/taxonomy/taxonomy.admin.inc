@@ -101,14 +101,15 @@ function theme_taxonomy_overview_vocabularies($form) {
  * @see taxonomy_form_vocabulary_submit()
  */
 function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
+  drupal_add_js(drupal_get_path('module', 'taxonomy') .'/taxonomy_vocabulary.js');
   if (!is_array($edit)) {
     $edit = (array)$edit;
   }
   $edit += array(
     'name' => '',
+    'field_name' => '',
     'description' => '',
     'help' => '',
-    'nodes' => array(),
     'hierarchy' => 0,
     'relations' => 0,
     'tags' => 0,
@@ -127,6 +128,15 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#maxlength' => 255,
     '#description' => t('The name for this vocabulary, e.g., <em>"Tags"</em>.'),
     '#required' => TRUE,
+    '#field_suffix' => ' <small id="vocabulary-field-name-suffix">&nbsp;</small>',
+  );
+  $form['field_name'] = array(
+    '#title' => t('Machine name'),
+    '#type' => 'textfield',
+    '#default_value' => $edit['field_name'],
+    '#maxlength' => 32,
+    '#required' => TRUE,
+    '#description' => t('The machine-readable name of this vocabulary. This value will be used for the field name. This name must contain only lowercase letters, numbers, and underscores. Underscores will be converted into hyphens when constructing the URL of the <em>create content</em> page. This name must be unique.'),
   );
   $form['help'] = array(
     '#type' => 'textfield',
@@ -141,38 +151,41 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#default_value' => $edit['description'],
     '#description' => t('Description of the vocabulary; can be used by modules.'),
   );
-  $form['nodes'] = array(
-    '#type' => 'checkboxes',
-    '#title' => t('Content types'),
-    '#default_value' => $edit['nodes'],
-    '#options' => array_map('check_plain', node_get_types('names')),
-    '#description' => t('Select content types to categorize using this vocabulary.'),
-  );
-  $form['settings'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Settings'),
-    '#collapsible' => TRUE,
-  );
-  $form['settings']['tags'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Tags'),
-    '#default_value' => $edit['tags'],
-    '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
-  );
-  $form['settings']['multiple'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Multiple select'),
-    '#default_value' => $edit['multiple'],
-    '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
-  );
-  $form['settings']['required'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Required'),
-    '#default_value' => $edit['required'],
-    '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
-  );
-  // Set the hierarchy to "multiple parents" by default. This simplifies the
-  // vocabulary form and standardizes the term form.
+  if (module_exists('term')) {
+    $instances = field_read_instances(array('field_name' => $edit['field_name']));
+    $form['nodes'] = array(
+      '#type' => 'checkboxes',
+      '#title' => t('Content types'),
+      '#default_value' => $edit['nodes'],
+      '#options' => array_map('check_plain', node_get_types('names')),
+      '#description' => t('Select content types to categorize using this vocabulary.'),
+    );
+    $form['settings'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Settings'),
+      '#collapsible' => TRUE,
+    );
+    $form['settings']['tags'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Tags'),
+      '#default_value' => $edit['tags'],
+      '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
+    );
+    $form['settings']['multiple'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Multiple select'),
+      '#default_value' => $edit['multiple'],
+      '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
+    );
+    $form['settings']['required'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Required'),
+      '#default_value' => $edit['required'],
+      '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
+    );
+  }
+    // Set the hierarchy to "multiple parents" by default. This simplifies the
+    // vocabulary form and standardizes the term form.
   $form['hierarchy'] = array(
     '#type' => 'value',
     '#value' => '0',
@@ -205,6 +218,7 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
   // Fix up the nodes array to remove unchecked nodes.
   $form_state['values']['nodes'] = array_filter($form_state['values']['nodes']);
   $vocabulary = (object) $form_state['values'];
+  dpm($vocabulary);
   switch (taxonomy_vocabulary_save($vocabulary)) {
     case SAVED_NEW:
       drupal_set_message(t('Created new vocabulary %name.', array('%name' => $vocabulary->name)));
@@ -214,6 +228,35 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       drupal_set_message(t('Updated vocabulary %name.', array('%name' => $vocabulary->name)));
       watchdog('taxonomy', 'Updated vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/content/taxonomy/' . $vocabulary->vid));
       break;
+  }
+  if (module_exists('term')) {
+    if (!field_read_field('term_'. $vocabulary->field_name)) {
+      $field = array(
+        'field_name' => 'term_'. $vocabulary->field_name,
+        'module' => 'term',
+        'type' => 'term',
+        'cardinality' => ($vocabulary->multiple ? FIELD_CARDINALITY_UNLIMITED : 1),
+        'settings' => array(
+          'vid' => $vocabulary->vid,
+        ),
+      );
+      field_create_field($field);
+    }
+    $instance = array(
+      'field_name' => 'term_'. $vocabulary->field_name,
+      'bundle' => '',
+      'label' => $vocabulary->name,
+      'description' => $vocabulary->description,
+      'weight' => $vocabulary->weight,
+      'required' => $vocabulary->required,
+      'widget' => array(
+        'type' => 'options_select',
+      ),
+    );
+    foreach ($vocabulary->nodes as $node_type) {
+      $instance['bundle'] = $node_type;
+      field_create_instance($instance);
+    }
   }
 
   $form_state['vid'] = $vocabulary->vid;

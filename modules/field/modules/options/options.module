@@ -44,7 +44,7 @@ function options_field_widget_info() {
   return array(
     'options_select' => array(
       'label' => t('Select list'),
-      'field types' => array('list', 'list_boolean', 'list_text', 'list_number'),
+      'field types' => array('list', 'list_boolean', 'list_text', 'list_number', 'term'),
       'behaviors' => array(
         'multiple values' => FIELD_BEHAVIOR_CUSTOM,
         'default value' => FIELD_BEHAVIOR_DEFAULT,
@@ -52,7 +52,7 @@ function options_field_widget_info() {
     ),
     'options_buttons' => array(
       'label' => t('Check boxes/radio buttons'),
-      'field types' => array('list', 'list_boolean', 'list_text', 'list_number'),
+      'field types' => array('list', 'list_boolean', 'list_text', 'list_number', 'term'),
       'behaviors' => array(
         'multiple values' => FIELD_BEHAVIOR_CUSTOM,
         'default value' => FIELD_BEHAVIOR_DEFAULT,
