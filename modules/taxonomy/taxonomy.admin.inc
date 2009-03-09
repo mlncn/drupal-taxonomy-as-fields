@@ -1,4 +1,4 @@
-/<?php
+<?php
 // $Id: taxonomy.admin.inc,v 1.46 2009/02/24 16:48:18 dries Exp $
 
 /**
