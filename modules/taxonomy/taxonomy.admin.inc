@@ -159,32 +159,34 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
       '#options' => array_map('check_plain', node_get_types('names')),
       '#description' => t('Select content types to categorize using this vocabulary.'),
     );
-    $form['settings'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Settings'),
-      '#collapsible' => TRUE,
-    );
-    $form['settings']['tags'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Tags'),
-      '#default_value' => $edit['tags'],
-      '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
-    );
-    $form['settings']['multiple'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Multiple select'),
-      '#default_value' => $edit['multiple'],
-      '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
-    );
-    $form['settings']['required'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Required'),
-      '#default_value' => $edit['required'],
-      '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
-    );
   }
-    // Set the hierarchy to "multiple parents" by default. This simplifies the
-    // vocabulary form and standardizes the term form.
+  $form['settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Settings'),
+    '#collapsible' => TRUE,
+  );
+  $form['settings']['tags'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Tags'),
+    '#default_value' => $edit['tags'],
+    '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
+    );
+  $form['settings']['multiple'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Multiple select'),
+    '#default_value' => $edit['multiple'],
+    '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
+  );
+  $form['settings']['required'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Required'),
+    '#default_value' => $edit['required'],
+    '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
+  );
+
+  // @TODO - what?  this *disables* multiple parents, and there's no UI way to turn it on!?!
+  // Set the hierarchy to "multiple parents" by default. This simplifies the
+  // vocabulary form and standardizes the term form.
   $form['hierarchy'] = array(
     '#type' => 'value',
     '#value' => '0',
