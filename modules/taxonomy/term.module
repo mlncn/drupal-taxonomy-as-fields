@@ -58,38 +58,19 @@ function term_field_info() {
 }
 
 /**
- * Implementation of hook_field_schema().
+ * Implementation of hook_field_columns().
+ * 
+ * @TODO text.module calls this an implementation of hook_field_schema(),
+ * any deep meaning in that or just correct it in text.module?
  */
 function term_field_columns($field) {
-  switch ($field['type']) {
-//    case 'term_text':
-//      $columns = array(
-//        'value' => array(
-//          'type' => 'varchar',
-//          'length' => 255,
-//          'not null' => FALSE,
-//        ),
-//      );
-//      break;
-    case 'term':
-      $columns = array(
-        'value' => array(
-          'type' => 'int',
-          'unsigned' => TRUE,
-          'not null' => FALSE,
-        ),
-      );
-      break;
-//    default:
-//      $columns = array(
-//        'value' => array(
-//          'type' => 'int',
-//          'unsigned' => TRUE,
-//          'not null' => FALSE,
-//        ),
-//      );
-//      break;
-  }
+  $columns = array(
+    'value' => array(
+      'type' => 'int',
+      'unsigned' => TRUE,
+      'not null' => FALSE,
+    ),
+  );
   return $columns;
 }
 
@@ -128,14 +109,14 @@ function term_field_formatter_info() {
   return array(
     'term_default' => array(
       'label' => t('Default'),
-      'field types' => array('term', 'term_boolean', 'term_text', 'term_number'),
+      'field types' => array('term'),
       'behaviors' => array(
         'multiple values' => FIELD_BEHAVIOR_DEFAULT,
       ),
     ),
-    'term_key' => array(
-      'label' => t('Key'),
-      'field types' => array('term', 'term_boolean', 'term_text', 'term_number'),
+    'term_id' => array(  // why this second one..?
+      'label' => t('Id'),
+      'field types' => array('term'),
       'behaviors' => array(
         'multiple values' => FIELD_BEHAVIOR_DEFAULT,
       ),

@@ -94,6 +94,18 @@ function theme_taxonomy_overview_vocabularies($form) {
   return theme('table', $header, $rows, array('id' => 'taxonomy')) . drupal_render_children($form);
 }
 
+
+/**
+ * Take a user-entered name and make it machine-safe.
+ *
+ * Replace spaces and all unknown characters with underscores and lowercase.
+ *
+ * @TODO get this into common.inc
+ */
+function drupal_system_string($string, $replacement = '_') {
+  return preg_replace('/[^a-z0-9]+/', $replacement, strtolower($string));
+}
+
 /**
  * Display form for adding and editing vocabularies.
  *
@@ -104,9 +116,11 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
   if (!is_array($edit)) {
     $edit = (array)$edit;
   }
+  $field_name = isset($edit['name']) ? 'term_' . drupal_system_string($edit['name']) : '';
+  
   $edit += array(
     'name' => '',
-    'field_name' => 'term_'. preg_replace('/[^a-z0-9]+/', '_', strtolower($edit['name'])),
+    'field_name' => $field_name,
     'description' => '',
     'help' => '',
     'hierarchy' => 0,

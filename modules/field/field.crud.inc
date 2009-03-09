@@ -41,10 +41,10 @@ class FieldException extends Exception {}
  * - field_name (string)
  *     The name of the field. Each field name is unique within Field API.
  *     When a field is attached to an object, the field's data is stored
- *     in $object->$field_name.
+ *     in $object->field_name.
  * - type (string)
  *     The type of the field, such as 'text' or 'image'. Field types
- *     are defined by modules that implement hook_field_into().
+ *     are defined by modules that implement hook_field_info().
  * - cardinality (integer)
  *     The number of values the field can hold. Legal values are any
  *     positive integer or FIELD_CARDINALITY_UNLIMITED.
