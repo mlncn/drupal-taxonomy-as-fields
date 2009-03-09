@@ -1,4 +1,4 @@
-<?php
+/<?php
 // $Id: taxonomy.admin.inc,v 1.46 2009/02/24 16:48:18 dries Exp $
 
 /**
@@ -25,7 +25,6 @@ function taxonomy_overview_vocabularies() {
     $form[$vocabulary->vid]['#vocabulary'] = $vocabulary;
     $form[$vocabulary->vid]['name'] = array('#markup' => check_plain($vocabulary->name));
     $form[$vocabulary->vid]['types'] = array('#markup' => implode(', ', $types));
-    $form[$vocabulary->vid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $vocabulary->weight);
     $form[$vocabulary->vid]['edit'] = array('#markup' => l(t('edit vocabulary'), "admin/content/taxonomy/$vocabulary->vid"));
     $form[$vocabulary->vid]['list'] = array('#markup' => l(t('list terms'), "admin/content/taxonomy/$vocabulary->vid/list"));
     $form[$vocabulary->vid]['add'] = array('#markup' => l(t('add terms'), "admin/content/taxonomy/$vocabulary->vid/add"));
@@ -35,9 +34,6 @@ function taxonomy_overview_vocabularies() {
   // vocabulary exists.
   if (count($vocabularies) > 1) {
     $form['submit'] = array('#type' => 'submit', '#value' => t('Save'));
-  }
-  elseif (isset($vocabulary)) {
-    unset($form[$vocabulary->vid]['weight']);
   }
   return $form;
 }
@@ -49,8 +45,7 @@ function taxonomy_overview_vocabularies() {
  */
 function taxonomy_overview_vocabularies_submit($form, &$form_state) {
   foreach ($form_state['values'] as $vid => $vocabulary) {
-    if (is_numeric($vid) && $form[$vid]['#vocabulary']->weight != $form_state['values'][$vid]['weight']) {
-      $form[$vid]['#vocabulary']->weight = $form_state['values'][$vid]['weight'];
+    if (is_numeric($vid)) {
       taxonomy_vocabulary_save($form[$vid]['#vocabulary']);
     }
   }
@@ -71,10 +66,6 @@ function theme_taxonomy_overview_vocabularies($form) {
       $row = array();
       $row[] = drupal_render($vocabulary['name']);
       $row[] = drupal_render($vocabulary['types']);
-      if (isset($vocabulary['weight'])) {
-        $vocabulary['weight']['#attributes']['class'] = 'vocabulary-weight';
-        $row[] = drupal_render($vocabulary['weight']);
-      }
       $row[] = drupal_render($vocabulary['edit']);
       $row[] = drupal_render($vocabulary['list']);
       $row[] = drupal_render($vocabulary['add']);
@@ -87,8 +78,7 @@ function theme_taxonomy_overview_vocabularies($form) {
 
   $header = array(t('Vocabulary name'), t('Content types'));
   if (isset($form['submit'])) {
-    $header[] = t('Weight');
-    drupal_add_tabledrag('taxonomy', 'order', 'sibling', 'vocabulary-weight');
+    drupal_add_tabledrag('taxonomy', 'order', 'sibling');
   }
   $header[] = array('data' => t('Operations'), 'colspan' => '3');
   return theme('table', $header, $rows, array('id' => 'taxonomy')) . drupal_render_children($form);
@@ -115,12 +105,10 @@ function drupal_system_string($string, $replacement = '_') {
 function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
   if (!is_array($edit)) {
     $edit = (array)$edit;
-  }
-  $field_name = isset($edit['name']) ? 'term_' . drupal_system_string($edit['name']) : '';
-  
+  } 
   $edit += array(
     'name' => '',
-    'field_name' => $field_name,
+    'field_name' => '',
     'description' => '',
     'help' => '',
     'hierarchy' => 0,
@@ -128,7 +116,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     'tags' => 0,
     'multiple' => 0,
     'required' => 0,
-    'weight' => 0,
   );
   // Check whether we need a deletion confirmation form.
   if (isset($form_state['confirm_delete']) && isset($form_state['values']['vid'])) {
@@ -318,7 +305,7 @@ function taxonomy_overview_terms(&$form_state, $vocabulary) {
   if ($vocabulary->tags) {
     // We are not calling taxonomy_get_tree because that might fail with a big
     // number of tags in the freetagging vocabulary.
-    $results = pager_query(db_rewrite_sql('SELECT t.*, h.parent FROM {taxonomy_term_data} t INNER JOIN {taxonomy_term_hierarchy} h ON t.tid = h.tid WHERE t.vid = %d ORDER BY weight, name', 't', 'tid'), $page_increment, 0, NULL, $vocabulary->vid);
+    $results = pager_query(db_rewrite_sql('SELECT t.*, h.parent FROM {taxonomy_term_data} t INNER JOIN {taxonomy_term_hierarchy} h ON t.tid = h.tid WHERE t.vid = %d ORDER BY name', 't', 'tid'), $page_increment, 0, NULL, $vocabulary->vid);
     $total_entries = db_query(db_rewrite_sql('SELECT COUNT(*) FROM {taxonomy_term_data} t INNER JOIN {taxonomy_term_hierarchy} h ON t.tid = h.tid WHERE t.vid = :vid'), array(':vid' => $vocabulary->vid));
     while ($term = db_fetch_object($results)) {
       $key = 'tid:' . $term->tid . ':0';
