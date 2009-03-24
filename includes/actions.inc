@@ -1,5 +1,5 @@
 <?php
-// $Id: actions.inc,v 1.24 2008/12/20 05:20:20 dries Exp $
+// $Id: actions.inc,v 1.26 2009/03/18 09:50:46 dries Exp $
 
 /**
  * @file
@@ -119,7 +119,7 @@ function actions_do($action_ids, $object = NULL, $context = NULL, $a1 = NULL, $a
  *       'description' => t('Save node'),
  *       'configurable' => FALSE,
  *       'hooks' => array(
- *         'nodeapi' => array('delete', 'insert', 'update', 'view'),
+ *         'node' => array('delete', 'insert', 'update', 'view'),
  *         'comment' => array('delete', 'insert', 'update', 'view'),
  *       )
  *     )
@@ -147,7 +147,7 @@ function actions_do($action_ids, $object = NULL, $context = NULL, $a1 = NULL, $a
  *     'description' => t('Publish post'),
  *     'configurable' => FALSE,
  *     'hooks' => array(
- *       'nodeapi' => array('presave', 'insert', 'update', 'view'),
+ *       'node' => array('presave', 'insert', 'update', 'view'),
  *       'comment' => array('delete', 'insert', 'update', 'view'),
  *     ),
  *   );
@@ -285,12 +285,8 @@ function actions_synchronize($delete_orphans = FALSE) {
     $orphaned = array_keys($actions_in_db);
 
     if ($delete_orphans) {
-      $results = db_select('actions')
-        ->addField('actions', 'aid')
-        ->addField('actions', 'description')
-        ->condition('callback', $orphaned, 'IN')
-        ->execute();
-      foreach ($results as $action) {
+      $actions = db_query('SELECT aid, description FROM {actions} WHERE callback IN (:orphaned)', array(':orphaned' => $orphaned))->fetchAll();
+      foreach ($actions as $action) {
         actions_delete($action->aid);
         watchdog('actions', "Removed orphaned action '%action' from database.", array('%action' => filter_xss_admin($action->description)));
       }

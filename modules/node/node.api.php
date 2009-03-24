@@ -1,5 +1,5 @@
 <?php
-// $Id: node.api.php,v 1.10 2009/01/28 07:34:30 webchick Exp $
+// $Id: node.api.php,v 1.13 2009/03/17 12:41:54 dries Exp $
 
 /**
  * @file
@@ -169,7 +169,7 @@ function hook_node_operations() {
  * @return
  *   None.
  */
-function hook_nodeapi_alter($node, $teaser) {
+function hook_node_alter($node, $teaser) {
 }
 
 /**
@@ -180,7 +180,7 @@ function hook_nodeapi_alter($node, $teaser) {
  * @return
  *   None.
  */
-function hook_nodeapi_delete($node) {
+function hook_node_delete($node) {
   db_query('DELETE FROM {mytable} WHERE nid = %d', $node->nid);
 }
 
@@ -194,7 +194,7 @@ function hook_nodeapi_delete($node) {
  * @return
  *   None.
  */
-function hook_nodeapi_delete_revision($node) {
+function hook_node_delete_revision($node) {
   db_delete('upload')->condition('vid', $node->vid)->execute();
   if (!is_array($node->files)) {
     return;
@@ -205,14 +205,16 @@ function hook_nodeapi_delete_revision($node) {
 }
 
 /**
- * The node being created (inserted in the database).
+ * Respond to node insertion.
+ *
+ * Take action when a new node of any type is being inserted in the database.
  *
  * @param $node
  *   The node the action is being performed on.
  * @return
  *   None.
  */
-function hook_nodeapi_insert($node) {
+function hook_node_insert($node) {
   db_query("INSERT INTO {mytable} (nid, extra) VALUES (%d, '%s')", $node->nid, $node->extra);
 }
 
@@ -233,16 +235,16 @@ function hook_nodeapi_insert($node) {
  * this may affect the way nodes are returned from the cache in subsequent
  * calls to the function.
  *
- * @see comment_nodeapi_load()
- * @see taxonomy_nodeapi_load()
- * @see forum_nodeapi_load()
+ * @see comment_node_load()
+ * @see taxonomy_node_load()
+ * @see forum_node_load()
  *
  * @param $nodes
  *   An array of node objects indexed by nid.
  * @param $types
  *   An array containing the types of the nodes.
  */
-function hook_nodeapi_load($nodes, $types) {
+function hook_node_load($nodes, $types) {
   $result = db_query('SELECT nid, foo FROM {mytable} WHERE nid IN(:nids)', array(':nids' => array_keys($nodes)));
   foreach ($result as $record) {
     $nodes[$record->nid]->foo = $record->foo;
@@ -257,9 +259,9 @@ function hook_nodeapi_load($nodes, $types) {
  * @return
  *   None.
  */
-function hook_nodeapi_prepare($node) {
+function hook_node_prepare($node) {
   if (!isset($node->comment)) {
-    $node->comment = variable_get("comment_$node->type", COMMENT_NODE_READ_WRITE);
+    $node->comment = variable_get("comment_$node->type", COMMENT_NODE_OPEN);
   }
 }
 
@@ -274,7 +276,7 @@ function hook_nodeapi_prepare($node) {
  * @return
  *   None.
  */
-function hook_nodeapi_prepare_translation($node) {
+function hook_node_prepare_translation($node) {
 }
 
 /**
@@ -282,7 +284,7 @@ function hook_nodeapi_prepare_translation($node) {
  *
  * The module can return properties to be added to the RSS item generated for
  * this node. This hook should only be used to add XML elements to the RSS
- * feed item itself. See comment_nodeapi_rss_item() and upload_nodeapi_rss_item()
+ * feed item itself. See comment_node_rss_item() and upload_node_rss_item()
  * for examples.
  *
  * @param $node
@@ -290,8 +292,8 @@ function hook_nodeapi_prepare_translation($node) {
  * @return
  *   Extra information to be added to the RSS item.
  */
-function hook_nodeapi_rss_item($node) {
-  if ($node->comment != COMMENT_NODE_DISABLED) {
+function hook_node_rss_item($node) {
+  if ($node->comment != COMMENT_NODE_HIDDEN) {
     return array(array('key' => 'comments', 'value' => url('node/' . $node->nid, array('fragment' => 'comments', 'absolute' => TRUE))));
   }
   else {
@@ -309,7 +311,7 @@ function hook_nodeapi_rss_item($node) {
  * @return
  *   Extra information to be displayed with search result.
  */
-function hook_nodeapi_search_result($node) {
+function hook_node_search_result($node) {
   $comments = db_query('SELECT comment_count FROM {node_comment_statistics} WHERE nid = :nid', array('nid' => $node->nid))->fetchField();
   return format_plural($comments, '1 comment', '@count comments');
 }
@@ -324,7 +326,7 @@ function hook_nodeapi_search_result($node) {
  * @return
  *   None.
  */
-function hook_nodeapi_presave($node) {
+function hook_node_presave($node) {
   if ($node->nid && $node->moderate) {
     // Reset votes when node is updated:
     $node->score = 0;
@@ -341,7 +343,7 @@ function hook_nodeapi_presave($node) {
  * @return
  *   None.
  */
-function hook_nodeapi_update($node) {
+function hook_node_update($node) {
   db_query("UPDATE {mytable} SET extra = '%s' WHERE nid = %d", $node->extra, $node->nid);
 }
 
@@ -349,14 +351,14 @@ function hook_nodeapi_update($node) {
  * The node is being indexed.
  *
  * If you want additional information to be indexed which is not already
- * visible through nodeapi "view", then you should return it here.
+ * visible through node "view", then you should return it here.
  *
  * @param $node
  *   The node the action is being performed on.
  * @return
  *   Array of additional information to be indexed.
  */
-function hook_nodeapi_update_index($node) {
+function hook_node_update_index($node) {
   $text = '';
   $comments = db_query('SELECT subject, comment, format FROM {comment} WHERE nid = :nid AND status = :status', array(':nid' => $node->nid, ':status' => COMMENT_PUBLISHED));
   foreach ($comments as $comment) {
@@ -378,7 +380,7 @@ function hook_nodeapi_update_index($node) {
  * @return
  *   None.
  */
-function hook_nodeapi_validate($node, $form) {
+function hook_node_validate($node, $form) {
   if (isset($node->end) && isset($node->start)) {
     if ($node->start > $node->end) {
       form_set_error('time', t('An event may not end before it starts.'));
@@ -400,7 +402,7 @@ function hook_nodeapi_validate($node, $form) {
  * @return
  *   None.
  */
-function hook_nodeapi_view($node, $teaser) {
+function hook_node_view($node, $teaser) {
   $node->content['my_additional_field'] = array(
     '#value' => $additional_field,
     '#weight' => 10,
@@ -489,7 +491,7 @@ function hook_node_type($op, $info) {
       break;
     case 'update':
       if (!empty($info->old_type) && $info->old_type != $info->type) {
-        $setting = variable_get('comment_' . $info->old_type, COMMENT_NODE_READ_WRITE);
+        $setting = variable_get('comment_' . $info->old_type, COMMENT_NODE_OPEN);
         variable_del('comment_' . $info->old_type);
         variable_set('comment_' . $info->type, $setting);
       }
@@ -558,7 +560,7 @@ function hook_access($op, $node, $account) {
  *   None.
  *
  * To take action when nodes of any type are deleted (not just nodes of
- * the type defined by this module), use hook_nodeapi() instead.
+ * the type defined by this module), use hook_node() instead.
  *
  * For a detailed usage example, see node_example.module.
  */
@@ -665,7 +667,7 @@ function hook_form(&$node, $form_state) {
  *   None.
  *
  * To take action when nodes of any type are inserted (not just nodes of
- * the type(s) defined by this module), use hook_nodeapi() instead.
+ * the type(s) defined by this module), use hook_node() instead.
  *
  * For a detailed usage example, see node_example.module.
  */
@@ -709,7 +711,7 @@ function hook_load($nodes) {
  *   None.
  *
  * To take action when nodes of any type are updated (not just nodes of
- * the type(s) defined by this module), use hook_nodeapi() instead.
+ * the type(s) defined by this module), use hook_node() instead.
  *
  * For a detailed usage example, see node_example.module.
  */
@@ -733,11 +735,11 @@ function hook_update($node) {
  *   None.
  *
  * To validate nodes of all types (not just nodes of the type(s) defined by
- * this module), use hook_nodeapi() instead.
+ * this module), use hook_node() instead.
  *
  * Changes made to the $node object within a hook_validate() function will
  * have no effect. The preferred method to change a node's content is to use
- * hook_submit() or hook_nodeapi($op='submit') instead. If it is really
+ * hook_submit() or hook_node($op='submit') instead. If it is really
  * necessary to change the node at the validate stage, you can use function
  * form_set_value().
  *
@@ -773,7 +775,7 @@ function hook_validate($node, &$form) {
  *   If for some reason you need to change the body or teaser returned by
  *   node_prepare(), you can modify $node->content['body']['#value']. Note
  *   that this will be the un-rendered content. To modify the rendered output,
- *   see hook_nodeapi($op = 'alter').
+ *   see hook_node($op = 'alter').
  *
  * For a detailed usage example, see node_example.module.
  */

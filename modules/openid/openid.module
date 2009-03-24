@@ -1,5 +1,5 @@
 <?php
-// $Id: openid.module,v 1.41 2009/03/01 17:19:08 webchick Exp $
+// $Id: openid.module,v 1.44 2009/03/17 15:26:29 dries Exp $
 
 /**
  * @file
@@ -40,8 +40,7 @@ function openid_menu() {
  */
 function openid_help($path, $arg) {
   switch ($path) {
-
-  case 'user/%/openid':
+    case 'user/%/openid':
       $output = '<p>' . t('This site supports <a href="@openid-net">OpenID</a>, a secure way to log into many websites using a single username and password. OpenID can reduce the necessity of managing many usernames and passwords for many websites.', array('@openid-net' => url('http://openid.net'))) . '</p>';
       $output .= '<p>' . t('To use OpenID you must first establish an identity on a public or private OpenID server. If you do not have an OpenID and would like one, look into one of the <a href="@openid-providers">free public providers</a>. You can find out more about OpenID at <a href="@openid-net">this website</a>.', array('@openid-providers' => url('http://openid.net/get/'), '@openid-net' => url('http://openid.net'))) . '</p>';
       $output .= '<p>' . t('If you already have an OpenID, enter the URL to your OpenID server below (e.g. myusername.openidprovider.com). Next time you login, you will be able to use this URL instead of a regular username and password. You can have multiple OpenID servers if you like; just keep adding them here.') . '</p>';
@@ -87,7 +86,7 @@ function openid_form_user_login_alter(&$form, &$form_state) {
 function _openid_user_login_form_alter(&$form, &$form_state) {
   drupal_add_css(drupal_get_path('module', 'openid') . '/openid.css');
   drupal_add_js(drupal_get_path('module', 'openid') . '/openid.js');
-  if (!empty($form_state['post']['openid_identifier'])) {
+  if (!empty($form_state['input']['openid_identifier'])) {
     $form['name']['#required'] = FALSE;
     $form['pass']['#required'] = FALSE;
     unset($form['#submit']);
@@ -347,10 +346,12 @@ function openid_association($op_endpoint) {
   module_load_include('inc', 'openid');
 
   // Remove Old Associations:
-  db_query("DELETE FROM {openid_association} WHERE created + expires_in < %d", REQUEST_TIME);
+  db_delete('openid_association')
+    ->condition('created + expires_in', REQUEST_TIME, '<')
+    ->execute();
 
   // Check to see if we have an association for this IdP already
-  $assoc_handle = db_result(db_query("SELECT assoc_handle FROM {openid_association} WHERE idp_endpoint_uri = '%s'", $op_endpoint));
+  $assoc_handle = db_query("SELECT assoc_handle FROM {openid_association} WHERE idp_endpoint_uri = :endpoint", array(':endpoint' => $op_endpoint))->fetchField();
   if (empty($assoc_handle)) {
     $mod = OPENID_DH_DEFAULT_MOD;
     $gen = OPENID_DH_DEFAULT_GEN;
@@ -382,12 +383,19 @@ function openid_association($op_endpoint) {
       $shared = bcpowmod($spub, $private, $mod);
       $assoc_response['mac_key'] = base64_encode(_openid_dh_xorsecret($shared, $enc_mac_key));
     }
-    db_query("INSERT INTO {openid_association} (idp_endpoint_uri, session_type, assoc_handle, assoc_type, expires_in, mac_key, created) VALUES('%s', '%s', '%s', '%s', %d, '%s', %d)",
-             $op_endpoint, $assoc_response['session_type'], $assoc_response['assoc_handle'], $assoc_response['assoc_type'], $assoc_response['expires_in'], $assoc_response['mac_key'], REQUEST_TIME);
-
+    db_insert('openid_association')
+     ->fields(array(
+       'idp_endpoint_uri' => $op_endpoint,
+       'session_type' => $assoc_response['session_type'],
+       'assoc_handle' => $assoc_response['assoc_handle'],
+       'assoc_type' => $assoc_response['assoc_type'],
+       'expires_in' => $assoc_response['expires_in'],
+       'mac_key' => $assoc_response['mac_key'],
+       'created' => REQUEST_TIME,
+      ))
+      ->execute();
     $assoc_handle = $assoc_response['assoc_handle'];
   }
-
   return $assoc_handle;
 }
 
@@ -513,7 +521,7 @@ function openid_verify_assertion($op_endpoint, $response) {
 
   $valid = FALSE;
 
-  $association = db_fetch_object(db_query("SELECT * FROM {openid_association} WHERE assoc_handle = '%s'", $response['openid.assoc_handle']));
+  $association = db_query("SELECT * FROM {openid_association} WHERE assoc_handle = :assoc_handle", array(':assoc_handle' => $response['openid.assoc_handle']))->fetchObject();
   if ($association && isset($association->session_type)) {
     $keys_to_sign = explode(',', $response['openid.signed']);
     $self_sig = _openid_signature($association, $response, $keys_to_sign);

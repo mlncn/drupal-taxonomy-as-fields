@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.inc,v 1.205 2009/02/22 17:55:29 dries Exp $
+// $Id: locale.inc,v 1.207 2009/03/19 10:48:51 dries Exp $
 
 /**
  * @file
@@ -125,7 +125,13 @@ function locale_languages_overview_form_submit($form, &$form_state) {
       $language->enabled = 0;
     }
     $language->weight = $form_state['values']['weight'][$langcode];
-    db_query("UPDATE {languages} SET enabled = %d, weight = %d WHERE language = '%s'", $language->enabled, $language->weight, $langcode);
+    db_update('languages')
+      ->fields(array(
+        'enabled' => $language->enabled,
+        'weight' => $language->weight,
+      ))
+      ->condition('language', $langcode)
+      ->execute();
     $languages[$langcode] = $language;
   }
   drupal_set_message(t('Configuration saved.'));
@@ -204,7 +210,7 @@ function locale_languages_custom_form() {
  *   Language code of the language to edit.
  */
 function locale_languages_edit_form(&$form_state, $langcode) {
-  if ($language = db_fetch_object(db_query("SELECT * FROM {languages} WHERE language = '%s'", $langcode))) {
+  if ($language = db_query("SELECT * FROM {languages} WHERE language = :language", array(':language' => $langcode))->fetchObject()) {
     $form = array();
     _locale_languages_common_controls($form, $language);
     $form['submit'] = array(
@@ -296,12 +302,13 @@ function _locale_languages_common_controls(&$form, $language = NULL) {
 function locale_languages_predefined_form_validate($form, &$form_state) {
   $langcode = $form_state['values']['langcode'];
 
-  if ($duplicate = db_result(db_query("SELECT COUNT(*) FROM {languages} WHERE language = '%s'", $langcode)) != 0) {
+  if (($duplicate = db_query("SELECT COUNT(*) FROM {languages} WHERE language = :language", array(':language' => $langcode))->fetchField()) != 0) {
     form_set_error('langcode', t('The language %language (%code) already exists.', array('%language' => $form_state['values']['name'], '%code' => $langcode)));
   }
 
   if (!isset($form_state['values']['name'])) {
     // Predefined language selection.
+    include_once DRUPAL_ROOT . '/includes/iso.inc';
     $predefined = _locale_get_predefined_list();
     if (!isset($predefined[$langcode])) {
       form_set_error('langcode', t('Invalid language code.'));
@@ -325,6 +332,7 @@ function locale_languages_predefined_form_submit($form, &$form_state) {
   }
   else {
     // Predefined language selection.
+    include_once DRUPAL_ROOT . '/includes/iso.inc';
     $predefined = _locale_get_predefined_list();
     locale_add_language($langcode);
     drupal_set_message(t('The language %language has been created and can now be used. More information is available on the <a href="@locale-help">help screen</a>.', array('%language' => t($predefined[$langcode][0]), '@locale-help' => url('admin/help/locale'))));
@@ -347,13 +355,13 @@ function locale_languages_edit_form_validate($form, &$form_state) {
   if (!empty($form_state['values']['domain']) && !empty($form_state['values']['prefix'])) {
     form_set_error('prefix', t('Domain and path prefix values should not be set at the same time.'));
   }
-  if (!empty($form_state['values']['domain']) && $duplicate = db_fetch_object(db_query("SELECT language FROM {languages} WHERE domain = '%s' AND language <> '%s'", $form_state['values']['domain'], $form_state['values']['langcode']))) {
+  if (!empty($form_state['values']['domain']) && $duplicate = db_query("SELECT language FROM {languages} WHERE domain = :domain AND language <> :language", array(':domain' => $form_state['values']['domain'], ':language' => $form_state['values']['langcode']))->fetchField()) {
     form_set_error('domain', t('The domain (%domain) is already tied to a language (%language).', array('%domain' => $form_state['values']['domain'], '%language' => $duplicate->language)));
   }
   if (empty($form_state['values']['prefix']) && language_default('language') != $form_state['values']['langcode'] && empty($form_state['values']['domain'])) {
     form_set_error('prefix', t('Only the default language can have both the domain and prefix empty.'));
   }
-  if (!empty($form_state['values']['prefix']) && $duplicate = db_fetch_object(db_query("SELECT language FROM {languages} WHERE prefix = '%s' AND language <> '%s'", $form_state['values']['prefix'], $form_state['values']['langcode']))) {
+  if (!empty($form_state['values']['prefix']) && $duplicate = db_query("SELECT language FROM {languages} WHERE prefix = :prefix AND language <> :language", array(':prefix' => $form_state['values']['prefix'], ':language' => $form_state['values']['langcode']))->fetchField()) {
     form_set_error('prefix', t('The prefix (%prefix) is already tied to a language (%language).', array('%prefix' => $form_state['values']['prefix'], '%language' => $duplicate->language)));
   }
 }
@@ -362,7 +370,16 @@ function locale_languages_edit_form_validate($form, &$form_state) {
  * Process the language editing form submission.
  */
 function locale_languages_edit_form_submit($form, &$form_state) {
-  db_query("UPDATE {languages} SET name = '%s', native = '%s', domain = '%s', prefix = '%s', direction = %d WHERE language = '%s'", $form_state['values']['name'], $form_state['values']['native'], $form_state['values']['domain'], $form_state['values']['prefix'], $form_state['values']['direction'], $form_state['values']['langcode']);
+  db_update('languages')
+    ->fields(array(
+      'name' => $form_state['values']['name'],
+      'native' => $form_state['values']['native'],
+      'domain' => $form_state['values']['domain'],
+      'prefix' => $form_state['values']['prefix'],
+      'direction' => $form_state['values']['direction'],
+    ))
+    ->condition('language',  $form_state['values']['langcode'])
+    ->execute();
   $default = language_default();
   if ($default->language == $form_state['values']['langcode']) {
     $properties = array('name', 'native', 'direction', 'enabled', 'plurals', 'formula', 'domain', 'prefix', 'weight');
@@ -420,13 +437,20 @@ function locale_languages_delete_form_submit($form, &$form_state) {
   $languages = language_list();
   if (isset($languages[$form_state['values']['langcode']])) {
     // Remove translations first.
-    db_query("DELETE FROM {locales_target} WHERE language = '%s'", $form_state['values']['langcode']);
+    db_delete('locales_target')
+      ->condition('language', $form_state['values']['langcode'])
+      ->execute();
     cache_clear_all('locale:' . $form_state['values']['langcode'], 'cache');
     // With no translations, this removes existing JavaScript translations file.
     _locale_rebuild_js($form_state['values']['langcode']);
     // Remove the language.
-    db_query("DELETE FROM {languages} WHERE language = '%s'", $form_state['values']['langcode']);
-    db_query("UPDATE {node} SET language = '' WHERE language = '%s'", $form_state['values']['langcode']);
+    db_delete('languages')
+      ->condition('language', $form_state['values']['langcode'])
+      ->execute();
+    db_update('node')
+      ->fields(array('language' => ''))
+      ->condition('language', $form_state['values']['langcode'])
+      ->execute();
     $variables = array('%locale' => $languages[$form_state['values']['langcode']]->name);
     drupal_set_message(t('The language %locale has been removed.', $variables));
     watchdog('locale', 'The language %locale has been removed.', $variables);
@@ -500,7 +524,7 @@ function locale_translate_overview_screen() {
   // Collect summaries of all source strings in all groups.
   $sums = db_query("SELECT COUNT(*) AS strings, textgroup FROM {locales_source} GROUP BY textgroup");
   $groupsums = array();
-  while ($group = db_fetch_object($sums)) {
+  foreach ($sums as $group) {
     $groupsums[$group->textgroup] = $group->strings;
   }
 
@@ -515,7 +539,7 @@ function locale_translate_overview_screen() {
 
   // Languages with at least one record in the locale table.
   $translations = db_query("SELECT COUNT(*) AS translation, t.language, s.textgroup FROM {locales_source} s INNER JOIN {locales_target} t ON s.lid = t.lid GROUP BY textgroup, language");
-  while ($data = db_fetch_object($translations)) {
+  foreach ($translations as $data) {
     $ratio = (!empty($groupsums[$data->textgroup]) && $data->translation > 0) ? round(($data->translation/$groupsums[$data->textgroup])*100., 2) : 0;
     $rows[$data->language][$data->textgroup] = $data->translation . '/' . $groupsums[$data->textgroup] . " ($ratio%)";
   }
@@ -736,6 +760,7 @@ function locale_translate_import_form_submit($form, &$form_state) {
     $languages = language_list('language', TRUE);
     $langcode = $form_state['values']['langcode'];
     if (!isset($languages[$langcode])) {
+      include_once DRUPAL_ROOT . '/includes/iso.inc';
       $predefined = _locale_get_predefined_list();
       locale_add_language($langcode);
       drupal_set_message(t('The language %language has been created.', array('%language' => t($predefined[$langcode][0]))));
@@ -855,7 +880,7 @@ function locale_translate_export_po_form_submit($form, &$form_state) {
  */
 function locale_translate_edit_form(&$form_state, $lid) {
   // Fetch source string, if possible.
-  $source = db_fetch_object(db_query('SELECT source, textgroup, location FROM {locales_source} WHERE lid = %d', $lid));
+  $source = db_query('SELECT source, textgroup, location FROM {locales_source} WHERE lid = :lid', array(':lid' => $lid))->fetchObject();
   if (!$source) {
     drupal_set_message(t('String not found.'), 'error');
     drupal_goto('admin/build/translate/translate');
@@ -902,8 +927,8 @@ function locale_translate_edit_form(&$form_state, $lid) {
   }
 
   // Fetch translations and fill in default values in the form.
-  $result = db_query("SELECT DISTINCT translation, language FROM {locales_target} WHERE lid = %d AND language <> '%s'", $lid, $omit);
-  while ($translation = db_fetch_object($result)) {
+  $result = db_query("SELECT DISTINCT translation, language FROM {locales_target} WHERE lid = :lid AND language <> :omit", array(':lid' => $lid, ':omit' => $omit));
+  foreach ($result as $translation) {
     $form['translations'][$translation->language]['#default_value'] = $translation->translation;
   }
 
@@ -951,19 +976,34 @@ function locale_translate_edit_form_validate($form, &$form_state) {
 function locale_translate_edit_form_submit($form, &$form_state) {
   $lid = $form_state['values']['lid'];
   foreach ($form_state['values']['translations'] as $key => $value) {
-    $translation = db_result(db_query("SELECT translation FROM {locales_target} WHERE lid = %d AND language = '%s'", $lid, $key));
+    $translation = db_query("SELECT translation FROM {locales_target} WHERE lid = :lid AND language = :language", array(':lid' => $lid, ':language' => $key))->fetchField();
     if (!empty($value)) {
       // Only update or insert if we have a value to use.
       if (!empty($translation)) {
-        db_query("UPDATE {locales_target} SET translation = '%s' WHERE lid = %d AND language = '%s'", $value, $lid, $key);
+        db_update('locales_target')
+          ->fields(array(
+            'translation' => $value,
+          ))
+          ->condition('lid', $lid)
+          ->condition('language', $key)
+          ->execute();
       }
       else {
-        db_query("INSERT INTO {locales_target} (lid, translation, language) VALUES (%d, '%s', '%s')", $lid, $value, $key);
+        db_insert('locales_target')
+          ->fields(array(
+            'lid' => $lid,
+            'translation' => $value,
+            'language' => $key,
+          ))
+          ->execute();
       }
     }
     elseif (!empty($translation)) {
       // Empty translation entered: remove existing entry from database.
-      db_query("DELETE FROM {locales_target} WHERE lid = %d AND language = '%s'", $lid, $key);
+      db_delete('locales_target')
+        ->condition('lid', $lid)
+        ->condition('language', $key)
+        ->execute();
     }
 
     // Force JavaScript translation file recreation for this language.
@@ -992,7 +1032,7 @@ function locale_translate_edit_form_submit($form, &$form_state) {
  * String deletion confirmation page.
  */
 function locale_translate_delete_page($lid) {
-  if ($source = db_fetch_object(db_query('SELECT * FROM {locales_source} WHERE lid = %d', $lid))) {
+  if ($source = db_query('SELECT * FROM {locales_source} WHERE lid = :lid', array(':lid' => $lid))->fetchObject()) {
     return drupal_get_form('locale_translate_delete_form', $source);
   }
   else {
@@ -1012,8 +1052,12 @@ function locale_translate_delete_form(&$form_state, $source) {
  * Process string deletion submissions.
  */
 function locale_translate_delete_form_submit($form, &$form_state) {
-  db_query('DELETE FROM {locales_source} WHERE lid = %d', $form_state['values']['lid']);
-  db_query('DELETE FROM {locales_target} WHERE lid = %d', $form_state['values']['lid']);
+  db_delete('locales_source')
+    ->condition('lid', $form_state['values']['lid'])
+    ->execute();
+  db_delete('locales_target')
+    ->condition('lid', $form_state['values']['lid'])
+    ->execute();
   // Force JavaScript translation file recreation for all languages.
   _locale_invalidate_js();
   cache_clear_all('locale:', 'cache', TRUE);
@@ -1059,13 +1103,24 @@ function locale_add_language($langcode, $name = NULL, $native = NULL, $direction
 
   // If name was not set, we add a predefined language.
   if (!isset($name)) {
+    include_once DRUPAL_ROOT . '/includes/iso.inc';
     $predefined = _locale_get_predefined_list();
     $name = $predefined[$langcode][0];
     $native = isset($predefined[$langcode][1]) ? $predefined[$langcode][1] : $predefined[$langcode][0];
     $direction = isset($predefined[$langcode][2]) ? $predefined[$langcode][2] : LANGUAGE_LTR;
   }
 
-  db_query("INSERT INTO {languages} (language, name, native, direction, domain, prefix, enabled) VALUES ('%s', '%s', '%s', %d, '%s', '%s', %d)", $langcode, $name, $native, $direction, $domain, $prefix, $enabled);
+  db_insert('languages')
+    ->fields(array(
+      'language' => $langcode,
+      'name' => $name,
+      'native' => $native,
+      'direction' => $direction,
+      'domain' => $domain,
+      'prefix' => $prefix,
+      'enabled' => $enabled,
+    ))
+    ->execute();
 
   // Only set it as default if enabled.
   if ($enabled && $default) {
@@ -1110,7 +1165,7 @@ function _locale_import_po($file, $langcode, $mode, $group = NULL) {
   }
 
   // Check if we have the language already in the database.
-  if (!db_fetch_object(db_query("SELECT language FROM {languages} WHERE language = '%s'", $langcode))) {
+  if (!db_query("SELECT COUNT(language) FROM {languages} WHERE language = :language", array(':language' => $langcode))->fetchField()) {
     drupal_set_message(t('The language selected for import is not supported.'), 'error');
     return FALSE;
   }
@@ -1359,10 +1414,22 @@ function _locale_import_one_string($op, $value = NULL, $mode = NULL, $lang = NUL
         // Get the plural formula and update in database.
         if (isset($header["Plural-Forms"]) && $p = _locale_import_parse_plural_forms($header["Plural-Forms"], $file->filename)) {
           list($nplurals, $plural) = $p;
-          db_query("UPDATE {languages} SET plurals = %d, formula = '%s' WHERE language = '%s'", $nplurals, $plural, $lang);
+          db_update('languages')
+            ->fields(array(
+              'plurals' => $nplurals,
+              'formula' => $plural,
+            ))
+            ->condition('language', $lang)
+            ->execute();
         }
         else {
-          db_query("UPDATE {languages} SET plurals = %d, formula = '%s' WHERE language = '%s'", 0, '', $lang);
+          db_update('languages')
+            ->fields(array(
+              'plurals' => 0,
+              'formula' => '',
+            ))
+            ->condition('language', $lang)
+            ->execute();
         }
         $headerdone = TRUE;
       }
@@ -1423,8 +1490,8 @@ function _locale_import_one_string($op, $value = NULL, $mode = NULL, $lang = NUL
  * @return
  *   The string ID of the existing string modified or the new string added.
  */
-function _locale_import_one_string_db(&$report, $langcode, $source, $translation, $textgroup, $location, $mode, $plid = NULL, $plural = NULL) {
-  $lid = db_result(db_query("SELECT lid FROM {locales_source} WHERE source = '%s' AND textgroup = '%s'", $source, $textgroup));
+function _locale_import_one_string_db(&$report, $langcode, $source, $translation, $textgroup, $location, $mode, $plid = 0, $plural = 0) {
+  $lid = db_query("SELECT lid FROM {locales_source} WHERE source = :source AND textgroup = :textgroup", array(':source' => $source, ':textgroup' => $textgroup))->fetchField();
 
   if (!empty($translation)) {
     // Skip this string unless it passes a check for dangerous code.
@@ -1436,30 +1503,72 @@ function _locale_import_one_string_db(&$report, $langcode, $source, $translation
     }
     elseif ($lid) {
       // We have this source string saved already.
-      db_query("UPDATE {locales_source} SET location = '%s' WHERE lid = %d", $location, $lid);
-      $exists = (bool) db_result(db_query("SELECT lid FROM {locales_target} WHERE lid = %d AND language = '%s'", $lid, $langcode));
+      db_update('locales_source')
+        ->fields(array(
+          'location' => $location,
+        ))
+        ->condition('lid', $lid)
+        ->execute();
+
+      $exists = db_query("SELECT COUNT(lid) FROM {locales_target} WHERE lid = :lid AND language = :language", array(':lid' => $lid, ':language' => $langcode))->fetchField();
+
       if (!$exists) {
         // No translation in this language.
-        db_query("INSERT INTO {locales_target} (lid, language, translation, plid, plural) VALUES (%d, '%s', '%s', %d, %d)", $lid, $langcode, $translation, $plid, $plural);
+        db_insert('locales_target')
+          ->fields(array(
+            'lid' => $lid,
+            'language' => $langcode,
+            'translation' => $translation,
+            'plid' => $plid,
+            'plural' => $plural,
+          ))
+          ->execute();
+
         $report['additions']++;
       }
       elseif ($mode == LOCALE_IMPORT_OVERWRITE) {
         // Translation exists, only overwrite if instructed.
-        db_query("UPDATE {locales_target} SET translation = '%s', plid = %d, plural = %d WHERE language = '%s' AND lid = %d", $translation, $plid, $plural, $langcode, $lid);
+        db_update('locales_target')
+          ->fields(array(
+            'translation' => $translation,
+            'plid' => $plid,
+            'plural' => $plural,
+          ))
+          ->condition('language', $langcode)
+          ->condition('lid', $lid)
+          ->execute();
+
         $report['updates']++;
       }
     }
     else {
       // No such source string in the database yet.
-      db_query("INSERT INTO {locales_source} (location, source, textgroup) VALUES ('%s', '%s', '%s')", $location, $source, $textgroup);
-      $lid = db_result(db_query("SELECT lid FROM {locales_source} WHERE source = '%s' AND textgroup = '%s'", $source, $textgroup));
-      db_query("INSERT INTO {locales_target} (lid, language, translation, plid, plural) VALUES (%d, '%s', '%s', %d, %d)", $lid, $langcode, $translation, $plid, $plural);
+      $lid = db_insert('locales_source')
+        ->fields(array('location' => $location, 'source' => $source, 'textgroup' => $textgroup))
+        ->execute();
+
+      db_insert('locales_target')
+        ->fields(array(
+           'lid' => $lid,
+           'language' => $langcode,
+           'translation' => $translation,
+           'plid' => $plid,
+           'plural' => $plural
+        ))
+        ->execute();
+
       $report['additions']++;
     }
   }
   elseif ($mode == LOCALE_IMPORT_OVERWRITE) {
     // Empty translation, remove existing if instructed.
-    db_query("DELETE FROM {locales_target} WHERE language = '%s' AND lid = %d AND plid = %d AND plural = %d", $translation, $langcode, $lid, $plid, $plural);
+    db_delete('locales_target')
+      ->condition('language', $langcode)
+      ->condition('lid', $lid)
+      ->condition('plid', $plid)
+      ->condition('plural', $plural)
+      ->execute();
+
     $report['deletes']++;
   }
 
@@ -1795,8 +1904,8 @@ function _locale_parse_js_file($filepath) {
       // Remove the quotes and string concatenations from the string.
       $string = implode('', preg_split('~(?<!\\\\)[\'"]\s*\+\s*[\'"]~s', substr($string, 1, -1)));
 
-      $result = db_query("SELECT lid, location FROM {locales_source} WHERE source = '%s' AND textgroup = 'default'", $string);
-      if ($source = db_fetch_object($result)) {
+      $source = db_query("SELECT lid, location FROM {locales_source} WHERE source = :source AND textgroup = 'default'", array(':source' => $string))->fetchObject();
+      if ($source) {
         // We already have this source string and now have to add the location
         // to the location column, if this file is not yet present in there.
         $locations = preg_split('~\s*;\s*~', $source->location);
@@ -1806,12 +1915,23 @@ function _locale_parse_js_file($filepath) {
           $locations = implode('; ', $locations);
 
           // Save the new locations string to the database.
-          db_query("UPDATE {locales_source} SET location = '%s' WHERE lid = %d", $locations, $source->lid);
+          db_update('locales_source')
+            ->fields(array(
+              'location' => $locations,
+            ))
+            ->condition('lid', $source->lid)
+            ->execute();
         }
       }
       else {
         // We don't have the source string yet, thus we insert it into the database.
-        db_query("INSERT INTO {locales_source} (location, source, textgroup) VALUES ('%s', '%s', 'default')", $filepath, $string);
+        db_insert('locales_source')
+          ->fields(array(
+            'location' => $filepath,
+            'source' => $string,
+            'textgroup' => 'default',
+          ))
+          ->execute();
       }
     }
   }
@@ -1835,13 +1955,13 @@ function _locale_parse_js_file($filepath) {
  */
 function _locale_export_get_strings($language = NULL, $group = 'default') {
   if (isset($language)) {
-    $result = db_query("SELECT s.lid, s.source, s.location, t.translation, t.plid, t.plural FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid AND t.language = '%s' WHERE s.textgroup = '%s' ORDER BY t.plid, t.plural", $language->language, $group);
+    $result = db_query("SELECT s.lid, s.source, s.location, t.translation, t.plid, t.plural FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid AND t.language = :language WHERE s.textgroup = :textgroup ORDER BY t.plid, t.plural", array(':language' => $language->language, ':textgroup' => $group));
   }
   else {
-    $result = db_query("SELECT s.lid, s.source, s.location, t.plid, t.plural FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid WHERE s.textgroup = '%s' ORDER BY t.plid, t.plural", $group);
+    $result = db_query("SELECT s.lid, s.source, s.location, t.plid, t.plural FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid WHERE s.textgroup = :textgroup ORDER BY t.plid, t.plural", array(':textgroup' => $group));
   }
   $strings = array();
-  while ($child = db_fetch_object($result)) {
+  foreach ($result as $child) {
     $string = array(
       'comment'     => $child->location,
       'source'      => $child->source,
@@ -2074,74 +2194,74 @@ function _locale_translate_seek() {
     );
   }
 
-  $join = "SELECT s.source, s.location, s.lid, s.textgroup, t.translation, t.language FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid ";
-  $arguments = array();
+  $sql_query = db_select('locales_source', 's');
+  $sql_query->leftJoin('locales_target', 't', 't.lid = s.lid');
+  $sql_query->fields('s', array('source', 'location', 'lid', 'textgroup'));
+  $sql_query->fields('t', array('translation', 'language'));
 
-  $limit_language = FALSE;
-  // Compute LIKE section
+  // Compute LIKE section.
   switch ($query['translation']) {
     case 'translated':
-      $where = "WHERE (t.translation LIKE ?)";
-      $orderby = "ORDER BY t.translation";
-      $arguments[] = '%'. $query['string'] .'%';
+      $sql_query->condition('t.translation', '%' . $query['string'] . '%', 'LIKE');
+      $sql_query->orderBy('t.translation', 'DESC');
       break;
     case 'untranslated':
-      $where = "WHERE (s.source LIKE ? AND t.translation IS NULL)";
-      $orderby = "ORDER BY s.source";
-      $arguments[] = '%'. $query['string'] .'%';
+      $sql_query->condition(db_and()
+        ->condition('s.source', '%' . $query['string'] . '%', 'LIKE')
+        ->isNull('t.translation')
+      );
+      $sql_query->orderBy('s.source');
       break;
     case 'all' :
     default:
-      $where = "WHERE (s.source LIKE ? OR t.translation LIKE ?)";
-      $orderby = '';
-      $arguments[] = '%'. $query['string'] .'%';
-      $arguments[] = '%'. $query['string'] .'%';
-      break;
-  }
-  $grouplimit = '';
-  if (!empty($query['group']) && $query['group'] != 'all') {
-    $grouplimit = " AND s.textgroup = ?";
-    $arguments[] = $query['group'];
-  }
-
-  switch ($query['language']) {
-    // Force search in source strings
-    case "en":
-      $sql = $join . " WHERE s.source LIKE ? $grouplimit ORDER BY s.source";
-      $arguments = array('%' . $query['string'] . '%'); // $where is not used, discard its arguments
-      if (!empty($grouplimit)) {
-        $arguments[] = $query['group'];
+      $condition = db_or()
+        ->condition('s.source', '%' . $query['string'] . '%', 'LIKE');
+      if ($query['language'] != 'en') {
+        // Only search in translations if the language is not forced to English.
+        $condition->condition('t.translation', '%' . $query['string'] . '%', 'LIKE');
       }
+      $sql_query->condition($condition);
       break;
-    // Search in all languages
-    case "all":
-      $sql = "$join $where $grouplimit $orderby";
-      break;
-    // Some different language
-    default:
-      $sql = "$join AND t.language = ? $where $grouplimit $orderby";
-      array_unshift($arguments, $query['language']);
-      // Don't show translation flags for other languages, we can't see them with this search.
-      $limit_language = $query['language'];
   }
 
-  $result = pager_query($sql, 50, 0, NULL, $arguments);
+  $limit_language = NULL;
+  if ($query['language'] != 'en' && $query['language'] != 'all') {
+    $sql_query->condition('language', $query['language']);
+    $limit_language = $query['language'];
+  }
+
+  // Add a condition on the text group.
+  if (!empty($query['group']) && $query['group'] != 'all') {
+    $sql_query->condition('s.textgroup', $query['group']);
+  }
+
+  $sql_query = $sql_query->extend('PagerDefault')->limit(50);
+  $locales = $sql_query->execute();
 
   $groups = module_invoke_all('locale', 'groups');
   $header = array(t('Text group'), t('String'), ($limit_language) ? t('Language') : t('Languages'), array('data' => t('Operations'), 'colspan' => '2'));
-  $arr = array();
-  while ($locale = db_fetch_object($result)) {
-    $arr[$locale->lid]['group'] = $groups[$locale->textgroup];
-    $arr[$locale->lid]['languages'][$locale->language] = $locale->translation;
-    $arr[$locale->lid]['location'] = $locale->location;
-    $arr[$locale->lid]['source'] = $locale->source;
+
+  $strings = array();
+  foreach ($locales as $locale) {
+    if (!isset($strings[$locale->lid])) {
+      $strings[$locale->lid] = array(
+        'group' => $locale->textgroup,
+        'languages' => array(),
+        'location' => $locale->location,
+        'source' => $locale->source,
+      );
+    }
+    if (isset($locale->language)) {
+      $strings[$locale->lid]['languages'][$locale->language] = $locale->translation;
+    }
   }
+
   $rows = array();
-  foreach ($arr as $lid => $value) {
+  foreach ($strings as $lid => $string) {
     $rows[] = array(
-      $value['group'],
-      array('data' => check_plain(truncate_utf8($value['source'], 150, FALSE, TRUE)) . '<br /><small>' . $value['location'] . '</small>'),
-      array('data' => _locale_translate_language_list($value['languages'], $limit_language), 'align' => 'center'),
+      $groups[$string['group']],
+      array('data' => check_plain(truncate_utf8($string['source'], 150, FALSE, TRUE)) . '<br /><small>' . $string['location'] . '</small>'),
+      array('data' => _locale_translate_language_list($string['languages'], $limit_language), 'align' => 'center'),
       array('data' => l(t('edit'), "admin/build/translate/edit/$lid", array('query' => drupal_get_destination())), 'class' => 'nowrap'),
       array('data' => l(t('delete'), "admin/build/translate/delete/$lid", array('query' => drupal_get_destination())), 'class' => 'nowrap'),
     );
@@ -2228,15 +2348,10 @@ function _locale_rebuild_js($langcode = NULL) {
 
   // Construct the array for JavaScript translations.
   // We sort on plural so that we have all plural forms before singular forms.
-  $result = db_query("SELECT s.lid, s.source, t.plid, t.plural, t.translation
-    FROM {locales_source} s
-      LEFT JOIN {locales_target} t ON s.lid = t.lid AND t.language = :language
-    WHERE s.location LIKE '%.js%'
-      AND s.textgroup = 'default'
-    ORDER BY t.plural DESC", array(':language' => $language->language));
+  $result = db_query("SELECT s.lid, s.source, t.plid, t.plural, t.translation FROM {locales_source} s LEFT JOIN {locales_target} t ON s.lid = t.lid AND t.language = :language WHERE s.location LIKE '%.js%' AND s.textgroup = :textgroup ORDER BY t.plural DESC", array(':language' => $language->language, ':textgroup' => 'default'));
 
   $translations = $plurals = array();
-  while ($data = db_fetch_object($result)) {
+  foreach ($result as $data) {
     // Only add this to the translations array when there is actually a translation.
     if (!empty($data->translation)) {
       if ($data->plural) {
@@ -2308,14 +2423,19 @@ function _locale_rebuild_js($langcode = NULL) {
   // Save the new JavaScript hash (or an empty value if the file
   // just got deleted). Act only if some operation was executed.
   if ($status) {
-    db_query("UPDATE {languages} SET javascript = '%s' WHERE language = '%s'", $language->javascript, $language->language);
+    db_update('languages')
+      ->field(array(
+        'javascript' => $language->javascript,
+      ))
+      ->condition('language', $language->language)
+      ->execute();
 
     // Update the default language variable if the default language has been altered.
     // This is necessary to keep the variable consistent with the database
     // version of the language and to prevent checking against an outdated hash.
     $default_langcode = language_default('language');
     if ($default_langcode == $language->language) {
-      $default = db_fetch_object(db_query("SELECT * FROM {languages} WHERE language = '%s'", $default_langcode));
+      $default = db_query("SELECT * FROM {languages} WHERE language = :language", array(':language' => $default_langcode))->fetchObject();
       variable_set('language_default', $default);
     }
   }
@@ -2371,6 +2491,7 @@ function _locale_translate_language_list($translation, $limit_language) {
  * Prepares the language code list for a select form item with only the unsupported ones
  */
 function _locale_prepare_predefined_list() {
+  include_once DRUPAL_ROOT . '/includes/iso.inc';
   $languages = language_list();
   $predefined = _locale_get_predefined_list();
   foreach ($predefined as $key => $value) {
@@ -2391,193 +2512,6 @@ function _locale_prepare_predefined_list() {
   return $predefined;
 }
 
-/**
- * Some of the common languages with their English and native names
- *
- * Based on ISO 639 and http://people.w3.org/rishida/names/languages.html
- */
-function _locale_get_predefined_list() {
-  return array(
-    "aa" => array("Afar"),
-    "ab" => array("Abkhazian", "аҧсуа бызшәа"),
-    "ae" => array("Avestan"),
-    "af" => array("Afrikaans"),
-    "ak" => array("Akan"),
-    "am" => array("Amharic", "አማርኛ"),
-    "ar" => array("Arabic", /* Left-to-right marker "‭" */ "العربية", LANGUAGE_RTL),
-    "as" => array("Assamese"),
-    "av" => array("Avar"),
-    "ay" => array("Aymara"),
-    "az" => array("Azerbaijani", "azərbaycan"),
-    "ba" => array("Bashkir"),
-    "be" => array("Belarusian", "Беларуская"),
-    "bg" => array("Bulgarian", "Български"),
-    "bh" => array("Bihari"),
-    "bi" => array("Bislama"),
-    "bm" => array("Bambara", "Bamanankan"),
-    "bn" => array("Bengali"),
-    "bo" => array("Tibetan"),
-    "br" => array("Breton"),
-    "bs" => array("Bosnian", "Bosanski"),
-    "ca" => array("Catalan", "Català"),
-    "ce" => array("Chechen"),
-    "ch" => array("Chamorro"),
-    "co" => array("Corsican"),
-    "cr" => array("Cree"),
-    "cs" => array("Czech", "Čeština"),
-    "cu" => array("Old Slavonic"),
-    "cv" => array("Chuvash"),
-    "cy" => array("Welsh", "Cymraeg"),
-    "da" => array("Danish", "Dansk"),
-    "de" => array("German", "Deutsch"),
-    "dv" => array("Maldivian"),
-    "dz" => array("Bhutani"),
-    "ee" => array("Ewe", "Ɛʋɛ"),
-    "el" => array("Greek", "Ελληνικά"),
-    "en" => array("English"),
-    "eo" => array("Esperanto"),
-    "es" => array("Spanish", "Español"),
-    "et" => array("Estonian", "Eesti"),
-    "eu" => array("Basque", "Euskera"),
-    "fa" => array("Persian", /* Left-to-right marker "‭" */ "فارسی", LANGUAGE_RTL),
-    "ff" => array("Fulah", "Fulfulde"),
-    "fi" => array("Finnish", "Suomi"),
-    "fj" => array("Fiji"),
-    "fo" => array("Faeroese"),
-    "fr" => array("French", "Français"),
-    "fy" => array("Frisian", "Frysk"),
-    "ga" => array("Irish", "Gaeilge"),
-    "gd" => array("Scots Gaelic"),
-    "gl" => array("Galician", "Galego"),
-    "gn" => array("Guarani"),
-    "gu" => array("Gujarati"),
-    "gv" => array("Manx"),
-    "ha" => array("Hausa"),
-    "he" => array("Hebrew", /* Left-to-right marker "‭" */ "עברית", LANGUAGE_RTL),
-    "hi" => array("Hindi", "हिन्दी"),
-    "ho" => array("Hiri Motu"),
-    "hr" => array("Croatian", "Hrvatski"),
-    "hu" => array("Hungarian", "Magyar"),
-    "hy" => array("Armenian", "Հայերեն"),
-    "hz" => array("Herero"),
-    "ia" => array("Interlingua"),
-    "id" => array("Indonesian", "Bahasa Indonesia"),
-    "ie" => array("Interlingue"),
-    "ig" => array("Igbo"),
-    "ik" => array("Inupiak"),
-    "is" => array("Icelandic", "Íslenska"),
-    "it" => array("Italian", "Italiano"),
-    "iu" => array("Inuktitut"),
-    "ja" => array("Japanese", "日本語"),
-    "jv" => array("Javanese"),
-    "ka" => array("Georgian"),
-    "kg" => array("Kongo"),
-    "ki" => array("Kikuyu"),
-    "kj" => array("Kwanyama"),
-    "kk" => array("Kazakh", "Қазақ"),
-    "kl" => array("Greenlandic"),
-    "km" => array("Cambodian"),
-    "kn" => array("Kannada", "ಕನ್ನಡ"),
-    "ko" => array("Korean", "한국어"),
-    "kr" => array("Kanuri"),
-    "ks" => array("Kashmiri"),
-    "ku" => array("Kurdish", "Kurdî"),
-    "kv" => array("Komi"),
-    "kw" => array("Cornish"),
-    "ky" => array("Kirghiz", "Кыргыз"),
-    "la" => array("Latin", "Latina"),
-    "lb" => array("Luxembourgish"),
-    "lg" => array("Luganda"),
-    "ln" => array("Lingala"),
-    "lo" => array("Laothian"),
-    "lt" => array("Lithuanian", "Lietuvių"),
-    "lv" => array("Latvian", "Latviešu"),
-    "mg" => array("Malagasy"),
-    "mh" => array("Marshallese"),
-    "mi" => array("Maori"),
-    "mk" => array("Macedonian", "Македонски"),
-    "ml" => array("Malayalam", "മലയാളം"),
-    "mn" => array("Mongolian"),
-    "mo" => array("Moldavian"),
-    "mr" => array("Marathi"),
-    "ms" => array("Malay", "Bahasa Melayu"),
-    "mt" => array("Maltese", "Malti"),
-    "my" => array("Burmese"),
-    "na" => array("Nauru"),
-    "nd" => array("North Ndebele"),
-    "ne" => array("Nepali"),
-    "ng" => array("Ndonga"),
-    "nl" => array("Dutch", "Nederlands"),
-    "nb" => array("Norwegian Bokmål", "Bokmål"),
-    "nn" => array("Norwegian Nynorsk", "Nynorsk"),
-    "nr" => array("South Ndebele"),
-    "nv" => array("Navajo"),
-    "ny" => array("Chichewa"),
-    "oc" => array("Occitan"),
-    "om" => array("Oromo"),
-    "or" => array("Oriya"),
-    "os" => array("Ossetian"),
-    "pa" => array("Punjabi"),
-    "pi" => array("Pali"),
-    "pl" => array("Polish", "Polski"),
-    "ps" => array("Pashto", /* Left-to-right marker "‭" */ "پښتو", LANGUAGE_RTL),
-    "pt-pt" => array("Portuguese, Portugal", "Português"),
-    "pt-br" => array("Portuguese, Brazil", "Português"),
-    "qu" => array("Quechua"),
-    "rm" => array("Rhaeto-Romance"),
-    "rn" => array("Kirundi"),
-    "ro" => array("Romanian", "Română"),
-    "ru" => array("Russian", "Русский"),
-    "rw" => array("Kinyarwanda"),
-    "sa" => array("Sanskrit"),
-    "sc" => array("Sardinian"),
-    "sd" => array("Sindhi"),
-    "se" => array("Northern Sami"),
-    "sg" => array("Sango"),
-    "sh" => array("Serbo-Croatian"),
-    "si" => array("Singhalese"),
-    "sk" => array("Slovak", "Slovenčina"),
-    "sl" => array("Slovenian", "Slovenščina"),
-    "sm" => array("Samoan"),
-    "sn" => array("Shona"),
-    "so" => array("Somali"),
-    "sq" => array("Albanian", "Shqip"),
-    "sr" => array("Serbian", "Српски"),
-    "ss" => array("Siswati"),
-    "st" => array("Sesotho"),
-    "su" => array("Sudanese"),
-    "sv" => array("Swedish", "Svenska"),
-    "sw" => array("Swahili", "Kiswahili"),
-    "ta" => array("Tamil", "தமிழ்"),
-    "te" => array("Telugu", "తెలుగు"),
-    "tg" => array("Tajik"),
-    "th" => array("Thai", "ภาษาไทย"),
-    "ti" => array("Tigrinya"),
-    "tk" => array("Turkmen"),
-    "tl" => array("Tagalog"),
-    "tn" => array("Setswana"),
-    "to" => array("Tonga"),
-    "tr" => array("Turkish", "Türkçe"),
-    "ts" => array("Tsonga"),
-    "tt" => array("Tatar", "Tatarça"),
-    "tw" => array("Twi"),
-    "ty" => array("Tahitian"),
-    "ug" => array("Uighur"),
-    "uk" => array("Ukrainian", "Українська"),
-    "ur" => array("Urdu", /* Left-to-right marker "‭" */ "اردو", LANGUAGE_RTL),
-    "uz" => array("Uzbek", "o'zbek"),
-    "ve" => array("Venda"),
-    "vi" => array("Vietnamese", "Tiếng Việt"),
-    "wo" => array("Wolof"),
-    "xh" => array("Xhosa", "isiXhosa"),
-    "yi" => array("Yiddish"),
-    "yo" => array("Yoruba", "Yorùbá"),
-    "za" => array("Zhuang"),
-    "zh-hans" => array("Chinese, Simplified", "简体中文"),
-    "zh-hant" => array("Chinese, Traditional", "繁體中文"),
-    "zu" => array("Zulu", "isiZulu"),
-  );
-}
 /**
  * @} End of "locale-api-languages-predefined"
  */
@@ -2643,7 +2577,7 @@ function locale_batch_by_component($components, $finished = '_locale_batch_syste
     $language_list = join('|', array_keys($languages[1]));
     // Collect all files to import for all $components.
     $result = db_query("SELECT name, filename FROM {system} WHERE status = 1");
-    while ($component = db_fetch_object($result)) {
+    foreach ($result as $component) {
       if (in_array($component->name, $components)) {
         // Collect all files for this component in all enabled languages, named
         // as $langcode.po or with names ending with $langcode.po. This allows
@@ -2736,3 +2670,18 @@ function _locale_batch_language_finished($success, $results) {
 /**
  * @} End of "locale-autoimport"
  */
+
+/**
+ * Get list of all predefined and custom countries.
+ *
+ * @return
+ *   An array of all country code => country name pairs.
+ */
+function country_get_list() {
+  include_once DRUPAL_ROOT . '/includes/iso.inc';
+  $countries = _country_get_predefined_list();
+  // Allow other modules to modify the country list.
+  drupal_alter('countries', $countries);
+  return $countries;
+}
+

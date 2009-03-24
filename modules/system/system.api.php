@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.20 2009/02/26 07:30:28 webchick Exp $
+// $Id: system.api.php,v 1.24 2009/03/10 16:08:43 dries Exp $
 
 /**
  * @file
@@ -242,6 +242,9 @@ function hook_page_alter($page) {
  * One popular use of this hook is to add form elements to the node form. When
  * altering a node form, the node object retrieved at from $form['#node'].
  *
+ * Note that you can also use hook_FORM_ID_alter() to alter a specific form,
+ * instead of this hook, which gets called for all forms.
+ *
  * @param $form
  *   Nested array of form elements that comprise the form.
  * @param $form_state
@@ -362,17 +365,41 @@ function hook_init() {
 }
 
 /**
-* Define image toolkits provided by this module.
-*
-* The file which includes each toolkit's functions must be declared as part of
-* the files array in the module  .info file so that the registry will find and
-* parse it.
-*
-* @return
-*   An array of image toolkit names.
-*/
+ * Define image toolkits provided by this module.
+ *
+ * The file which includes each toolkit's functions must be declared as part of
+ * the files array in the module .info file so that the registry will find and
+ * parse it.
+ *
+ * The toolkit's functions must be named image_toolkitname_operation().
+ * where the operation may be:
+ *   - 'load': Required. See image_gd_load() for usage.
+ *   - 'save': Required. See image_gd_save() for usage.
+ *   - 'settings': Optional. See image_gd_settings() for usage.
+ *   - 'resize': Optional. See image_gd_resize() for usage.
+ *   - 'rotate': Optional. See image_gd_rotate() for usage.
+ *   - 'crop': Optional. See image_gd_crop() for usage.
+ *   - 'desaturate': Optional. See image_gd_desaturate() for usage.
+ *
+ * @return
+ *   An array with the toolkit name as keys and sub-arrays with these keys:
+ *     - 'title': A string with the toolkit's title.
+ *     - 'available': A Boolean value to indicate that the toolkit is operating
+ *       properly, e.g. all required libraries exist.
+ *
+ * @see system_image_toolkits()
+ */
 function hook_image_toolkits() {
-  return array('gd');
+  return array(
+    'working' => array(
+      'title' => t('A toolkit that works.'),
+      'available' => TRUE,
+    ),
+    'broken' => array(
+      'title' => t('A toolkit that is "broken" and will not be listed.'),
+      'available' => FALSE,
+    ),
+  );
 }
 
 /**
@@ -1193,21 +1220,6 @@ function hook_file_references($file) {
 function hook_file_delete($file) {
   // Delete all information associated with the file.
   db_delete('upload')->condition('fid', $file->fid)->execute();
-}
-
-/**
- * Respond to a file that has changed status.
- *
- * The typical change in status is from temporary to permanent.
- *
- * @param $file
- *   The file being changed.
- * @return
- *   None.
- *
- * @see hook_file_status()
- */
-function hook_file_status($file) {
 }
 
 /**

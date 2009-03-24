@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.312 2009/02/09 16:27:35 dries Exp $
+// $Id: menu.inc,v 1.316 2009/03/21 17:58:14 dries Exp $
 
 /**
  * @file
@@ -536,9 +536,13 @@ function _menu_check_access(&$item, $map) {
 function _menu_item_localize(&$item, $map, $link_translate = FALSE) {
   $callback = $item['title_callback'];
   $item['localized_options'] = $item['options'];
-  // If we are not doing link translation or if the title matches the
-  // link title of its router item, localize it.
-  if (!$link_translate || (!empty($item['title']) && ($item['title'] == $item['link_title']))) {
+  // If we are translating the title of a menu link, and its title is the same
+  // as the corresponding router item, then we can use the title information
+  // from the router. If it's customized, then we need to use the link title
+  // itself; can't localize.
+  // If we are translating a router item (tabs, page, breadcrumb), then we
+  // can always use the information from the router item.
+  if (!$link_translate || ($item['title'] == $item['link_title'])) {
     // t() is a special case. Since it is used very close to all the time,
     // we handle it directly instead of using indirect, slower methods.
     if ($callback == 't') {
@@ -772,7 +776,7 @@ function menu_get_object($type = 'node', $position = 1, $path = NULL) {
  * @return
  *   The rendered HTML of that menu on the current page.
  */
-function menu_tree($menu_name = 'navigation') {
+function menu_tree($menu_name) {
   static $menu_output = array();
 
   if (!isset($menu_output[$menu_name])) {
@@ -837,7 +841,7 @@ function menu_tree_output($tree) {
  * @return
  *   An tree of menu links in an array, in the order they should be rendered.
  */
-function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
+function menu_tree_all_data($menu_name, $item = NULL) {
   static $tree = array();
 
   // Use $mlid as a flag for whether the data being loaded is for the whole tree.
@@ -933,7 +937,7 @@ function menu_tree_all_data($menu_name = 'navigation', $item = NULL) {
  *   submenu below the link if there is one, and it is a subtree that has the
  *   same structure described for the top-level array.
  */
-function menu_tree_page_data($menu_name = 'navigation') {
+function menu_tree_page_data($menu_name) {
   static $tree = array();
 
   // Load the menu item corresponding to the current page.
@@ -1080,6 +1084,11 @@ function _menu_tree_cid($menu_name, $data) {
 
 /**
  * Recursive helper function - collect node links.
+ *
+ * @param $tree
+ *   The menu tree you wish to collect node links from.
+ * @param $node_links
+ *   An array in which to store the collected node links.
  */
 function menu_tree_collect_node_links(&$tree, &$node_links) {
   foreach ($tree as $key => $v) {
@@ -1098,6 +1107,12 @@ function menu_tree_collect_node_links(&$tree, &$node_links) {
 
 /**
  * Check access and perform other dynamic operations for each link in the tree.
+ *
+ * @param $tree
+ *   The menu tree you wish to operate on.
+ * @param $node_links
+ *   A collection of node link references generated from $tree by
+ *   menu_tree_collect_node_links().
  */
 function menu_tree_check_access(&$tree, $node_links = array()) {
 
@@ -1328,7 +1343,7 @@ function menu_get_names($reset = FALSE) {
  * Return an array containing the names of system-defined (default) menus.
  */
 function menu_list_system_menus() {
-  return array('navigation', 'main-menu', 'secondary-menu');
+  return array('navigation' => 'Navigation', 'management' => 'Management', 'user-menu' => 'User menu', 'main-menu' => 'Main menu', 'secondary-menu' => 'Secondary menu');
 }
 
 /**
@@ -1345,11 +1360,11 @@ function menu_secondary_menu() {
 
   // If the secondary menu source is set as the primary menu, we display the
   // second level of the primary menu.
-  if (variable_get('menu_secondary_links_source', 'secondary-menu') == variable_get('menu_main_links_source', 'main-menu')) {
+  if (variable_get('menu_secondary_links_source', 'user-menu') == variable_get('menu_main_links_source', 'main-menu')) {
     return menu_navigation_links(variable_get('menu_main_links_source', 'main-menu'), 1);
   }
   else {
-    return menu_navigation_links(variable_get('menu_secondary_links_source', 'secondary-menu'), 0);
+    return menu_navigation_links(variable_get('menu_secondary_links_source', 'user-menu'), 0);
   }
 }
 
@@ -1579,14 +1594,14 @@ function theme_menu_local_tasks() {
 /**
  * Set (or get) the active menu for the current page - determines the active trail.
  */
-function menu_set_active_menu_name($menu_name = NULL) {
+function menu_set_active_menu_names($menu_names = NULL) {
   static $active;
 
-  if (isset($menu_name)) {
-    $active = $menu_name;
+  if (isset($menu_names) && is_array($menu_names)) {
+    $active = $menu_names;
   }
   elseif (!isset($active)) {
-    $active = 'navigation';
+    $active = variable_get('menu_default_active_menus', array('management', 'navigation', 'user-menu', 'main-menu'));
   }
   return $active;
 }
@@ -1594,8 +1609,8 @@ function menu_set_active_menu_name($menu_name = NULL) {
 /**
  * Get the active menu for the current page - determines the active trail.
  */
-function menu_get_active_menu_name() {
-  return menu_set_active_menu_name();
+function menu_get_active_menu_names() {
+  return menu_set_active_menu_names();
 }
 
 /**
@@ -1646,9 +1661,26 @@ function menu_set_active_trail($new_trail = NULL) {
         $item = $root_item;
       }
     }
-
-    $tree = menu_tree_page_data(menu_get_active_menu_name());
-    list($key, $curr) = each($tree);
+    $menu_names = menu_get_active_menu_names();
+    $curr = FALSE;
+    // Determine if the current page is a link in any of the active menus.
+    if ($menu_names) {
+      $query = db_select('menu_links', 'ml');
+      $query->fields('ml', array('menu_name'));
+      $query->condition('ml.link_path', $item['href']);
+      $query->condition('ml.menu_name', $menu_names, 'IN');
+      $result = $query->execute();
+      $found = array();
+      foreach ($result as $menu) {
+        $found[] = $menu->menu_name;
+      }
+      // The $menu_names array is ordered, so take the first one that matches.
+      $name = current(array_intersect($menu_names, $found));
+      if ($name !== FALSE) {
+        $tree = menu_tree_page_data($name);
+        list($key, $curr) = each($tree);
+      }
+    }
 
     while ($curr) {
       // Terminate the loop when we find the current path in the active trail.
@@ -1859,7 +1891,6 @@ function _menu_navigation_links_rebuild($menu) {
   $menu_links = array();
   foreach ($menu as $path => $item) {
     if ($item['_visible']) {
-      $item = _menu_link_build($item);
       $menu_links[$path] = $item;
       $sort[$path] = $item['_number_parts'];
     }
@@ -1878,7 +1909,7 @@ function _menu_navigation_links_rebuild($menu) {
           'has_children',
           'updated',
         ))
-        ->condition('link_path', $item['link_path'])
+        ->condition('link_path', $item['path'])
         ->condition('module', 'system')
         ->execute()->fetchAssoc();
       if ($existing_item) {
@@ -1888,17 +1919,22 @@ function _menu_navigation_links_rebuild($menu) {
           $item['menu_name'] = $existing_item['menu_name'];
           $item['plid'] = $existing_item['plid'];
         }
+        else {
+          // If it moved, put it at the top level in the new menu.
+          $item['plid'] = 0;
+        }
         $item['has_children'] = $existing_item['has_children'];
         $item['updated'] = $existing_item['updated'];
       }
       if (!$existing_item || !$existing_item['customized']) {
+        $item = _menu_link_build($item);
         menu_link_save($item);
       }
     }
   }
   $paths = array_keys($menu);
   // Updated and customized items whose router paths are gone need new ones.
-  $result = db_select('menu_links')
+  $result = db_select('menu_links', NULL, array('fetch' => PDO::FETCH_ASSOC))
     ->fields('menu_links', array(
       'link_path',
       'mlid',
@@ -1923,7 +1959,7 @@ function _menu_navigation_links_rebuild($menu) {
       db_update('menu_links')
         ->fields(array(
           'router_path' => $router_path,
-          'updated' => $updated,
+          'updated' => (int) $updated,
         ))
         ->condition('mlid', $item['mlid'])
         ->execute();
@@ -2059,16 +2095,17 @@ function menu_link_save(&$item) {
       // If not derived from a router item, we respect the specified menu name.
       $query->condition('menu_name', $item['menu_name']);
     }
+
     // Find the parent - it must be unique.
     $parent_path = $item['link_path'];
     do {
       $parent = FALSE;
       $parent_path = substr($parent_path, 0, strrpos($parent_path, '/'));
-      $query->condition('link_path', $parent_path);
-      $query_cnt = $query;
+      $new_query = clone $query;
+      $new_query->condition('link_path', $parent_path);
       // Only valid if we get a unique result.
-      if ($query_cnt->countQuery()->execute()->fetchField() == 1) {
-        $parent = $query->fields('menu_links')->execute()->fetchAssoc();
+      if ($new_query->countQuery()->execute()->fetchField() == 1) {
+        $parent = $new_query->fields('menu_links')->execute()->fetchAssoc();
       }
     } while ($parent === FALSE && $parent_path);
   }

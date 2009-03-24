@@ -1,5 +1,5 @@
 <?php
-// $Id: field.crud.inc,v 1.4 2009/02/10 03:16:14 webchick Exp $
+// $Id: field.crud.inc,v 1.6 2009/03/13 14:34:58 dries Exp $
 
 /**
  * @file
@@ -38,13 +38,16 @@ class FieldException extends Exception {}
  * pairs. The object properties are:
  *
  * @param array $field:
+ * - id (integer, read-only)
+ *     The primary identifier of the field. It is assigned automatically
+ *     by field_create_field().
  * - field_name (string)
  *     The name of the field. Each field name is unique within Field API.
  *     When a field is attached to an object, the field's data is stored
- *     in $object->field_name.
+ *     in $object->$field_name.
  * - type (string)
  *     The type of the field, such as 'text' or 'image'. Field types
- *     are defined by modules that implement hook_field_info().
+ *     are defined by modules that implement hook_field_into().
  * - cardinality (integer)
  *     The number of values the field can hold. Legal values are any
  *     positive integer or FIELD_CARDINALITY_UNLIMITED.
@@ -75,8 +78,14 @@ class FieldException extends Exception {}
  * key/value pairs. The object properties are:
  *
  * @param array $instance:
+ * - id (integer, read-only)
+ *     The primary identifier of this field instance. It is assigned
+ *     automatically by field_create_instance().
+ * - field_id (integer, read-only)
+ *     The foreign key of the field attached to the bundle by this instance.
+ *     It is populated automatically by field_create_instance().
  * - field_name (string)
- *     The name of field attached by this instance.
+ *     The name of the field attached to the bundle by this instance.
  * - bundle (string)
  *     The name of the bundle that the field is attached to.
  * - label (string)
@@ -164,7 +173,8 @@ class FieldException extends Exception {}
  * bundle; use field_create_instance for that.
  *
  * @param $field
- *   A field structure. The field_name and type properties are required.
+ *   A field structure. The field_name and type properties are
+ *   required.
  * @throw
  *   FieldException
  */
@@ -321,6 +331,9 @@ function field_create_instance($instance) {
     throw new FieldException("Attempt to create an instance of a field that doesn't exist.");
   }
 
+  // Set the field id.
+  $instance['field_id'] = $field['id'];
+
   // TODO: Check that the specifed bundle exists.
 
   // TODO: Check that the widget type is known and can handle the field type ?
@@ -353,8 +366,9 @@ function field_create_instance($instance) {
  *   keys and values are:
  *     field_name: The name of an existing field.
  *     bundle: The bundle this field belongs to.
- *   Any other properties specified in $instance overwrite the
- *   existing values for the instance.
+ *   Read-only_id properties are assigned automatically. Any other
+ *   properties specified in $instance overwrite the existing values for
+ *   the instance.
  * @throw
  *   FieldException
  * @see field_create_instance()
@@ -372,6 +386,9 @@ function field_update_instance($instance) {
   if (empty($prior_instance)) {
     throw new FieldException("Attempt to update a field instance that doesn't exist.");
   }
+
+  $instance['id'] = $prior_instance['id'];
+  $instance['field_id'] = $prior_instance['field_id'];
 
   _field_write_instance($instance, TRUE);
 
@@ -442,9 +459,10 @@ function _field_write_instance($instance, $update = FALSE) {
   // Create $data to contain everything from $instance that does not
   // have its own column, and thus will be stored serialized.
   $data = $instance;
-  unset($data['field_name'], $data['bundle'], $data['widget']['type'], $data['weight'], $data['deleted']);
+  unset($data['id'], $data['field_id'], $data['field_name'], $data['bundle'], $data['widget']['type'], $data['weight'], $data['deleted']);
 
   $record = array(
+    'field_id' => $instance['field_id'],
     'field_name' => $instance['field_name'],
     'bundle' => $instance['bundle'],
     'widget_type' => $instance['widget']['type'],
@@ -456,8 +474,13 @@ function _field_write_instance($instance, $update = FALSE) {
   );
   // We need to tell drupal_update_record() the primary keys to trigger an
   // update.
-  $primary_keys = $update ? array('field_name', 'bundle') : array();
-  drupal_write_record('field_config_instance', $record, $primary_keys);
+  if ($update) {
+    $record['id'] = $instance['id'];
+    $primary_key = array('id');
+  } else {
+    $primary_key = array();
+  }
+  drupal_write_record('field_config_instance', $record, $primary_key);
 }
 
 /**
@@ -500,7 +523,7 @@ function field_read_instance($field_name, $bundle, $include_additional = array()
  */
 function field_read_instances($params = array(), $include_additional = array()) {
   $query = db_select('field_config_instance', 'fci', array('fetch' => PDO::FETCH_ASSOC));
-  $query->join('field_config', 'fc', 'fc.field_name = fci.field_name');
+  $query->join('field_config', 'fc', 'fc.id = fci.field_id');
   $query->fields('fci');
   #$query->fields('fc', array('type'));
 
@@ -522,6 +545,8 @@ function field_read_instances($params = array(), $include_additional = array()) 
 
   foreach ($results as $record) {
     $instance = unserialize($record['data']);
+    $instance['id'] = $record['id'];
+    $instance['field_id'] = $record['field_id'];
     $instance['field_name'] = $record['field_name'];
     $instance['bundle'] = $record['bundle'];
     $instance['weight'] = $record['weight'];

@@ -1,5 +1,5 @@
 <?php
-// $Id: blogapi.module,v 1.144 2009/02/26 07:30:26 webchick Exp $
+// $Id: blogapi.module,v 1.146 2009/03/17 12:41:54 dries Exp $
 
 /**
  * @file
@@ -224,7 +224,7 @@ function blogapi_blogger_new_post($appkey, $blogid, $username, $password, $conte
     $edit['date'] = format_date(REQUEST_TIME, 'custom', 'Y-m-d H:i:s O');
   }
 
-  node_invoke_nodeapi($edit, 'blogapi_new');
+  node_invoke_node($edit, 'blogapi_new');
 
   $valid = blogapi_status_error_check($edit, $publish);
   if ($valid !== TRUE) {
@@ -282,7 +282,7 @@ function blogapi_blogger_edit_post($appkey, $postid, $username, $password, $cont
     $node->body = $content;
   }
 
-  node_invoke_nodeapi($node, 'blogapi_edit');
+  node_invoke_node($node, 'blogapi_edit');
 
   $valid = blogapi_status_error_check($node, $original_status);
   if ($valid !== TRUE) {
@@ -879,13 +879,13 @@ function _blogapi_mt_extra(&$node, $struct) {
   if (array_key_exists('mt_allow_comments', $struct)) {
     switch ($struct['mt_allow_comments']) {
       case 0:
-        $node->comment = COMMENT_NODE_DISABLED;
+        $node->comment = COMMENT_NODE_HIDDEN;
         break;
       case 1:
-        $node->comment = COMMENT_NODE_READ_WRITE;
+        $node->comment = COMMENT_NODE_OPEN;
         break;
       case 2:
-        $node->comment = COMMENT_NODE_READ_ONLY;
+        $node->comment = COMMENT_NODE_CLOSED;
         break;
     }
   }

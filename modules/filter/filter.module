@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.module,v 1.240 2009/01/21 16:58:42 dries Exp $
+// $Id: filter.module,v 1.244 2009/03/15 01:53:16 webchick Exp $
 
 /**
  * @file
@@ -59,6 +59,9 @@ function filter_theme() {
     ),
     'filter_tips_more_info' => array(
       'arguments' => array(),
+    ),
+    'filter_guidelines' => array(
+      'arguments' => array('format' => NULL),
     ),
   );
 }
@@ -135,7 +138,7 @@ function filter_format_load($arg) {
 }
 
 /**
- * Display a filter format form title.
+ * Display a text format form title.
  */
 function filter_admin_format_title($format) {
   return $format->name;
@@ -278,7 +281,8 @@ function filter_filter_tips($delta, $format, $long = FALSE) {
     case 4:
       return t('No HTML tags allowed');
       break;
-
+    case 5:
+      return t('Use [internal:foo/bar] to get a link to the internal page <em>foo/bar</em>.');
   }
 }
 
@@ -481,56 +485,41 @@ function check_markup($text, $format = FILTER_FORMAT_DEFAULT, $langcode = '', $c
 function filter_form($value = FILTER_FORMAT_DEFAULT, $weight = NULL, $parents = array('format')) {
   $value = filter_resolve_format($value);
   $formats = filter_formats();
-
-  $extra = theme('filter_tips_more_info');
-
+  
+  $form = array(
+   '#type' => 'fieldset',
+   '#weight' => $weight,
+   '#attributes' => array('class' => 'filter-wrapper'),
+  );
+  
+  $element_id = form_clean_id('edit-' . implode('-', $parents));
+   
   if (count($formats) > 1) {
-    $form = array(
-      '#type' => 'fieldset',
-      '#title' => t('Text format'),
-      '#collapsible' => TRUE,
-      '#collapsed' => TRUE,
-      '#weight' => $weight,
-      '#element_validate' => array('filter_form_validate'),
-    );
-    // Multiple formats available: display radio buttons with tips.
     foreach ($formats as $format) {
-      // Generate the parents as the autogenerator does, so we will have a
-      // unique id for each radio button.
-      $parents_for_id = array_merge($parents, array($format->format));
-      $form[$format->format] = array(
-        '#type' => 'radio',
-        '#title' => $format->name,
-        '#default_value' => $value,
-        '#return_value' => $format->format,
-        '#parents' => $parents,
-        '#description' => theme('filter_tips', _filter_tips($format->format, FALSE)),
-        '#id' => form_clean_id('edit-' . implode('-', $parents_for_id)),
-      );
+      $options[$format->format] = $format->name;
+      $guidelines[$format->format] = array('#markup' => theme('filter_guidelines', $format));
     }
+    drupal_add_js('misc/form.js');
+    $form['format'] = array(
+      '#type' => 'select',
+      '#title' => t('Text format'),
+      '#options' => $options,
+      '#default_value' => $value,
+      '#parents' => $parents,
+      '#id' => $element_id,
+      '#attributes' => array('class' => 'filter-list'),
+    );
   }
   else {
-    // Only one format available: use a hidden form item and only show tips.
+    // Only one format available: use a form value and only show label.
     $format = array_shift($formats);
+    unset($format->name);
+    $guidelines = array('#markup' => theme('filter_guidelines', $format));
     $form[$format->format] = array('#type' => 'value', '#value' => $format->format, '#parents' => $parents);
-    $tips = _filter_tips(variable_get('filter_default_format', 1), FALSE);
-    $form['format']['guidelines'] = array(
-      '#title' => t('Formatting guidelines'),
-      '#markup' => theme('filter_tips', $tips, FALSE),
-    );
   }
-  $form[] = array('#markup' => $extra);
+  $form['format_help'] = array('#markup' => '<div id="' . $element_id . '-help" class="filter-help">' . theme('filter_tips_more_info') . '</div>');
+  $form['format_guidelines'] = array_merge($guidelines, array('#prefix' => '<div id="' . $element_id . '-guidelines" class="filter-guidelines">', '#suffix' => '</div>'));
   return $form;
-}
-
-function filter_form_validate($form) {
-  foreach (element_children($form) as $key) {
-    if ($form[$key]['#value'] == $form[$key]['#return_value']) {
-      return;
-    }
-  }
-  form_error($form, t('An illegal choice has been detected. Please contact the site administrator.'));
-  watchdog('form', 'Illegal choice %choice in %name element.', array('%choice' => $form[$key]['#value'], '%name' => empty($form['#title']) ? $form['#parents'][0] : $form['#title']), WATCHDOG_ERROR);
 }
 
 /**
@@ -586,7 +575,17 @@ function _filter_tips($format, $long = FALSE) {
  * @ingroup themeable
  */
 function theme_filter_tips_more_info() {
-  return '<p>' . l(t('More information about formatting options'), 'filter/tips') . '</p>';
+  return '<p>' . l(t('More information about text formats'), 'filter/tips') . '</p>';
+}
+
+/**
+ * Format guidelines for a text format.
+ *
+ * @ingroup themeable
+ */
+function theme_filter_guidelines($format) {
+  $name = isset($format->name) ? '<label>' . $format->name . ':</label>' : NULL;
+  return '<div id="filter-guidelines-' . $format->format . '" class="filter-guidelines-item">' . $name . theme('filter_tips', _filter_tips($format->format, FALSE)) . '</div>';
 }
 
 /**
@@ -607,7 +606,14 @@ function theme_filter_tips_more_info() {
 function filter_filter($op, $delta = 0, $format = -1, $text = '') {
   switch ($op) {
     case 'list':
-      return array(0 => t('Limit allowed HTML tags'), 1 => t('Convert line breaks'), 2 => t('Convert URLs into links'), 3 => t('Correct broken HTML'), 4 => t('Escape all HTML'));
+      return array(
+        0 => t('Limit allowed HTML tags'),
+        1 => t('Convert line breaks'),
+        2 => t('Convert URLs into links'),
+        3 => t('Correct broken HTML'),
+        4 => t('Escape all HTML'),
+        5 => t('Create internal URLs'),
+      );
 
     case 'description':
       switch ($delta) {
@@ -621,6 +627,8 @@ function filter_filter($op, $delta = 0, $format = -1, $text = '') {
           return t('Corrects faulty and chopped off HTML in postings.');
         case 4:
           return t('Escapes all HTML tags, so they will be visible instead of being effective.');
+        case 5:
+          return t('Formats [internal:node/1234] as a URL.');
         default:
           return;
       }
@@ -637,6 +645,8 @@ function filter_filter($op, $delta = 0, $format = -1, $text = '') {
           return _filter_htmlcorrector($text);
         case 4:
           return trim(check_plain($text));
+        case 5:
+          return _filter_internal($text);
         default:
           return $text;
       }
@@ -853,6 +863,18 @@ function _filter_url_trim($text, $length = NULL) {
   }
 
   return $text;
+}
+
+/**
+ * Turn [internal:foo] into url(foo).
+ *
+ * @param $text
+ *   The text to apply the filter on.
+ * @return
+ *   The filtered text.
+ */
+function _filter_internal($text) {
+  return preg_replace('/\[internal:([^\]]+)\]/e', "url('\\1')", $text);
 }
 
 /**

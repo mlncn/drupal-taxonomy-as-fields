@@ -1,5 +1,5 @@
 <?php
-// $Id: file.inc,v 1.162 2009/02/26 07:30:26 webchick Exp $
+// $Id: file.inc,v 1.164 2009/03/10 09:47:42 dries Exp $
 
 /**
  * @file
@@ -834,6 +834,7 @@ function file_unmanaged_delete_recursive($path) {
       $entry_path = $path . '/' . $entry;
       file_unmanaged_delete_recursive($entry_path);
     }
+    $dir->close();
     return rmdir($path);
   }
   return file_unmanaged_delete($path);
@@ -1183,13 +1184,11 @@ function file_validate_image_resolution($file, $maximum_dimensions = 0, $minimum
       list($width, $height) = explode('x', $maximum_dimensions);
       if ($info['width'] > $width || $info['height'] > $height) {
         // Try to resize the image to fit the dimensions.
-        if (image_get_toolkit() && image_scale($file->filepath, $file->filepath, $width, $height)) {
+        if ($image = image_load($file->filepath)) {
+          image_scale($image, $width, $height);
+          image_save($image);
+          $file->filesize = $image->info['file_size'];
           drupal_set_message(t('The image was resized to fit within the maximum allowed dimensions of %dimensions pixels.', array('%dimensions' => $maximum_dimensions)));
-
-          // Clear the cached filesize and refresh the image information.
-          clearstatcache();
-          $info = image_get_info($file->filepath);
-          $file->filesize = $info['file_size'];
         }
         else {
           $errors[] = t('The image is too large; the maximum dimensions are %dimensions pixels.', array('%dimensions' => $maximum_dimensions));

@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.86 2009/02/22 20:12:03 dries Exp $
+// $Id: drupal_web_test_case.php,v 1.91 2009/03/17 23:26:33 webchick Exp $
 
 /**
  * Test case for typical Drupal tests.
@@ -608,15 +608,14 @@ class DrupalWebTestCase {
    * Compare two files based on size and file name.
    */
   protected function drupalCompareFiles($file1, $file2) {
-    // Determine which file is larger.
-    $compare_size = (filesize($file1->filepath) > filesize($file2->filepath));
-    if (!$compare_size) {
-      // Both files were the same size, so return whichever one is alphabetically greater.
-      return strnatcmp($file1->name, $file2->name);
+    $compare_size = filesize($file1->filepath) - filesize($file2->filepath);
+    if ($compare_size) {
+      // Sort by file size.
+      return $compare_size;
     }
     else {
-      // Return TRUE if $file1 is larger than $file2.
-      return $compare_size;
+      // The files were the same size, so sort alphabetically.
+      return strnatcmp($file1->name, $file2->name);
     }
   }
 
@@ -850,7 +849,7 @@ class DrupalWebTestCase {
     // Log in with a clean $user.
     $this->originalUser = $user;
     drupal_save_session(FALSE);
-    $user = user_load(array('uid' => 1));
+    $user = user_load(1);
 
     // Restore necessary variables.
     variable_set('install_profile', 'default');
@@ -987,7 +986,14 @@ class DrupalWebTestCase {
     curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
     $this->headers = array();
     $this->drupalSetContent(curl_exec($this->curlHandle), curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
-    $this->assertTrue($this->content !== FALSE, t('!method to !url, response is !length bytes.', array('!method' => !empty($curl_options[CURLOPT_NOBODY]) ? 'HEAD' : (empty($curl_options[CURLOPT_POSTFIELDS]) ? 'GET' : 'POST'), '!url' => $url, '!length' => strlen($this->content))), t('Browser'));
+    $message_vars = array(
+      '!method' => !empty($curl_options[CURLOPT_NOBODY]) ? 'HEAD' : (empty($curl_options[CURLOPT_POSTFIELDS]) ? 'GET' : 'POST'),
+      '@url' => $url,
+      '@status' => curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE),
+      '!length' => format_size(strlen($this->content))
+    );
+    $message = t('!method @url returned @status (!length).', $message_vars);
+    $this->assertTrue($this->content !== FALSE, $message, t('Browser'));
     return $this->drupalGetContent();
   }
 
@@ -1696,6 +1702,78 @@ class DrupalWebTestCase {
       $message = '"' . $text . '"' . ($not_exists ? ' not found' : ' found');
     }
     return $this->assert($not_exists == (strpos($this->plainTextContent, $text) === FALSE), $message, $group);
+  }
+
+  /**
+   * Pass if the text is found ONLY ONCE on the text version of the page.
+   *
+   * The text version is the equivalent of what a user would see when viewing
+   * through a web browser. In other words the HTML has been filtered out of
+   * the contents.
+   *
+   * @param $text
+   *   Plain text to look for.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to, defaults to 'Other'.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertUniqueText($text, $message = '', $group = 'Other') {
+    return $this->assertUniqueTextHelper($text, $message, $group, TRUE);
+  }
+
+  /**
+   * Pass if the text is found MORE THAN ONCE on the text version of the page.
+   *
+   * The text version is the equivalent of what a user would see when viewing
+   * through a web browser. In other words the HTML has been filtered out of
+   * the contents.
+   *
+   * @param $text
+   *   Plain text to look for.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to, defaults to 'Other'.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertNoUniqueText($text, $message = '', $group = 'Other') {
+    return $this->assertUniqueTextHelper($text, $message, $group, FALSE);
+  }
+
+  /**
+   * Helper for assertUniqueText and assertNoUniqueText.
+   *
+   * It is not recommended to call this function directly.
+   *
+   * @param $text
+   *   Plain text to look for.
+   * @param $message
+   *   Message to display.
+   * @param $group
+   *   The group this message belongs to.
+   * @param $be_unique
+   *   TRUE if this text should be found only once, FALSE if it should be found more than once.
+   * @return
+   *   TRUE on pass, FALSE on fail.
+   */
+  protected function assertUniqueTextHelper($text, $message, $group, $be_unique) {
+    if ($this->plainTextContent === FALSE) {
+      $this->plainTextContent = filter_xss($this->content, array());
+    }
+    if (!$message) {
+      $message = '"' . $text . '"'. ($be_unique ? ' found only once' : ' found more than once');
+    }
+    $first_occurance = strpos($this->plainTextContent, $text);
+    if ($first_occurance === FALSE) {
+      return $this->assert(FALSE, $message, $group);
+    }
+    $offset = $first_occurance + strlen($text);
+    $second_occurance = strpos($this->plainTextContent, $text, $offset);
+    return $this->assert($be_unique == ($second_occurance === FALSE), $message, $group);
   }
 
   /**

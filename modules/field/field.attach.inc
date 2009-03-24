@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.3 2009/02/10 03:16:14 webchick Exp $
+// $Id: field.attach.inc,v 1.6 2009/03/17 03:46:51 webchick Exp $
 
 /**
  * @file
@@ -8,7 +8,7 @@
 
 // TODO D7 : consistency - do field_attach_functions return a value or alter in place ?
 
-// TOTO D7 : consistency - some of these functions process individual fields
+// TODO D7 : consistency - some of these functions process individual fields
 // and others process the combined value of all fields.
 // Should all iteration through available fields be done here instead of in Field?
 
@@ -29,6 +29,20 @@
  * The Drupal system variable field_storage_module identifies the
  * field storage module to use.
  */
+
+/**
+ * Argument for an insert operation.
+ * This is used in hook_field_storage_write when updating an 
+ * existing object.
+ */
+define('FIELD_STORAGE_UPDATE', 'update');
+
+/**
+ * Argument for an update operation.
+ * This is used in hook_field_storage_write when inserting a new object.
+ */
+define('FIELD_STORAGE_INSERT', 'insert');
+
 /**
  * @} End of "defgroup field_storage"
  */
@@ -386,7 +400,7 @@ function _field_attach_insert($obj_type, &$object) {
   }
 
   _field_invoke('insert', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object);
+  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_INSERT);
 
   list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
   if ($cacheable) {
@@ -411,7 +425,7 @@ function _field_attach_update($obj_type, &$object) {
   }
 
   _field_invoke('update', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, TRUE);
+  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_UPDATE);
 
   list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
   if ($cacheable) {
@@ -512,7 +526,7 @@ function _field_attach_preprocess($obj_type, &$object) {
 }
 
 /**
- * Implementation of hook_nodeapi_prepare_translation.
+ * Implementation of hook_node_prepare_translation.
  *
  * TODO D7: We do not yet know if this really belongs in Field API.
  */

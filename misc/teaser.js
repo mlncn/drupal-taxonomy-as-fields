@@ -1,4 +1,4 @@
-// $Id: teaser.js,v 1.15 2009/02/18 13:46:52 webchick Exp $
+// $Id: teaser.js,v 1.17 2009/03/13 23:15:08 webchick Exp $
 (function($) {
 
 /**
@@ -7,18 +7,13 @@
  * Note: depends on resizable textareas.
  */
 Drupal.behaviors.teaser = {
-  attach: function(context) {
-    // This breaks in Konqueror. Prevent it from running.
-    if (/KDE/.test(navigator.vendor)) {
-      return;
-    }
-
+  attach: function(context, settings) {
     $('textarea.teaser:not(.teaser-processed)', context).each(function() {
       var teaser = $(this).addClass('teaser-processed');
 
       // Move teaser textarea before body, and remove its form-item wrapper.
-      var body = $('#'+ Drupal.settings.teaser[this.id]);
-      var checkbox = $('#'+ Drupal.settings.teaserCheckbox[this.id]).parent();
+      var body = $('#'+ settings.teaser[this.id]);
+      var checkbox = $('#'+ settings.teaserCheckbox[this.id]).parent();
       var checked = $(checkbox).children('input').attr('checked') ? true : false;
       var parent = teaser[0].parentNode;
       $(body).before(teaser);
@@ -90,8 +85,8 @@ Drupal.behaviors.teaser = {
         Drupal.behaviors.textarea.attach(teaser.parentNode);
       }
       // Set initial visibility.
-      if ($(teaser).is('[@disabled]')) {
-        $(teaser).parent().hide();
+      if (teaser[0].disabled) {
+        teaser.parent().hide();
       }
 
     });

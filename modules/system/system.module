@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.668 2009/02/22 17:55:30 dries Exp $
+// $Id: system.module,v 1.674 2009/03/20 19:18:10 dries Exp $
 
 /**
  * @file
@@ -70,7 +70,7 @@ function system_help($path, $arg) {
       $output .= '<li>' . t('support for enabling and disabling <a href="@themes">themes</a>, which determine the design and presentation of your site. Drupal comes packaged with several core themes and additional contributed themes are available at the <a href="@drupal-themes">Drupal.org theme page</a>.', array('@themes' => url('admin/build/themes'), '@drupal-themes' => 'http://drupal.org/project/themes')) . '</li>';
       $output .= '<li>' . t('a robust <a href="@cache-settings">caching system</a> that allows the efficient re-use of previously-constructed web pages and web page components. Drupal stores the pages requested by anonymous users in a compressed format; depending on your site configuration and the amount of your web traffic tied to anonymous visitors, Drupal\'s caching system may significantly increase the speed of your site.', array('@cache-settings' => url('admin/settings/performance'))) . '</li>';
       $output .= '<li>' . t('a set of routine administrative operations that rely on a correctly-configured <a href="@cron">cron maintenance task</a> to run automatically. A number of other modules, including the feed aggregator, and search also rely on <a href="@cron">cron maintenance tasks</a>. For more information, see the online handbook entry for <a href="@handbook">configuring cron jobs</a>.', array('@cron' => url('admin/reports/status'), '@handbook' => 'http://drupal.org/cron')) . '</li>';
-      $output .= '<li>' . t('basic configuration options for your site, including <a href="@date-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@site-maintenance">site maintenance</a> function for taking your site temporarily offline.', array('@date-settings' => url('admin/settings/date-time'), '@file-system' => url('admin/settings/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@site-maintenance' => url('admin/settings/site-maintenance'))) . '</li></ul>';
+      $output .= '<li>' . t('basic configuration options for your site, including <a href="@regional-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@site-maintenance">site maintenance</a> function for taking your site temporarily offline.', array('@regional-settings' => url('admin/settings/regional-settings'), '@file-system' => url('admin/settings/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@site-maintenance' => url('admin/settings/site-maintenance'))) . '</li></ul>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@system">System module</a>.', array('@system' => 'http://drupal.org/handbook/modules/system/')) . '</p>';
       return $output;
     case 'admin/by-module':
@@ -288,7 +288,7 @@ function system_elements() {
     '#size' => 60,
     '#maxlength' => 128,
     '#autocomplete_path' => FALSE,
-    '#process' => array('form_process_input_format', 'form_process_ahah'),
+    '#process' => array('form_process_text_format', 'form_process_ahah'),
     '#theme' => 'textfield',
     '#theme_wrapper' => 'form_element',
   );
@@ -313,7 +313,7 @@ function system_elements() {
     '#cols' => 60,
     '#rows' => 5,
     '#resizable' => TRUE,
-    '#process' => array('form_process_input_format', 'form_process_ahah'),
+    '#process' => array('form_process_text_format', 'form_process_ahah'),
     '#theme' => 'textarea',
     '#theme_wrapper' => 'form_element',
   );
@@ -458,6 +458,7 @@ function system_menu() {
     'access arguments' => array('access administration pages'),
     'page callback' => 'system_main_admin_page',
     'weight' => 9,
+    'menu_name' => 'management',
   );
   $items['admin/compact'] = array(
     'title' => 'Compact mode',
@@ -677,14 +678,14 @@ function system_menu() {
     'page arguments' => array('system_rss_feeds_settings'),
     'access arguments' => array('administer site configuration'),
   );
-  $items['admin/settings/date-time'] = array(
-    'title' => 'Date and time',
+  $items['admin/settings/regional-settings'] = array(
+    'title' => 'Regional settings',
     'description' => "Settings for how Drupal displays date and time, as well as the system's default time zone.",
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_date_time_settings'),
+    'page arguments' => array('system_regional_settings'),
     'access arguments' => array('administer site configuration'),
   );
-  $items['admin/settings/date-time/lookup'] = array(
+  $items['admin/settings/regional-settings/lookup'] = array(
     'title' => 'Date and time lookup',
     'type' => MENU_CALLBACK,
     'page callback' => 'system_date_time_lookup',
@@ -880,13 +881,19 @@ function system_user_timezone(&$edit, &$form) {
  * Implementation of hook_block_list().
  */
 function system_block_list() {
-  $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
   $blocks['powered-by'] = array(
     'info' => t('Powered by Drupal'),
     'weight' => '10',
      // Not worth caching.
     'cache' => BLOCK_NO_CACHE,
   );
+  // System-defined menu blocks.
+  foreach (menu_list_system_menus() as $menu_name => $title) {
+    $blocks[$menu_name]['info'] = t($title);
+    // Menu blocks can't be cached because each menu item can have
+    // a custom access callback. menu.inc manages its own caching.
+    $blocks[$menu_name]['cache'] = BLOCK_NO_CACHE;
+  }
   return $blocks;
 }
 
@@ -929,13 +936,28 @@ function system_block_save($delta = '', $edit = NULL) {
 /**
  * Implementation of hook_block_view().
  *
- * Generate a block with a promotional link to Drupal.org.
+ * Generate a block with a promotional link to Drupal.org and
+ * all system menu blocks.
  */
 function system_block_view($delta = '') {
-  $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
-  $block['subject'] = NULL; // Don't display a title
-  $block['content'] = theme('system_powered_by', $image_path);
-  return $block;
+  $block = array();
+  switch ($delta) {
+    case 'powered-by':
+      $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
+      // Don't display a title.
+      $block['subject'] = NULL;
+      $block['content'] = theme('system_powered_by', $image_path);
+      return $block;
+    default:
+      // All system menu blocks.
+      $system_menus = menu_list_system_menus();
+      if (isset($system_menus[$delta])) {
+        $block['subject'] = t($system_menus[$delta]);
+        $block['content'] = menu_tree($delta);
+        return $block;
+      }
+      break;
+  }
 }
 
 /**
@@ -1598,7 +1620,7 @@ function system_action_info() {
       'description' => t('Display a message to the user'),
       'configurable' => TRUE,
       'hooks' => array(
-        'nodeapi' => array('view', 'insert', 'update', 'delete'),
+        'node' => array('view', 'insert', 'update', 'delete'),
         'comment' => array('view', 'insert', 'update', 'delete'),
         'user' => array('view', 'insert', 'update', 'delete', 'login'),
         'taxonomy' => array('insert', 'update', 'delete'),
@@ -1609,7 +1631,7 @@ function system_action_info() {
       'type' => 'system',
       'configurable' => TRUE,
       'hooks' => array(
-        'nodeapi' => array('view', 'insert', 'update', 'delete'),
+        'node' => array('view', 'insert', 'update', 'delete'),
         'comment' => array('view', 'insert', 'update', 'delete'),
         'user' => array('view', 'insert', 'update', 'delete', 'login'),
         'taxonomy' => array('insert', 'update', 'delete'),
@@ -1626,7 +1648,7 @@ function system_action_info() {
       'type' => 'system',
       'configurable' => TRUE,
       'hooks' => array(
-        'nodeapi' => array('view', 'insert', 'update', 'delete'),
+        'node' => array('view', 'insert', 'update', 'delete'),
         'comment' => array('view', 'insert', 'update', 'delete'),
         'user' => array('view', 'insert', 'update', 'delete', 'login'),
       )
@@ -1979,7 +2001,7 @@ function system_send_email_action($object, $context) {
   global $user;
 
   switch ($context['hook']) {
-    case 'nodeapi':
+    case 'node':
       // Because this is not an action of type 'node' the node
       // will not be passed as $object, but it will still be available
       // in $context.
@@ -2013,7 +2035,7 @@ function system_send_email_action($object, $context) {
 
   if (isset($node)) {
     if (!isset($account)) {
-      $account = user_load(array('uid' => $node->uid));
+      $account = user_load($node->uid);
     }
     if ($recipient == '%author') {
       $recipient = $account->mail;
@@ -2109,7 +2131,7 @@ function system_message_action(&$object, $context = array()) {
   // are used a node object must be present to be the source
   // of substituted text.
   switch ($context['hook']) {
-    case 'nodeapi':
+    case 'node':
       // Because this is not an action of type 'node' the node
       // will not be passed as $object, but it will still be available
       // in $context.
@@ -2290,5 +2312,10 @@ function theme_meta_generator_header($version = VERSION) {
  * Implementation of hook_image_toolkits().
  */
 function system_image_toolkits() {
-  return array('gd');
+  return array(
+    'gd' => array(
+      'title' => t('GD2 image manipulation toolkit'),
+      'available' => drupal_function_exists('image_gd_check_settings') && image_gd_check_settings(),
+    ),
+  );
 }
