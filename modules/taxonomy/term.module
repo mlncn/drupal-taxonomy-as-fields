@@ -25,20 +25,6 @@ function term_theme() {
  */
 function term_field_info() {
   return array(
-//    'term' => array(
-//      'label' => t('List'),
-//      'description' => t('This field stores numeric keys from key/value terms of allowed values where the key is a simple alias for the position of the value, i.e. 0|First option, 1|Second option, 2|Third option.'),
-//      'settings' => array('allowed_values_function' => ''),
-//      'default_widget' => 'options_select',
-//      'default_formatter' => 'term_default',
-//    ),
-//    'term_boolean' => array(
-//      'label' => t('Boolean'),
-//      'description' => t('This field stores simple on/off or yes/no options.'),
-//      'settings' => array('allowed_values_function' => ''),
-//      'default_widget' => 'options_select',
-//      'default_formatter' => 'term_default',
-//    ),
     'term' => array(
       'label' => t('Term'),
       'description' => t('This field stores keys from key/value terms of allowed numbers where the stored numeric key has significance and must be preserved, i.e. \'Lifetime in days\': 1|1 day, 7|1 week, 31|1 month.'),
@@ -47,13 +33,6 @@ function term_field_info() {
       'default_formatter' => 'term_default',
       'settings' => array('vid' => 0),
     ),
-//    'term_text' => array(
-//      'label' => t('List (text)'),
-//      'description' => t('This field stores keys from key/value terms of allowed values where the stored key has significance and must be a varchar, i.e. \'US States\': IL|Illinois, IA|Iowa, IN|Indiana'),
-//      'settings' => array('allowed_values_function' => ''),
-//      'default_widget' => 'options_select',
-//      'default_formatter' => 'term_default',
-//    ),
   );
 }
 
