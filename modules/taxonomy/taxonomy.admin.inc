@@ -108,7 +108,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
   } 
   $edit += array(
     'name' => '',
-    'field_name' => '',
     'description' => '',
     'help' => '',
     'hierarchy' => 0,
@@ -130,10 +129,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#required' => TRUE,
     '#field_suffix' => ' <small id="vocabulary-field-name-suffix">&nbsp;</small>',
   );
-  $form['field_name'] = array(
-    '#type' => 'value',
-    '#value' => $edit['field_name'],
-  );
   $form['help'] = array(
     '#type' => 'textfield',
     '#title' => t('Help text'),
@@ -148,10 +143,28 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#description' => t('Description of the vocabulary; can be used by modules.'),
   );
   if (module_exists('term')) {
-    $instances = field_read_instances(array('field_name' => $edit['field_name']));
-    foreach ($instances as $instance) {
-      $edit['nodes'][] = $instance['bundle'];
+    $edit['field_name'] = '';
+    $edit['nodes'] = array();
+    if (array_key_exists('vid', $edit)) {
+      $instances = array();
+      foreach (field_read_fields(array('module' => 'term')) as $field) {
+        if ($field['settings']['vid'] == $edit['vid']) {
+          $edit['field_name'] = $field['field_name'];
+          $fields[] = $field['field_name'];
+          $instances = array_merge(field_read_instances(array('field_name' => $fields)), $instances);
+        }
+      }
+      foreach ($instances as $instance) {
+        $edit['nodes'][] = $instance['bundle'];
+      }
     }
+    $form['field_name'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Field name'),
+      '#default_value' => $edit['field_name'],
+      '#maxlength' => 32,
+      '#description' => t('The machine-readable name for this vocabulary\'s field. This name must contain only lowercase letters, numbers, and underscores. This name must be unique.'),
+    );
     $form['nodes'] = array(
       '#type' => 'checkboxes',
       '#title' => t('Content types'),
@@ -230,9 +243,9 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       break;
   }
   if (module_exists('term')) {
-    if (!field_read_field('term_'. $vocabulary->field_name)) {
+    if (!field_read_field($vocabulary->field_name)) {
       $field = array(
-        'field_name' => 'term_'. $vocabulary->field_name,
+        'field_name' => $vocabulary->field_name,
         'module' => 'term',
         'type' => 'term',
         'cardinality' => ($vocabulary->multiple ? FIELD_CARDINALITY_UNLIMITED : 1),
@@ -243,7 +256,7 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       field_create_field($field);
     }
     $instance = array(
-      'field_name' => 'term_'. $vocabulary->field_name,
+      'field_name' => $vocabulary->field_name,
       'bundle' => '',
       'label' => $vocabulary->name,
       'description' => $vocabulary->description,
@@ -254,7 +267,9 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
     );
     foreach ($vocabulary->nodes as $node_type) {
       $instance['bundle'] = $node_type;
-      field_create_instance($instance);
+      if (!field_read_instance($vocabulary->field_name, $node_type)) {
+        field_create_instance($instance);
+      }
     }
   }
 
