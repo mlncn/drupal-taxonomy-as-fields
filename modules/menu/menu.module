@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.module,v 1.180 2009/03/20 19:18:10 dries Exp $
+// $Id: menu.module,v 1.182 2009/03/28 03:58:55 dries Exp $
 
 /**
  * @file
@@ -51,7 +51,7 @@ function menu_perm() {
 function menu_menu() {
   $items['admin/build/menu'] = array(
     'title' => 'Menus',
-    'description' => "Control your site's Navigation menu, Main menu and Secondary menu. as well as rename and reorganize menu items.",
+    'description' => 'Add new menus to your site, edit existing menus, and rename and reorganize menu links.',
     'page callback' => 'menu_overview_page',
     'access callback' => 'user_access',
     'access arguments' => array('administer menu'),
@@ -143,6 +143,10 @@ function menu_theme() {
     'menu_overview_form' => array(
       'file' => 'menu.admin.inc',
       'arguments' => array('form' => NULL),
+    ),
+    'menu_admin_overview' => array(
+      'file' => 'menu.admin.inc',
+      'arguments' => array('title' => NULL, 'name' => NULL, 'description' => NULL),
     ),
   );
 }

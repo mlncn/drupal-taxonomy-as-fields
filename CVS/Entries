@@ -1,5 +1,3 @@
-D/database////
-D/files////
 D/includes////
 D/misc////
 D/modules////
@@ -7,7 +5,6 @@ D/profiles////
 D/scripts////
 D/sites////
 D/themes////
-D/updates////
 /.htaccess/1.99/Tue Mar 24 18:08:20 2009//
 /CHANGELOG.txt/1.300/Tue Mar 24 18:10:29 2009//
 /COPYRIGHT.txt/1.4/Tue Mar 24 18:08:20 2009//
@@ -20,7 +17,7 @@ D/updates////
 /UPGRADE.txt/1.13/Tue Mar 24 18:08:20 2009//
 /cron.php/1.42/Tue Mar 24 18:08:20 2009//
 /index.php/1.98/Tue Mar 24 18:08:21 2009//
-/install.php/1.160/Tue Mar 24 18:10:29 2009//
 /robots.txt/1.13/Tue Mar 24 18:08:23 2009//
 /update.php/1.279/Tue Mar 24 18:10:30 2009//
 /xmlrpc.php/1.17/Tue Mar 24 18:08:24 2009//
+/install.php/1.161/Sat Mar 28 14:29:00 2009//
