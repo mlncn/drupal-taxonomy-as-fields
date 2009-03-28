@@ -14,9 +14,6 @@ function term_theme() {
     'field_formatter_term_default' => array(
       'arguments' => array('element' => NULL),
     ),
-    'field_formatter_term_key' => array(
-      'arguments' => array('element' => NULL),
-    ),
   );
 }
 
@@ -93,13 +90,6 @@ function term_field_formatter_info() {
         'multiple values' => FIELD_BEHAVIOR_DEFAULT,
       ),
     ),
-    'term_id' => array(  // why this second one..?
-      'label' => t('Id'),
-      'field types' => array('term'),
-      'behaviors' => array(
-        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
-      ),
-    ),
   );
 }
 
@@ -109,17 +99,11 @@ function term_field_formatter_info() {
 function theme_field_formatter_term_default($element) {
   $field = field_info_field($element['#field_name']);
   if (($allowed_values = term_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
-    return $allowed_values[$element['#item']['value']];
+    $term = taxonomy_term_load($element['#item']['value']);
+    return l($term->name, taxonomy_term_path($term));
   }
   // If no match was found in allowed values, fall back to the key.
-  return $element['#item']['safe'];
-}
-
-/**
- * Theme function for 'key' term field formatter.
- */
-function theme_field_formatter_term_key($element) {
-  return $element['#item']['safe'];
+  return 'invalid - '. $element['#item']['value'];
 }
 
 /**
@@ -138,16 +122,9 @@ function term_allowed_values($field) {
   $tree = taxonomy_get_tree($field['settings']['vid']);
   $options = array();
 
-//  if ($blank) {
-//    $options[0] = $blank;
-//  }
   if ($tree) {
     foreach ($tree as $term) {
-//      if (!in_array($term->tid, $exclude)) {
-        $choice = new stdClass();
-        $choice->option = array($term->tid => str_repeat('-', $term->depth) . $term->name);
-        $options[] = $choice;
-//      }
+      $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
     }
   }
   return $options;
