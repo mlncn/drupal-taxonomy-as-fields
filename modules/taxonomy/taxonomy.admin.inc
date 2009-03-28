@@ -12,19 +12,15 @@
  * @ingroup forms
  * @see taxonomy_overview_vocabularies_submit()
  * @see theme_taxonomy_overview_vocabularies()
+ * @todo this function displays list of node types where a vocabulary applies. removal of taxonomy_vocabulary_node_type table
+ *  means this has to be done differently.
  */
 function taxonomy_overview_vocabularies() {
   $vocabularies = taxonomy_get_vocabularies();
   $form = array('#tree' => TRUE);
   foreach ($vocabularies as $vocabulary) {
-    $types = array();
-    foreach ($vocabulary->nodes as $type) {
-      $node_type = node_get_types('name', $type);
-      $types[] = $node_type ? check_plain($node_type) : check_plain($type);
-    }
     $form[$vocabulary->vid]['#vocabulary'] = $vocabulary;
     $form[$vocabulary->vid]['name'] = array('#markup' => check_plain($vocabulary->name));
-    $form[$vocabulary->vid]['types'] = array('#markup' => implode(', ', $types));
     $form[$vocabulary->vid]['edit'] = array('#markup' => l(t('edit vocabulary'), "admin/content/taxonomy/$vocabulary->vid"));
     $form[$vocabulary->vid]['list'] = array('#markup' => l(t('list terms'), "admin/content/taxonomy/$vocabulary->vid/list"));
     $form[$vocabulary->vid]['add'] = array('#markup' => l(t('add terms'), "admin/content/taxonomy/$vocabulary->vid/add"));
@@ -65,7 +61,6 @@ function theme_taxonomy_overview_vocabularies($form) {
 
       $row = array();
       $row[] = drupal_render($vocabulary['name']);
-      $row[] = drupal_render($vocabulary['types']);
       $row[] = drupal_render($vocabulary['edit']);
       $row[] = drupal_render($vocabulary['list']);
       $row[] = drupal_render($vocabulary['add']);
@@ -76,10 +71,7 @@ function theme_taxonomy_overview_vocabularies($form) {
     $rows[] = array(array('data' => t('No vocabularies available.'), 'colspan' => '5'));
   }
 
-  $header = array(t('Vocabulary name'), t('Content types'));
-  if (isset($form['submit'])) {
-    drupal_add_tabledrag('taxonomy', 'order', 'sibling');
-  }
+  $header = array(t('Vocabulary name'));
   $header[] = array('data' => t('Operations'), 'colspan' => '3');
   return theme('table', $header, $rows, array('id' => 'taxonomy')) . drupal_render_children($form);
 }
@@ -680,7 +672,6 @@ function taxonomy_form_term(&$form_state, $vocabulary, $edit = array()) {
   $form['#term'] = $edit;
   $form['#term']['parent'] = $parent;
   $form['#vocabulary'] = $vocabulary;
-  $form['#vocabulary']->nodes = drupal_map_assoc($vocabulary->nodes);
 
   // Check for confirmation forms.
   if (isset($form_state['confirm_delete'])) {
