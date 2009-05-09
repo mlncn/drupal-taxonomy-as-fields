@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.pages.inc,v 1.16 2009/03/08 05:08:22 webchick Exp $
+// $Id: contact.pages.inc,v 1.20 2009/05/06 10:38:40 dries Exp $
 
 /**
  * @file
@@ -11,105 +11,97 @@
  * Site-wide contact page.
  */
 function contact_site_page() {
-  global $user;
-
   if (!flood_is_allowed('contact', variable_get('contact_hourly_threshold', 3)) && !user_access('administer site-wide contact form')) {
     $output = t("You cannot send more than %number messages per hour. Please try again later.", array('%number' => variable_get('contact_hourly_threshold', 3)));
   }
+  elseif (!db_query("SELECT COUNT(cid) FROM {contact}")->fetchField()) {
+    if (user_access('administer site-wide contact form')) {
+      $output = t('The contact form has not been configured. <a href="@add">Add one or more categories</a> to the form.', array('@add' => url('admin/build/contact/add')));
+    }
+    else {
+      return drupal_not_found();
+    }
+  }
   else {
-    $output = drupal_get_form('contact_mail_page');
+    $output = drupal_get_form('contact_site_form');
   }
 
   return $output;
 }
 
-function contact_mail_page() {
+/*
+ * Form builder; the site-wide contact form.
+ */
+function contact_site_form() {
   global $user;
 
-  $form = $categories = array();
+  $categories = db_query("SELECT cid, category FROM {contact} ORDER BY weight, category")->fetchAllKeyed();
+  $default_category = (int) db_query("SELECT cid FROM {contact} WHERE selected = 1")->fetchField();
 
-  $result = db_select('contact')
-    ->fields('contact', array('cid', 'category', 'selected'))
-    ->orderby('weight')
-    ->orderby('category')
-    ->execute();
-
-  foreach ($result as $record) {
-    $categories[$record->cid] = $record->category;
-    if ($record->selected) {
-      $default_category = $record->cid;
-    }
-  }
-
-  if (count($categories) > 0) {
-    $form['#token'] = $user->uid ? $user->name . $user->mail : '';
-    $form['contact_information'] = array('#markup' => filter_xss_admin(variable_get('contact_form_information', t('You can leave a message using the contact form below.'))));
-    $form['name'] = array('#type' => 'textfield',
-      '#title' => t('Your name'),
-      '#maxlength' => 255,
-      '#default_value' => $user->uid ? $user->name : '',
-      '#required' => TRUE,
-    );
-    $form['mail'] = array('#type' => 'textfield',
-      '#title' => t('Your e-mail address'),
-      '#maxlength' => 255,
-      '#default_value' => $user->uid ? $user->mail : '',
-      '#required' => TRUE,
-    );
-    $form['subject'] = array('#type' => 'textfield',
-      '#title' => t('Subject'),
-      '#maxlength' => 255,
-      '#required' => TRUE,
-    );
+  // If there is more than one category available and no default category has been selected,
+  // prepend a default placeholder value.
+  if (!$default_category) {
     if (count($categories) > 1) {
-      // If there is more than one category available and no default category has been selected,
-      // prepend a default placeholder value.
-      if (!isset($default_category)) {
-        $default_category = t('- Please choose -');
-        $categories = array($default_category) + $categories;
-      }
-      $form['cid'] = array('#type' => 'select',
-        '#title' => t('Category'),
-        '#default_value' => $default_category,
-        '#options' => $categories,
-        '#required' => TRUE,
-      );
+      $categories = array(0 => t('- Please choose -')) + $categories;
     }
     else {
-      // If there is only one category, store its cid.
-      $category_keys = array_keys($categories);
-      $form['cid'] = array('#type' => 'value',
-        '#value' => array_shift($category_keys),
-      );
+      $default_category = key($categories);
     }
-    $form['message'] = array('#type' => 'textarea',
-      '#title' => t('Message'),
-      '#required' => TRUE,
-    );
-    // We do not allow anonymous users to send themselves a copy
-    // because it can be abused to spam people.
-    if ($user->uid) {
-      $form['copy'] = array('#type' => 'checkbox',
-        '#title' => t('Send yourself a copy.'),
-      );
-    }
-    else {
-      $form['copy'] = array('#type' => 'value', '#value' => FALSE);
-    }
-    $form['submit'] = array('#type' => 'submit',
-      '#value' => t('Send e-mail'),
-    );
   }
-  else {
-    drupal_set_message(t('The contact form has not been configured. <a href="@add">Add one or more categories</a> to the form.', array('@add' => url('admin/build/contact/add'))), 'error');
-  }
+
+  $form['#token'] = $user->uid ? $user->name . $user->mail : '';
+  $form['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Your name'),
+    '#maxlength' => 255,
+    '#default_value' => $user->uid ? $user->name : '',
+    '#required' => TRUE,
+  );
+  $form['mail'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Your e-mail address'),
+    '#maxlength' => 255,
+    '#default_value' => $user->uid ? $user->mail : '',
+    '#required' => TRUE,
+  );
+  $form['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#maxlength' => 255,
+    '#required' => TRUE,
+  );
+  $form['cid'] = array(
+    '#type' => 'select',
+    '#title' => t('Category'),
+    '#default_value' => $default_category,
+    '#options' => $categories,
+    '#required' => TRUE,
+    '#access' => count($categories) > 1,
+  );
+  $form['message'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Message'),
+    '#required' => TRUE,
+  );
+  // We do not allow anonymous users to send themselves a copy
+  // because it can be abused to spam people.
+  $form['copy'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Send yourself a copy.'),
+    '#access' => $user->uid,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Send e-mail'),
+  );
+
   return $form;
 }
 
 /**
- * Validate the site-wide contact page form submission.
+ * Form validation handler for contact_site_form().
  */
-function contact_mail_page_validate($form, &$form_state) {
+function contact_site_form_validate($form, &$form_state) {
   if (!$form_state['values']['cid']) {
     form_set_error('cid', t('You must select a valid category.'));
   }
@@ -119,9 +111,9 @@ function contact_mail_page_validate($form, &$form_state) {
 }
 
 /**
- * Process the site-wide contact page form submission.
+ * Form submission handler for contact_site_form().
  */
-function contact_mail_page_submit($form, &$form_state) {
+function contact_site_form_submit($form, &$form_state) {
   global $language;
 
   $values = $form_state['values'];
@@ -159,7 +151,7 @@ function contact_mail_page_submit($form, &$form_state) {
 /**
  * Personal contact page.
  */
-function contact_user_page($account) {
+function contact_personal_page($account) {
   global $user;
 
   if (!valid_email_address($user->mail)) {
@@ -170,23 +162,26 @@ function contact_user_page($account) {
   }
   else {
     drupal_set_title($account->name);
-    $output = drupal_get_form('contact_mail_user', $account);
+    $output = drupal_get_form('contact_personal_form', $account);
   }
 
   return $output;
 }
 
-function contact_mail_user(&$form_state, $recipient) {
+/*
+ * Form builder; the personal contact form.
+ */
+function contact_personal_form(&$form_state, $recipient) {
   global $user;
   $form['#token'] = $user->name . $user->mail;
   $form['recipient'] = array('#type' => 'value', '#value' => $recipient);
   $form['from'] = array('#type' => 'item',
     '#title' => t('From'),
-    '#markup' => check_plain($user->name) . ' &lt;' . check_plain($user->mail) . '&gt;',
+    '#markup' => theme('username', $user) . ' &lt;' . check_plain($user->mail) . '&gt;',
   );
   $form['to'] = array('#type' => 'item',
     '#title' => t('To'),
-    '#markup' => check_plain($recipient->name),
+    '#markup' => theme('username', $recipient),
   );
   $form['subject'] = array('#type' => 'textfield',
     '#title' => t('Subject'),
@@ -208,9 +203,9 @@ function contact_mail_user(&$form_state, $recipient) {
 }
 
 /**
- * Process the personal contact page form submission.
+ * Form submission handler for contact_personal_form().
  */
-function contact_mail_user_submit($form, &$form_state) {
+function contact_personal_form_submit($form, &$form_state) {
   global $user, $language;
 
   $account = $form_state['values']['recipient'];

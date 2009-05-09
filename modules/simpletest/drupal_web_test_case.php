@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.91 2009/03/17 23:26:33 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.103 2009/05/03 20:01:11 webchick Exp $
 
 /**
  * Test case for typical Drupal tests.
@@ -56,11 +56,11 @@ class DrupalWebTestCase {
   protected $elements = NULL;
 
   /**
-   * Whether a user is logged in the internal browser.
+   * The current user logged in using the internal browser.
    *
    * @var bool
    */
-  protected $isLoggedIn = FALSE;
+  protected $loggedInUser = FALSE;
 
   /**
    * The current cookie file used by cURL.
@@ -120,6 +120,11 @@ class DrupalWebTestCase {
    * Time limit for the test.
    */
   protected $timeLimit = 180;
+
+  /**
+   * HTTP authentication credentials (<username>:<password>).
+   */
+  protected $httpauth_credentials = NULL;
 
 
   /**
@@ -395,6 +400,10 @@ class DrupalWebTestCase {
    * Run all tests in this class.
    */
   public function run() {
+    // HTTP auth settings (<username>:<password>) for the simpletest browser
+    // when sending requests to the test site.
+    $this->httpauth_credentials = variable_get('simpletest_httpauth_credentials', NULL);
+
     set_error_handler(array($this, 'errorHandler'));
     $methods = array();
     // Iterate through all the methods in this class.
@@ -486,7 +495,7 @@ class DrupalWebTestCase {
    */
   protected function drupalCreateNode($settings = array()) {
     // Populate defaults array
-    $defaults = array(
+    $settings += array(
       'body'      => $this->randomName(32),
       'title'     => $this->randomName(8),
       'comment'   => 2,
@@ -502,18 +511,30 @@ class DrupalWebTestCase {
       'revisions' => NULL,
       'taxonomy'  => NULL,
     );
-    $defaults['teaser'] = $defaults['body'];
-    // If we already have a node, we use the original node's created time, and this
-    if (isset($defaults['created'])) {
-      $defaults['date'] = format_date($defaults['created'], 'custom', 'Y-m-d H:i:s O');
-    }
-    if (empty($settings['uid'])) {
-      global $user;
-      $defaults['uid'] = $user->uid;
-    }
-    $node = ($settings + $defaults);
-    $node = (object)$node;
 
+    // Use the original node's created time for existing nodes.
+    if (isset($settings['created']) && !isset($settings['date'])) {
+      $settings['date'] = format_date($settings['created'], 'custom', 'Y-m-d H:i:s O');
+    }
+
+    // Add the default teaser.
+    if (!isset($settings['teaser'])) {
+      $settings['teaser'] = $settings['body'];
+    }
+
+    // If the node's user uid is not specified manually, use the currently
+    // logged in user if available, or else the user running the test.
+    if (!isset($settings['uid'])) {
+      if ($this->loggedInUser) {
+        $settings['uid'] = $this->loggedInUser->uid;
+      }
+      else {
+        global $user;
+        $settings['uid'] = $user->uid;
+      }
+    }
+
+    $node = (object) $settings;
     node_save($node);
 
     // small hack to link revisions to our test user
@@ -533,7 +554,7 @@ class DrupalWebTestCase {
   protected function drupalCreateContentType($settings = array()) {
     // find a non-existent random type name.
     do {
-      $name = strtolower($this->randomName(3, 'type_'));
+      $name = strtolower($this->randomName(8));
     } while (node_get_types('type', $name));
 
     // Populate defaults array
@@ -620,24 +641,50 @@ class DrupalWebTestCase {
   }
 
   /**
-   * Generates a random string.
+   * Generates a random string of ASCII characters of codes 32 to 126.
    *
-   * @param $number
-   *   Number of characters in length to append to the prefix.
-   * @param $prefix
-   *   Prefix to use.
+   * The generated string includes alpha-numeric characters and common misc
+   * characters. Use this method when testing general input where the content
+   * is not restricted.
+   *
+   * @param $length
+   *   Length of random string to generate which will be appended to $db_prefix.
    * @return
    *   Randomly generated string.
    */
-  public static function randomName($number = 4, $prefix = 'simpletest_') {
-    $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_';
-    for ($x = 0; $x < $number; $x++) {
-      $prefix .= $chars{mt_rand(0, strlen($chars) - 1)};
-      if ($x == 0) {
-        $chars .= '0123456789';
-      }
+  public static function randomString($length = 8) {
+    global $db_prefix;
+
+    $str = '';
+    for ($i = 0; $i < $length; $i++) {
+      $str .= chr(mt_rand(32, 126));
     }
-    return $prefix;
+    return str_replace('simpletest', 's', $db_prefix) . $str;
+  }
+
+  /**
+   * Generates a random string containing letters and numbers.
+   *
+   * The letters may be upper or lower case. This method is better for
+   * restricted inputs that do not accept certain characters. For example,
+   * when testing input fields that require machine readable values (ie without
+   * spaces and non-standard characters) this method is best.
+   *
+   * @param $length
+   *   Length of random string to generate which will be appended to $db_prefix.
+   * @return
+   *   Randomly generated string.
+   */
+  public static function randomName($length = 8) {
+    global $db_prefix;
+
+    $values = array_merge(range(65, 90), range(97, 122), range(48, 57));
+    $max = count($values) - 1;
+    $str = '';
+    for ($i = 0; $i < $length; $i++) {
+      $str .= chr($values[mt_rand(0, $max)]);
+    }
+    return str_replace('simpletest', 's', $db_prefix) . $str;
   }
 
   /**
@@ -650,9 +697,9 @@ class DrupalWebTestCase {
    *   A fully loaded user object with pass_raw property, or FALSE if account
    *   creation fails.
    */
-  protected function drupalCreateUser($permissions = NULL) {
+  protected function drupalCreateUser($permissions = array('access comments', 'access content', 'post comments', 'post comments without approval')) {
     // Create a role with the given permission set.
-    if (!($rid = $this->_drupalCreateRole($permissions))) {
+    if (!($rid = $this->drupalCreateRole($permissions))) {
       return FALSE;
     }
 
@@ -684,12 +731,7 @@ class DrupalWebTestCase {
    * @return
    *   Role ID of newly created role, or FALSE if role creation failed.
    */
-  protected function _drupalCreateRole(array $permissions = NULL) {
-    // Generate string version of permissions list.
-    if ($permissions === NULL) {
-      $permissions = array('access comments', 'access content', 'post comments', 'post comments without approval');
-    }
-
+  protected function drupalCreateRole(array $permissions) {
     if (!$this->checkPermissions($permissions)) {
       return FALSE;
     }
@@ -768,7 +810,7 @@ class DrupalWebTestCase {
    * @see drupalCreateUser()
    */
   protected function drupalLogin(stdClass $user) {
-    if ($this->isLoggedIn) {
+    if ($this->loggedInUser) {
       $this->drupalLogout();
     }
 
@@ -782,7 +824,9 @@ class DrupalWebTestCase {
     $pass = $pass && $this->assertNoText(t('The username %name has been blocked.', array('%name' => $user->name)), t('No blocked message at login page'), t('User login'));
     $pass = $pass && $this->assertNoText(t('The name %name is a reserved username.', array('%name' => $user->name)), t('No reserved message at login page'), t('User login'));
 
-    $this->isLoggedIn = $pass;
+    if ($pass) {
+      $this->loggedInUser = $user;
+    }
   }
 
   /*
@@ -797,7 +841,9 @@ class DrupalWebTestCase {
     $pass = $this->assertField('name', t('Username field found.'), t('Logout'));
     $pass = $pass && $this->assertField('pass', t('Password field found.'), t('Logout'));
 
-    $this->isLoggedIn = !$pass;
+    if ($pass) {
+      $this->loggedInUser = FALSE;
+    }
   }
 
   /**
@@ -815,6 +861,7 @@ class DrupalWebTestCase {
 
     // Store necessary current values before switching to prefixed database.
     $this->originalPrefix = $db_prefix;
+    $this->originalFileDirectory = file_directory_path();
     $clean_url_original = variable_get('clean_url', 0);
 
     // Generate temporary prefixed database to ensure that tests have a clean starting point.
@@ -858,10 +905,11 @@ class DrupalWebTestCase {
     variable_set('site_mail', 'simpletest@example.com');
 
     // Use temporary files directory with the same prefix as database.
-    $this->originalFileDirectory = file_directory_path();
-    variable_set('file_directory_path', file_directory_path() . '/' . $db_prefix);
+    variable_set('file_directory_path', $this->originalFileDirectory . '/' . $db_prefix);
     $directory = file_directory_path();
-    file_check_directory($directory, FILE_CREATE_DIRECTORY); // Create the files directory.
+    // Create the files directory.
+    file_check_directory($directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS);
+
     set_time_limit($this->timeLimit);
   }
 
@@ -919,7 +967,7 @@ class DrupalWebTestCase {
       drupal_save_session(TRUE);
 
       // Ensure that internal logged in variable and cURL options are reset.
-      $this->isLoggedIn = FALSE;
+      $this->loggedInUser = FALSE;
       $this->additionalCurlOptions = array();
 
       // Reload module list and implementations to ensure that test module hooks
@@ -941,9 +989,10 @@ class DrupalWebTestCase {
   /**
    * Initializes the cURL connection.
    *
-   * This function will add authentication headers as specified in the
-   * simpletest_httpauth_username and simpletest_httpauth_pass variables. Also,
-   * see the description of $curl_options among the properties.
+   * If the simpletest_httpauth_credentials variable is set, this function will
+   * add HTTP authentication headers. This is necessary for testing sites that
+   * are protected by login credentials from public access.
+   * See the description of $curl_options for other options.
    */
   protected function curlInitialize() {
     global $base_url, $db_prefix;
@@ -962,11 +1011,8 @@ class DrupalWebTestCase {
       if (preg_match('/simpletest\d+/', $db_prefix, $matches)) {
         $curl_options[CURLOPT_USERAGENT] = $matches[0];
       }
-      if (!isset($curl_options[CURLOPT_USERPWD]) && ($auth = variable_get('simpletest_httpauth_username', ''))) {
-        if ($pass = variable_get('simpletest_httpauth_pass', '')) {
-          $auth .= ':' . $pass;
-        }
-        $curl_options[CURLOPT_USERPWD] = $auth;
+      if (isset($this->httpauth_credentials)) {
+        $curl_options[CURLOPT_USERPWD] = $this->httpauth_credentials;
       }
       curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
     }
@@ -983,6 +1029,14 @@ class DrupalWebTestCase {
   protected function curlExec($curl_options) {
     $this->curlInitialize();
     $url = empty($curl_options[CURLOPT_URL]) ? curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL) : $curl_options[CURLOPT_URL];
+    if (!empty($curl_options[CURLOPT_POST])) {
+      // This is a fix for the Curl library to prevent Expect: 100-continue
+      // headers in POST requests, that may cause unexpected HTTP response
+      // codes from some webservers (like lighttpd that returns a 417 error
+      // code). It is done by setting an empty "Expect" header field that is
+      // not overwritten by Curl.
+      $curl_options[CURLOPT_HTTPHEADER][] = 'Expect:';
+    }
     curl_setopt_array($this->curlHandle, $this->additionalCurlOptions + $curl_options);
     $this->headers = array();
     $this->drupalSetContent(curl_exec($this->curlHandle), curl_getinfo($this->curlHandle, CURLINFO_EFFECTIVE_URL));
@@ -1621,7 +1675,10 @@ class DrupalWebTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertRaw($raw, $message = '%s found', $group = 'Other') {
+  protected function assertRaw($raw, $message = '', $group = 'Other') {
+    if (!$message) {
+      $message = t('Raw "@raw" found', array('@raw' => check_plain($raw)));
+    }
     return $this->assert(strpos($this->content, $raw) !== FALSE, $message, $group);
   }
 
@@ -1638,7 +1695,10 @@ class DrupalWebTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoRaw($raw, $message = '%s found', $group = 'Other') {
+  protected function assertNoRaw($raw, $message = '', $group = 'Other') {
+    if (!$message) {
+      $message = t('Raw "@raw" not found', array('@raw' => check_plain($raw)));
+    }
     return $this->assert(strpos($this->content, $raw) === FALSE, $message, $group);
   }
 
@@ -1699,7 +1759,7 @@ class DrupalWebTestCase {
       $this->plainTextContent = filter_xss($this->content, array());
     }
     if (!$message) {
-      $message = '"' . $text . '"' . ($not_exists ? ' not found' : ' found');
+      $message = !$not_exists ? t('"@text" found', array('@text' => $text)) : t('"@text" not found', array('@text' => $text));
     }
     return $this->assert($not_exists == (strpos($this->plainTextContent, $text) === FALSE), $message, $group);
   }
@@ -1788,7 +1848,10 @@ class DrupalWebTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertPattern($pattern, $message = 'Pattern %s found', $group = 'Other') {
+  protected function assertPattern($pattern, $message = '', $group = 'Other') {
+    if (!$message) {
+      $message = t('Pattern "@pattern" found', array('@pattern' => $pattern));
+    }
     return $this->assert((bool) preg_match($pattern, $this->drupalGetContent()), $message, $group);
   }
 
@@ -1804,7 +1867,10 @@ class DrupalWebTestCase {
    * @return
    *   TRUE on pass, FALSE on fail.
    */
-  protected function assertNoPattern($pattern, $message = 'Pattern %s not found', $group = 'Other') {
+  protected function assertNoPattern($pattern, $message = '', $group = 'Other') {
+    if (!$message) {
+      $message = t('Pattern "@pattern" not found', array('@pattern' => $pattern));
+    }
     return $this->assert(!preg_match($pattern, $this->drupalGetContent()), $message, $group);
   }
 
@@ -1821,7 +1887,7 @@ class DrupalWebTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   protected function assertTitle($title, $message, $group = 'Other') {
-    return $this->assertTrue($this->xpath('//title[text()="' . $title . '"]'), $message, $group);
+    return $this->assertEqual(current($this->xpath('//title')), $title, $message, $group);
   }
 
   /**
@@ -1837,7 +1903,7 @@ class DrupalWebTestCase {
    *   TRUE on pass, FALSE on fail.
    */
   protected function assertNoTitle($title, $message, $group = 'Other') {
-    return $this->assertFalse($this->xpath('//title[text()="' . $title . '"]'), $message, $group);
+    return $this->assertNotEqual(current($this->xpath('//title')), $title, $message, $group);
   }
 
   /**
@@ -2077,59 +2143,6 @@ class DrupalWebTestCase {
     $curl_code = curl_getinfo($this->curlHandle, CURLINFO_HTTP_CODE);
     $match = is_array($code) ? in_array($curl_code, $code) : $curl_code == $code;
     return $this->assertTrue($match, $message ? $message : t('HTTP response expected !code, actual !curl_code', array('!code' => $code, '!curl_code' => $curl_code)), t('Browser'));
-  }
-
-  /**
-   * TODO write documentation.
-   * @param $type
-   * @param $field_name
-   * @param $settings
-   * @return unknown_type
-   */
-  protected function drupalCreateField($type, $field_name = NULL, $settings = array()) {
-    if (!isset($field_name)) {
-      $field_name = strtolower($this->randomName());
-    }
-    $field_definition = array(
-      'field_name' => $field_name,
-      'type' => $type,
-    );
-    $field_definition += $settings;
-    field_create_field($field_definition);
-
-    $field = field_read_field($field_name);
-    $this->assertTrue($field, t('Created field @field_name of type @type.', array('@field_name' => $field_name, '@type' => $type)));
-
-    return $field;
-  }
-
-  /**
-   * TODO write documentation.
-   * @param $field_name
-   * @param $widget_type
-   * @param $display_type
-   * @param $bundle
-   * @return unknown_type
-   */
-  protected function drupalCreateFieldInstance($field_name, $widget_type, $formatter_type, $bundle) {
-    $instance_definition = array(
-      'field_name' => $field_name,
-      'bundle' => $bundle,
-      'widget' => array(
-        'type' => $widget_type,
-      ),
-      'display' => array(
-        'full' => array(
-          'type' => $formatter_type,
-        ),
-      ),
-    );
-    field_create_instance($instance_definition);
-
-    $instance = field_read_instance($field_name, $bundle);
-    $this->assertTrue($instance, t('Created instance of field @field_name on bundle @bundle.', array('@field_name' => $field_name, '@bundle' => $bundle)));
-
-    return $instance;
   }
 }
 

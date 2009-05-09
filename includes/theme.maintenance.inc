@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.maintenance.inc,v 1.21 2008/11/24 10:41:39 dries Exp $
+// $Id: theme.maintenance.inc,v 1.24 2009/04/22 09:45:02 dries Exp $
 
 /**
  * @file
@@ -8,7 +8,7 @@
 
 /**
  * Sets up the theming system for site installs, updates and when the site is
- * in offline mode. It also applies when the database is unavailable.
+ * in maintenance mode. It also applies when the database is unavailable.
  *
  * Minnelli is always used for the initial install and update operations. In
  * other cases, "settings.php" must have a "maintenance_theme" key set for the
@@ -108,7 +108,7 @@ function theme_task_list($items, $active = NULL) {
  *   The page content to show.
  */
 function theme_install_page($content) {
-  drupal_set_header('Content-Type: text/html; charset=utf-8');
+  drupal_set_header('Content-Type', 'text/html; charset=utf-8');
 
   // Assign content.
   $variables['content'] = $content;
@@ -162,7 +162,7 @@ function theme_install_page($content) {
  */
 function theme_update_page($content, $show_messages = TRUE) {
   // Set required headers.
-  drupal_set_header('Content-Type: text/html; charset=utf-8');
+  drupal_set_header('Content-Type', 'text/html; charset=utf-8');
 
   // Assign content and show message flag.
   $variables['content'] = $content;
@@ -206,7 +206,7 @@ function theme_update_page($content, $show_messages = TRUE) {
 function template_preprocess_maintenance_page(&$variables) {
   // Add favicon
   if (theme_get_setting('toggle_favicon')) {
-    drupal_set_html_head('<link rel="shortcut icon" href="' . check_url(theme_get_setting('favicon')) . '" type="image/x-icon" />');
+    drupal_add_html_head('<link rel="shortcut icon" href="' . check_url(theme_get_setting('favicon')) . '" type="image/x-icon" />');
   }
 
   global $theme;

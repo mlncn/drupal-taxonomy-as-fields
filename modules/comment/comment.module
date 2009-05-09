@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.700 2009/03/17 12:41:54 dries Exp $
+// $Id: comment.module,v 1.708 2009/05/03 10:11:34 dries Exp $
 
 /**
  * @file
@@ -127,6 +127,9 @@ function comment_theme() {
     'comment' => array(
       'template' => 'comment',
       'arguments' => array('comment' => NULL, 'node' => NULL, 'links' => array()),
+    ),
+    'comment_form_box' => array(
+      'arguments' => array('edit' => NULL, 'title' => NULL),
     ),
     'comment_folded' => array(
       'template' => 'comment-folded',
@@ -420,7 +423,14 @@ function comment_node_view($node, $teaser) {
   $links = array();
 
   if ($node->comment) {
-    if ($teaser) {
+    if ($node->build_mode == NODE_BUILD_RSS) {
+      // Add a comments RSS element which is a URL to the comments of this node.
+      $node->rss_elements[] = array(
+        'key' => 'comments',
+        'value' => url('node/' . $node->nid, array('fragment' => 'comments', 'absolute' => TRUE))
+      );
+    }
+    else if ($teaser) {
       // Main page: display the number of comments that have been posted.
       if (user_access('access comments')) {
         if (!empty($node->comment_count)) {
@@ -580,6 +590,8 @@ function comment_form_alter(&$form, $form_state, $form_id) {
       '#title' => t('Comment settings'),
       '#collapsible' => TRUE,
       '#collapsed' => TRUE,
+      '#group' => 'additional_settings',
+      '#attached_js' => array(drupal_get_path('module', 'comment') . '/comment-node-form.js'),
       '#weight' => 30,
     );
     $comment_count = isset($node->nid) ? db_query('SELECT comment_count FROM {node_comment_statistics} WHERE nid = :nid', array(':nid' => $node->nid))->fetchField() : 0;
@@ -704,7 +716,7 @@ function comment_node_update_index($node) {
   $text = '';
   $comments = db_query('SELECT subject, comment, format FROM {comment} WHERE nid = :nid AND status = :status', array(':nid' => $node->nid, ':status' => COMMENT_PUBLISHED));
   foreach ($comments as $comment) {
-    $text .= '<h2>' . check_plain($comment->subject) . '</h2>' . check_markup($comment->comment, $comment->format, FALSE);
+    $text .= '<h2>' . check_plain($comment->subject) . '</h2>' . check_markup($comment->comment, $comment->format, '', FALSE);
   }
   return $text;
 }
@@ -723,18 +735,6 @@ function comment_update_index() {
 function comment_node_search_result($node) {
   $comments = db_query('SELECT comment_count FROM {node_comment_statistics} WHERE nid = :nid', array('nid' => $node->nid))->fetchField();
   return format_plural($comments, '1 comment', '@count comments');
-}
-
-/**
- * Implementation of hook_node_rss_item().
- */
-function comment_node_rss_item($node) {
-  if ($node->comment != COMMENT_NODE_HIDDEN) {
-    return array(array('key' => 'comments', 'value' => url('node/' . $node->nid, array('fragment' => 'comments', 'absolute' => TRUE))));
-  }
-  else {
-    return array();
-  }
 }
 
 /**
@@ -1189,15 +1189,17 @@ function comment_render($node, $cid = 0) {
         $comments .= '</div>';
       }
       $output .= $comments;
-      $output .= theme('pager', NULL, $comments_per_page, 0);
+      $output .= theme('pager', NULL);
     }
 
     // If enabled, show new comment form if it's not already being displayed.
     $reply = arg(0) == 'comment' && arg(1) == 'reply';
     if (user_access('post comments') && $node->comment == COMMENT_NODE_OPEN && (variable_get('comment_form_location_' . $node->type, COMMENT_FORM_SEPARATE_PAGE) == COMMENT_FORM_BELOW) && !$reply) {
-      $output .= comment_form_box(array('nid' => $nid), t('Post new comment'));
+      $output .= theme('comment_form_box', array('nid' => $nid), t('Post new comment'));
     }
-    $output = theme('comment_wrapper', $output, $node);
+    if ($output) {
+      $output = theme('comment_wrapper', $output, $node);
+    }
   }
 
   return $output;
@@ -1620,9 +1622,13 @@ function comment_form(&$form_state, $edit, $title = NULL) {
  *   The form structure.
  * @param $title
  *   The form title.
+ * @return
+ *   A string containing the box output.
  */
-function comment_form_box($edit, $title = NULL) {
-  return theme('box', $title, drupal_get_form('comment_form', $edit, $title));
+function theme_comment_form_box($edit, $title = NULL) {
+  $content = drupal_get_form('comment_form', $edit, $title);
+  $output = '<h2 class="title">' . $title . '</h2><div>' . $content . '</div>';
+  return $output;
 }
 
 /**
@@ -1757,7 +1763,9 @@ function comment_form_submit($form, &$form_state) {
   _comment_form_submit($form_state['values']);
   if ($cid = comment_save($form_state['values'])) {
     $node = node_load($form_state['values']['nid']);
-    $page = comment_new_page_count($node->comment_count, 1, $node);
+    // Add 1 to existing $node->comment count to include new comment.
+    $comment_count = $node->comment_count + 1;
+    $page = comment_new_page_count($comment_count, 1, $node);
     $form_state['redirect'] = array('node/' . $node->nid, $page, "comment-$cid");
     return;
   }
@@ -2210,7 +2218,7 @@ function comment_unpublish_by_keyword_action_submit($form, $form_state) {
  */
 function comment_unpublish_by_keyword_action($comment, $context) {
   foreach ($context['keywords'] as $keyword) {
-    if (strstr($comment->comment, $keyword) || strstr($comment->subject, $keyword)) {
+    if (strpos($comment->comment, $keyword) !== FALSE || strpos($comment->subject, $keyword) !== FALSE) {
       db_update('comment')
         ->fields(array('status' => COMMENT_NOT_PUBLISHED,))
         ->condition('cid', $comment->cid)

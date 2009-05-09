@@ -1,8 +1,8 @@
 <?php
-// $Id: upload.test,v 1.13 2009/02/22 17:55:30 dries Exp $
+// $Id: upload.test,v 1.18 2009/04/29 12:08:28 dries Exp $
 
 class UploadTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Upload functionality'),
       'description' => t('Check content uploaded to nodes.'),
@@ -20,7 +20,7 @@ class UploadTestCase extends DrupalWebTestCase {
   function testNodeUpload() {
     global $base_url;
     $admin_user = $this->drupalCreateUser(array('administer site configuration'));
-    $web_user = $this->drupalCreateUser(array('access content', 'edit any page content', 'upload files', 'view uploaded files'));
+    $web_user = $this->drupalCreateUser(array('access content', 'edit own page content', 'upload files', 'view uploaded files'));
 
     $this->drupalLogin($admin_user);
 
@@ -48,6 +48,11 @@ class UploadTestCase extends DrupalWebTestCase {
     $this->assertText(basename($files[0]), basename($files[0]) . ' found on node.');
     $this->assertText(basename($files[1]), basename($files[1]) . ' found on node.');
 
+    $this->checkUploadedFile(basename($files[0]));
+    $this->checkUploadedFile(basename($files[1]));
+
+    // Check that files are also accessible when using private files.
+    variable_set('file_downloads', FILE_DOWNLOADS_PRIVATE);
     $this->checkUploadedFile(basename($files[0]));
     $this->checkUploadedFile(basename($files[1]));
 
@@ -88,7 +93,7 @@ class UploadTestCase extends DrupalWebTestCase {
    */
   function testFilesFilter() {
     $admin_user = $this->drupalCreateUser(array('administer site configuration'));
-    $web_user = $this->drupalCreateUser(array('access content', 'edit any page content', 'upload files', 'view uploaded files'));
+    $web_user = $this->drupalCreateUser(array('access content', 'edit own page content', 'upload files', 'view uploaded files'));
 
     $this->drupalLogin($admin_user);
 
@@ -131,7 +136,7 @@ class UploadTestCase extends DrupalWebTestCase {
     $file = current($files)->filepath;
 
     $admin_user = $this->drupalCreateUser(array('administer site configuration'));
-    $web_user = $this->drupalCreateUser(array('access content', 'edit any page content', 'upload files', 'view uploaded files'));
+    $web_user = $this->drupalCreateUser(array('access content', 'edit own page content', 'upload files', 'view uploaded files'));
 
     $this->drupalLogin($admin_user);
 
@@ -195,10 +200,14 @@ class UploadTestCase extends DrupalWebTestCase {
    */
   function checkUploadedFile($filename) {
     global $base_url;
-    $file = realpath(file_directory_path() . '/' . $filename);
-    $this->drupalGet($base_url . '/' . file_directory_path() . '/' . $filename, array('external' => TRUE));
+    $file = file_directory_path() . '/' . $filename;
+    $this->drupalGet(file_create_url($file), array('external' => TRUE));
     $this->assertResponse(array(200), 'Uploaded ' . $filename . ' is accessible.');
+    $this->assertTrue(strpos($this->drupalGetHeader('Content-Type'), 'text/plain') === 0, t('MIME type is text/plain.'));
     $this->assertEqual(file_get_contents($file), $this->drupalGetContent(), 'Uploaded contents of ' . $filename . ' verified.');
+    // Verify file actually is readable and writeable by PHP.
+    $this->assertTrue(is_readable($file), t('Uploaded file is readable.'));
+    $this->assertTrue(is_writeable($file), t('Uploaded file is writeable.'));
   }
 
   /**
@@ -209,7 +218,7 @@ class UploadTestCase extends DrupalWebTestCase {
    */
   function getSimpletestRoleId($user) {
     foreach ($user->roles as $rid => $role) {
-      if (strpos($role, 'simpletest') !== FALSE) {
+      if (preg_match('/s\d+/', $role)) {
         return $rid;
       }
     }

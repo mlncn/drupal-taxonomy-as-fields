@@ -1,8 +1,8 @@
-// $Id: color.js,v 1.10 2009/03/13 23:15:09 webchick Exp $
-(function($) {
+// $Id: color.js,v 1.12 2009/04/27 20:19:35 webchick Exp $
+(function ($) {
 
 Drupal.behaviors.color = {
-  attach: function(context, settings) {
+  attach: function (context, settings) {
     // This behavior attaches by ID, so is only valid once on a page.
     if ($('#color_scheme_form .color-form.color-processed').size()) {
       return;

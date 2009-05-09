@@ -1,12 +1,12 @@
 <?php
-// $Id: tracker.test,v 1.6 2009/02/09 16:27:35 dries Exp $
+// $Id: tracker.test,v 1.9 2009/04/29 12:08:28 dries Exp $
 
 class TrackerTest extends DrupalWebTestCase {
   protected $user;
   protected $other_user;
   protected $new_node;
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Tracker'),
       'description' => t('Create nodes and check for their display in the tracker listings.'),
@@ -17,7 +17,7 @@ class TrackerTest extends DrupalWebTestCase {
   function setUp() {
     parent::setUp('comment', 'tracker');
 
-    $permissions = array('access comments', 'post comments', 'post comments without approval');
+    $permissions = array('access comments', 'create page content', 'post comments', 'post comments without approval');
     $this->user = $this->drupalCreateUser($permissions);
     $this->other_user = $this->drupalCreateUser($permissions);
   }
@@ -29,11 +29,11 @@ class TrackerTest extends DrupalWebTestCase {
     $this->drupalLogin($this->user);
 
     $page1 = array(
-      'title' => $this->randomName(4, 'published_'),
+      'title' => $this->randomName(8),
       'status' => 1,
     );
     $page2 = array(
-      'title' => $this->randomName(4, 'unpublished_'),
+      'title' => $this->randomName(8),
       'status' => 0,
     );
     $this->drupalCreateNode($page1);
@@ -52,12 +52,12 @@ class TrackerTest extends DrupalWebTestCase {
     $this->drupalLogin($this->user);
 
     $page1 = array(
-      'title' => $this->randomName(4, 'published_'),
+      'title' => $this->randomName(8),
       'uid' => $this->user->uid,
       'status' => 1,
     );
     $page2 = array(
-      'title' => $this->randomName(4, 'unpublished_'),
+      'title' => $this->randomName(8),
       'uid' => $this->user->uid,
       'status' => 0,
     );

@@ -1,5 +1,5 @@
 <?php
-// $Id: blogapi.module,v 1.146 2009/03/17 12:41:54 dries Exp $
+// $Id: blogapi.module,v 1.150 2009/05/09 18:28:11 dries Exp $
 
 /**
  * @file
@@ -148,7 +148,7 @@ function blogapi_blogger_get_users_blogs($appid, $username, $password) {
     $types = _blogapi_get_node_types();
     $structs = array();
     foreach ($types as $type) {
-      $structs[] = array('url' => url('blog/' . $user->uid, array('absolute' => TRUE)), 'blogid' => $type, 'blogName' => $user->name . ": " . $type);
+      $structs[] = array('url' => url('user/' . $user->uid, array('absolute' => TRUE)), 'blogid' => $type, 'blogName' => $user->name . ": " . $type);
     }
 
     return $structs;
@@ -172,7 +172,7 @@ function blogapi_blogger_get_user_info($appkey, $username, $password) {
       'firstname' => $name[0],
       'nickname' => $user->name,
       'email' => $user->mail,
-      'url' => url('blog/' . $user->uid, array('absolute' => TRUE)));
+      'url' => url('user/' . $user->uid, array('absolute' => TRUE)));
   }
   else {
     return blogapi_error($user);
@@ -224,7 +224,7 @@ function blogapi_blogger_new_post($appkey, $blogid, $username, $password, $conte
     $edit['date'] = format_date(REQUEST_TIME, 'custom', 'Y-m-d H:i:s O');
   }
 
-  node_invoke_node($edit, 'blogapi_new');
+  module_invoke_all('node_blogapi_new', $edit);
 
   $valid = blogapi_status_error_check($edit, $publish);
   if ($valid !== TRUE) {
@@ -282,7 +282,7 @@ function blogapi_blogger_edit_post($appkey, $postid, $username, $password, $cont
     $node->body = $content;
   }
 
-  node_invoke_node($node, 'blogapi_edit');
+  module_invoke_all('node_blogapi_edit', $node);
 
   $valid = blogapi_status_error_check($node, $original_status);
   if ($valid !== TRUE) {
@@ -849,7 +849,7 @@ function blogapi_rsd() {
   $base = url('', array('absolute' => TRUE));
   $blogid = 1; # until we figure out how to handle multiple bloggers
 
-  drupal_set_header('Content-Type: application/rsd+xml; charset=utf-8');
+  drupal_set_header('Content-Type', 'application/rsd+xml; charset=utf-8');
   print <<<__RSD__
 <?xml version="1.0"?>
 <rsd version="1.0" xmlns="http://archipelago.phrasewise.com/rsd">
@@ -870,7 +870,7 @@ __RSD__;
 /**
  * Handles extra information sent by clients according to MovableType's spec.
  */
-function _blogapi_mt_extra(&$node, $struct) {
+function _blogapi_mt_extra($node, $struct) {
   if (is_array($node)) {
     $was_array = TRUE;
     $node = (object)$node;

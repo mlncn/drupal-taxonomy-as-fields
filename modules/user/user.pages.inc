@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.32 2009/03/26 13:31:28 webchick Exp $
+// $Id: user.pages.inc,v 1.35 2009/05/06 11:31:44 dries Exp $
 
 /**
  * @file
@@ -13,7 +13,7 @@ function user_autocomplete($string = '') {
   $matches = array();
   if ($string) {
     $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", array(':name' => $string .'%'), 0, 10);
-    while ($user = db_fetch_object($result)) {
+    foreach ($result as $user) {
       $matches[$user->name] = check_plain($user->name);
     }
   }
@@ -148,15 +148,35 @@ function user_logout() {
 
 /**
  * Menu callback; Displays a user or user profile page.
+ *
+ * The $page['content'] array for user profile pages contains:
+ *
+ * - $page['content']['Profile Category']:
+ *   Profile categories keyed by their human-readable names.
+ * - $page['content']['Profile Category']['profile_machine_name']:
+ *   Profile fields keyed by their machine-readable names.
+ * - $page['content']['user_picture']:
+ *   User's rendered picture.
+ * - $page['content']['summary']:
+ *   Contains the default "History" profile data for a user.
+ * - $page['content']['#account']:
+ *   The user account of the profile being viewed.
+ * 
+ * To theme user profiles, copy modules/user/user-profile.tpl.php
+ * to your theme directory, and edit it as instructed in that file's comments.
  */
 function user_view($account) {
   drupal_set_title($account->name);
   // Retrieve all profile fields and attach to $account->content.
   user_build_content($account);
+  
+  $build = $account->content;
+  $build += array(
+    '#theme' => 'user_profile',
+    '#account' => $account,
+  );
 
-  // To theme user profiles, copy modules/user/user_profile.tpl.php
-  // to your theme directory, and edit it as instructed in that file's comments.
-  return theme('user_profile', $account);
+  return drupal_get_page($build);
 }
 
 /**
@@ -168,18 +188,20 @@ function user_view($account) {
  * @see user-picture.tpl.php
  */
 function template_preprocess_user_profile(&$variables) {
+  $account = $variables['elements']['#account'];
+  
   $variables['profile'] = array();
   // Sort sections by weight
-  uasort($variables['account']->content, 'element_sort');
+  uasort($account->content, 'element_sort');
   // Provide keyed variables so themers can print each section independently.
-  foreach (element_children($variables['account']->content) as $key) {
-    $variables['profile'][$key] = drupal_render($variables['account']->content[$key]);
+  foreach (element_children($account->content) as $key) {
+    $variables['profile'][$key] = drupal_render($account->content[$key]);
   }
   // Collect all profiles to make it easier to print all items at once.
   $variables['user_profile'] = implode($variables['profile']);
 
   // Add $FIELD_NAME_rendered variables for fields.
-  $variables += field_attach_preprocess('user', $variables['account']);
+  $variables += field_attach_preprocess('user', $account);
 }
 
 /**

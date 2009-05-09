@@ -1,9 +1,9 @@
-// $Id: textarea.js,v 1.27 2009/03/13 23:15:08 webchick Exp $
-(function($) {
+// $Id: textarea.js,v 1.29 2009/04/27 20:19:35 webchick Exp $
+(function ($) {
 
 Drupal.behaviors.textarea = {
-  attach: function(context, settings) {
-    $('textarea.resizable:not(.textarea-processed)', context).each(function() {
+  attach: function (context, settings) {
+    $('textarea.resizable:not(.textarea-processed)', context).each(function () {
       // Avoid non-processed teasers.
       if ($(this).is(('textarea.teaser:not(.teaser-processed)'))) {
         return false;
@@ -16,7 +16,7 @@ Drupal.behaviors.textarea = {
         .parent().append($('<div class="grippie"></div>').mousedown(startDrag));
 
       var grippie = $('div.grippie', $(this).parent())[0];
-      grippie.style.marginRight = (grippie.offsetWidth - $(this)[0].offsetWidth) +'px';
+      grippie.style.marginRight = (grippie.offsetWidth - $(this)[0].offsetWidth) + 'px';
 
       function startDrag(e) {
         staticOffset = textarea.height() - e.pageY;
@@ -31,7 +31,7 @@ Drupal.behaviors.textarea = {
       }
 
       function endDrag(e) {
-        $(document).unbind("mousemove", performDrag).unbind("mouseup", endDrag);
+        $(document).unbind('mousemove', performDrag).unbind('mouseup', endDrag);
         textarea.css('opacity', 1);
       }
     });

@@ -1,8 +1,14 @@
 <?php
+// $Id: query.inc,v 1.21 2009/05/03 08:55:06 dries Exp $
 
 /**
  * @ingroup database
  * @{
+ */
+
+/**
+ * @file
+ * Non-specific Database query code. Used by all engines.
  */
 
 /**
@@ -428,6 +434,11 @@ class InsertQuery extends Query {
       return NULL;
     }
 
+    // Don't execute query without values.
+    if (!isset($this->insertValues[0]) && count($this->insertFields) > 0) {
+      return NULL;
+    }
+
     // Each insert happens in its own query in the degenerate case. However,
     // we wrap it in a transaction so that it is atomic where possible. On many
     // databases, such as SQLite, this is also a notable performance boost.
@@ -457,7 +468,7 @@ class InsertQuery extends Query {
     $placeholders = array_pad($placeholders, count($this->defaultFields), 'default');
     $placeholders = array_pad($placeholders, count($this->insertFields), '?');
 
-    return 'INSERT INTO {'. $this->table .'} ('. implode(', ', $insert_fields) .') VALUES ('. implode(', ', $placeholders) .')';
+    return 'INSERT INTO {' . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES (' . implode(', ', $placeholders) . ')';
   }
 }
 
@@ -818,6 +829,38 @@ class DeleteQuery extends Query implements QueryConditionInterface {
   }
 }
 
+
+/**
+ * General class for an abstracted TRUNCATE operation.
+ */
+class TruncateQuery extends Query {
+
+  /**
+   * The table from which to delete.
+   *
+   * @var string
+   */
+  protected $table;
+
+  public function __construct(DatabaseConnection $connection, $table, array $options = array()) {
+    $options['return'] = Database::RETURN_AFFECTED;
+    parent::__construct($connection, $options);
+    $this->table = $table;
+  }
+
+  public function compile(DatabaseConnection $connection) {
+    return $this->condition->compile($connection);
+  }
+
+  public function execute() {
+    return $this->connection->query((string)$this, array(), $this->queryOptions);
+  }
+
+  public function __toString() {
+    return 'TRUNCATE {' . $this->connection->escapeTable($this->table) . '} ';
+  }
+}
+
 /**
  * General class for an abstracted UPDATE operation.
  */
@@ -1077,6 +1120,8 @@ class DatabaseCondition implements QueryConditionInterface, Countable {
     // rather than just this query. That is OK, because we only need definitive
     // placeholder names if we're going to use them for _alter hooks, which we
     // are not. The alter hook would intervene before compilation.
+    // $next_placeholder does not use drupal_static as it increments and should
+    // never be reset during a request.
     static $next_placeholder = 1;
 
     if ($this->changed) {
@@ -1168,6 +1213,7 @@ class DatabaseCondition implements QueryConditionInterface, Countable {
    *   The extra handling directives for the specified operator, or NULL.
    */
   protected function mapConditionOperator($operator) {
+    // $specials does not use drupal_static as its value never changes.
     static $specials = array(
       'BETWEEN' => array('delimiter' => ' AND '),
       'IN' => array('delimiter' => ', ', 'prefix' => ' (', 'postfix' => ')'),

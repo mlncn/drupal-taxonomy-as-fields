@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.module,v 1.245 2009/03/27 00:40:42 webchick Exp $
+// $Id: filter.module,v 1.249 2009/05/06 10:49:08 dries Exp $
 
 /**
  * @file
@@ -364,7 +364,7 @@ function filter_format_allowcache($format) {
   static $cache = array();
   $format = filter_resolve_format($format);
   if (!isset($cache[$format])) {
-    $cache[$format] = db_result(db_query('SELECT cache FROM {filter_format} WHERE format = %d', $format));
+    $cache[$format] = db_query('SELECT cache FROM {filter_format} WHERE format = :format', array(':format' => $format))->fetchField();
   }
   return $cache[$format];
 }
@@ -377,8 +377,8 @@ function filter_list_format($format) {
 
   if (!isset($filters[$format])) {
     $filters[$format] = array();
-    $result = db_query("SELECT * FROM {filter} WHERE format = %d ORDER BY weight, module, delta", $format);
-    while ($filter = db_fetch_object($result)) {
+    $result = db_query("SELECT * FROM {filter} WHERE format = :format ORDER BY weight, module, delta", array(':format' => $format));
+    foreach ($result as $filter) {
       $list = module_invoke($filter->module, 'filter', 'list');
       if (isset($list) && is_array($list) && isset($list[$filter->delta])) {
         $filter->name = $list[$filter->delta];
@@ -435,9 +435,6 @@ function check_markup($text, $format = FILTER_FORMAT_DEFAULT, $langcode = '', $c
       return $cached->data;
     }
 
-    // See if caching is allowed for this format.
-    $cache = filter_format_allowcache($format);
-
     // Convert all Windows and Mac newlines to a single newline,
     // so filters only need to deal with one possibility.
     $text = str_replace(array("\r\n", "\r"), "\n", $text);
@@ -456,7 +453,7 @@ function check_markup($text, $format = FILTER_FORMAT_DEFAULT, $langcode = '', $c
     }
 
     // Store in cache with a minimum expiration time of 1 day.
-    if ($cache) {
+    if (filter_format_allowcache($format)) {
       cache_set($cache_id, $text, 'cache_filter', REQUEST_TIME + (60 * 60 * 24));
     }
   }
@@ -471,7 +468,6 @@ function check_markup($text, $format = FILTER_FORMAT_DEFAULT, $langcode = '', $c
  * Generate a selector for choosing a format in a form.
  *
  * @ingroup forms
- * @see filter_form_validate()
  * @param $value
  *   The ID of the format that is currently selected.
  * @param $weight
@@ -484,40 +480,44 @@ function check_markup($text, $format = FILTER_FORMAT_DEFAULT, $langcode = '', $c
 function filter_form($value = FILTER_FORMAT_DEFAULT, $weight = NULL, $parents = array('format')) {
   $value = filter_resolve_format($value);
   $formats = filter_formats();
-  
-  $form = array(
-   '#type' => 'fieldset',
-   '#weight' => $weight,
-   '#attributes' => array('class' => 'filter-wrapper'),
-  );
-  
+
+  drupal_add_js('misc/form.js');
+  drupal_add_css(drupal_get_path('module', 'filter') . '/filter.css');
   $element_id = form_clean_id('edit-' . implode('-', $parents));
-   
-  if (count($formats) > 1) {
-    foreach ($formats as $format) {
-      $options[$format->format] = $format->name;
-      $guidelines[$format->format] = array('#markup' => theme('filter_guidelines', $format));
-    }
-    drupal_add_js('misc/form.js');
-    $form['format'] = array(
-      '#type' => 'select',
-      '#title' => t('Text format'),
-      '#options' => $options,
-      '#default_value' => $value,
-      '#parents' => $parents,
-      '#id' => $element_id,
-      '#attributes' => array('class' => 'filter-list'),
+
+  $form = array(
+    '#type' => 'fieldset',
+    '#weight' => $weight,
+    '#attributes' => array('class' => 'filter-wrapper'),
+  );
+  $form['format_guidelines'] = array(
+    '#prefix' => '<div id="' . $element_id . '-guidelines" class="filter-guidelines">',
+    '#suffix' => '</div>',
+    '#weight' => 2,
+  );
+  foreach ($formats as $format) {
+    $options[$format->format] = $format->name;
+    $form['format_guidelines'][$format->format] = array(
+      '#markup' => theme('filter_guidelines', $format),
     );
   }
-  else {
-    // Only one format available: use a form value and only show label.
-    $format = array_shift($formats);
-    unset($format->name);
-    $guidelines = array('#markup' => theme('filter_guidelines', $format));
-    $form[$format->format] = array('#type' => 'value', '#value' => $format->format, '#parents' => $parents);
-  }
-  $form['format_help'] = array('#markup' => '<div id="' . $element_id . '-help" class="filter-help">' . theme('filter_tips_more_info') . '</div>');
-  $form['format_guidelines'] = array_merge($guidelines, array('#prefix' => '<div id="' . $element_id . '-guidelines" class="filter-guidelines">', '#suffix' => '</div>'));
+  $form['format'] = array(
+    '#type' => 'select',
+    '#title' => t('Text format'),
+    '#options' => $options,
+    '#default_value' => $value,
+    '#parents' => $parents,
+    '#access' => count($formats) > 1,
+    '#id' => $element_id,
+    '#attributes' => array('class' => 'filter-list'),
+  );
+  $form['format_help'] = array(
+    '#prefix' => '<div id="' . $element_id . '-help" class="filter-help">',
+    '#markup' => theme('filter_tips_more_info'),
+    '#suffix' => '</div>',
+    '#weight' => 1,
+  );
+
   return $form;
 }
 
@@ -548,7 +548,7 @@ function _filter_tips($format, $long = FALSE) {
     $formats = filter_formats();
   }
   else {
-    $formats = array(db_fetch_object(db_query("SELECT * FROM {filter_format} WHERE format = %d", $format)));
+    $formats = array(db_query("SELECT * FROM {filter_format} WHERE format = :format", array(':format' => $format))->fetchObject());
   }
 
   $tips = array();
@@ -583,7 +583,7 @@ function theme_filter_tips_more_info() {
  * @ingroup themeable
  */
 function theme_filter_guidelines($format) {
-  $name = isset($format->name) ? '<label>' . $format->name . ':</label>' : NULL;
+  $name = isset($format->name) ? '<label>' . $format->name . ':</label>' : '';
   return '<div id="filter-guidelines-' . $format->format . '" class="filter-guidelines-item">' . $name . theme('filter_tips', _filter_tips($format->format, FALSE)) . '</div>';
 }
 

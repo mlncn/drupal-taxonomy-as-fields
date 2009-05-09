@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.40 2009/02/26 07:30:28 webchick Exp $
+// $Id: user.admin.inc,v 1.45 2009/04/30 16:10:10 dries Exp $
 
 /**
  * @file
@@ -132,7 +132,6 @@ function user_filter_form_submit($form, &$form_state) {
  * @see user_admin_account_submit()
  */
 function user_admin_account() {
-  $filter = user_build_filter_query();
 
   $header = array(
     array(),
@@ -144,10 +143,21 @@ function user_admin_account() {
     t('Operations')
   );
 
-  $sql = 'SELECT DISTINCT u.uid, u.name, u.status, u.created, u.access FROM {users} u LEFT JOIN {users_roles} ur ON u.uid = ur.uid ' . $filter['join'] . ' WHERE u.uid != 0 ' . $filter['where'];
-  $sql .= tablesort_sql($header);
-  $query_count = 'SELECT COUNT(DISTINCT u.uid) FROM {users} u LEFT JOIN {users_roles} ur ON u.uid = ur.uid ' . $filter['join'] . ' WHERE u.uid != 0 ' . $filter['where'];
-  $result = pager_query($sql, 50, 0, $query_count, $filter['args']);
+  $query = db_select('users', 'u');
+  $query->leftJoin('users_roles', 'ur', 'u.uid = ur.uid');
+  $query->condition('u.uid', 0, '<>');
+  user_build_filter_query($query);
+  
+  $count_query = clone $query;
+  $count_query->addExpression('COUNT(DISTINCT u.uid)');
+
+  $query = $query->extend('PagerDefault')->extend('TableSort');
+  $query
+    ->fields('u', array('uid', 'name', 'status', 'created', 'access'))
+    ->limit(50)
+    ->setHeader($header)
+    ->setCountQuery($count_query);
+  $result = $query->execute();
 
   $form['options'] = array(
     '#type' => 'fieldset',
@@ -174,13 +184,13 @@ function user_admin_account() {
   $status = array(t('blocked'), t('active'));
   $roles = user_roles(TRUE);
   $accounts = array();
-  while ($account = db_fetch_object($result)) {
+  foreach ($result as $account) {
     $accounts[$account->uid] = '';
     $form['name'][$account->uid] = array('#markup' => theme('username', $account));
     $form['status'][$account->uid] =  array('#markup' => $status[$account->status]);
     $users_roles = array();
-    $roles_result = db_query('SELECT rid FROM {users_roles} WHERE uid = %d', $account->uid);
-    while ($user_role = db_fetch_object($roles_result)) {
+    $roles_result = db_query('SELECT rid FROM {users_roles} WHERE uid = :uid', array(':uid' => $account->uid));
+    foreach ($roles_result as $user_role) {
       $users_roles[] = $roles[$user_role->rid];
     }
     asort($users_roles);
@@ -193,7 +203,7 @@ function user_admin_account() {
     '#type' => 'checkboxes',
     '#options' => $accounts
   );
-  $form['pager'] = array('#markup' => theme('pager', NULL, 50, 0));
+  $form['pager'] = array('#markup' => theme('pager', NULL));
 
   return $form;
 }
@@ -238,7 +248,6 @@ function user_admin_settings() {
   $form['registration'] = array('#type' => 'fieldset', '#title' => t('User registration settings'));
   $form['registration']['user_register'] = array('#type' => 'radios', '#title' => t('Public registrations'), '#default_value' => variable_get('user_register', 1), '#options' => array(t('Only site administrators can create new user accounts.'), t('Visitors can create accounts and no administrator approval is required.'), t('Visitors can create accounts but administrator approval is required.')));
   $form['registration']['user_email_verification'] = array('#type' => 'checkbox', '#title' => t('Require e-mail verification when a visitor creates an account'), '#default_value' => variable_get('user_email_verification', TRUE), '#description' => t('If this box is checked, new users will be required to validate their e-mail address prior to logging into the site, and will be assigned a system-generated password. With it unchecked, users will be logged in immediately upon registering, and may select their own passwords during registration.'));
-  $form['registration']['user_registration_help'] = array('#type' => 'textarea', '#title' => t('User registration guidelines'), '#default_value' => variable_get('user_registration_help', ''), '#description' => t('This text is displayed at the top of the user registration form and is useful for helping or instructing your users.'));
 
   // Account cancellation settings.
   module_load_include('inc', 'user', 'user.pages');
@@ -564,6 +573,7 @@ function user_admin_perm($form_state, $rid = NULL) {
       $info = drupal_parse_info_file(drupal_get_path('module', $module) . "/$module.info");
       $form['permission'][] = array(
         '#markup' => $info['name'],
+        '#id' => $module,
         );
       foreach ($permissions as $perm => $perm_item) {
         $options[$perm] = '';
@@ -601,10 +611,17 @@ function user_admin_perm_submit($form, &$form_state) {
   foreach ($form_state['values']['role_names'] as $rid => $name) {
     $checked = array_filter($form_state['values'][$rid]);
     // Delete existing permissions for the role. This handles "unchecking" checkboxes.
-    db_query("DELETE FROM {role_permission} WHERE rid = %d", $rid);
+    db_delete('role_permission')
+      ->condition('rid', $rid)
+      ->execute();
+    $query = db_insert('role_permission')->fields(array('rid', 'permission'));
     foreach ($checked as $permission) {
-      db_query("INSERT INTO {role_permission} (rid, permission) VALUES (%d, '%s')", $rid, $permission);
+      $query->values(array(
+        'rid' => $rid,
+        'permission' => $permission,
+      ));
     }
+    $query->execute();
   }
 
   drupal_set_message(t('The changes have been saved.'));
@@ -626,7 +643,7 @@ function theme_user_admin_perm($form) {
       $row = array();
       // Module name
       if (is_numeric($key)) {
-        $row[] = array('data' => drupal_render($form['permission'][$key]), 'class' => 'module', 'id' => 'module-' . $form['permission'][$key]['#markup'], 'colspan' => count($form['role_names']) + 1);
+        $row[] = array('data' => drupal_render($form['permission'][$key]), 'class' => 'module', 'id' => 'module-' . $form['permission'][$key]['#id'], 'colspan' => count($form['role_names']) + 1);
       }
       else {
         // Permission row.
@@ -670,7 +687,7 @@ function user_admin_role() {
       drupal_goto('admin/user/roles');
     }
     // Display the edit role form.
-    $role = db_fetch_object(db_query('SELECT * FROM {role} WHERE rid = %d', $rid));
+    $role = db_query('SELECT * FROM {role} WHERE rid = :rid', array(':rid' => $rid))->fetchObject();
     $form['name'] = array(
       '#type' => 'textfield',
       '#title' => t('Role name'),
@@ -712,12 +729,16 @@ function user_admin_role() {
 function user_admin_role_validate($form, &$form_state) {
   if ($form_state['values']['name']) {
     if ($form_state['values']['op'] == t('Save role')) {
-      if (db_result(db_query("SELECT COUNT(*) FROM {role} WHERE name = '%s' AND rid != %d", $form_state['values']['name'], $form_state['values']['rid']))) {
+      $existing_role = db_query("SELECT COUNT(*) FROM {role} WHERE name = :name AND rid != :rid",
+                                array(':name' => $form_state['values']['name'],
+                                      ':rid' => $form_state['values']['rid']))
+                       ->fetchField();
+      if ($existing_role) {
         form_set_error('name', t('The role name %name already exists. Please choose another role name.', array('%name' => $form_state['values']['name'])));
       }
     }
     elseif ($form_state['values']['op'] == t('Add role')) {
-      if (db_result(db_query("SELECT COUNT(*) FROM {role} WHERE name = '%s'", $form_state['values']['name']))) {
+      if (db_query("SELECT COUNT(*) FROM {role} WHERE name = :name", array(':name' => $form_state['values']['name']))->fetchField()) {
         form_set_error('name', t('The role name %name already exists. Please choose another role name.', array('%name' => $form_state['values']['name'])));
       }
     }
@@ -729,19 +750,30 @@ function user_admin_role_validate($form, &$form_state) {
 
 function user_admin_role_submit($form, &$form_state) {
   if ($form_state['values']['op'] == t('Save role')) {
-    db_query("UPDATE {role} SET name = '%s' WHERE rid = %d", $form_state['values']['name'], $form_state['values']['rid']);
+    db_update('role')
+      ->fields(array('name' => $form_state['values']['name']))
+      ->condition('rid', $form_state['values']['rid'])
+      ->execute();
     drupal_set_message(t('The role has been renamed.'));
   }
   elseif ($form_state['values']['op'] == t('Delete role')) {
-    db_query('DELETE FROM {role} WHERE rid = %d', $form_state['values']['rid']);
-    db_query('DELETE FROM {role_permission} WHERE rid = %d', $form_state['values']['rid']);
+    db_delete('role')
+      ->condition('rid', $form_state['values']['rid'])
+      ->execute();
+    db_delete('role_permission')
+      ->condition('rid', $form_state['values']['rid'])
+      ->execute();
     // Update the users who have this role set:
-    db_query('DELETE FROM {users_roles} WHERE rid = %d', $form_state['values']['rid']);
+    db_delete('users_roles')
+      ->condition('rid', $form_state['values']['rid'])
+      ->execute();
 
     drupal_set_message(t('The role has been deleted.'));
   }
   elseif ($form_state['values']['op'] == t('Add role')) {
-    db_query("INSERT INTO {role} (name) VALUES ('%s')", $form_state['values']['name']);
+    db_insert('role')
+      ->fields(array('name' => $form_state['values']['name']))
+      ->execute();
     drupal_set_message(t('The role has been added.'));
   }
   $form_state['redirect'] = 'admin/user/roles';

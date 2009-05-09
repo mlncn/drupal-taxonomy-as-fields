@@ -1,4 +1,4 @@
-/* $Id: style.css,v 1.48 2009/02/18 14:28:25 webchick Exp $ */
+/* $Id: style.css,v 1.54 2009/04/26 15:01:06 dries Exp $ */
 
 /**
  * Generic elements
@@ -230,7 +230,7 @@ span.form-required {
   color: #ffae00;
 }
 
-span.submitted, .description {
+span.submitted, .description, .vertical-tab-button .summary {
   font-size: 0.92em;
   color: #898989;
 }
@@ -649,7 +649,7 @@ ul.secondary li.active a {
  */
 .node {
   border-bottom: 1px solid #e9eff3;
-  margin: -1.5em -26px 1.5em;
+  margin: 0 -26px 1.5em;
   padding: 1.5em 26px;
 }
 
@@ -822,6 +822,16 @@ fieldset {
   background-position: 0 .75em;
   background-color: transparent;
 }
+*:first-child+html .text-format-wrapper .filter-wrapper {
+  padding: 1.5em 0 1.5em;
+  background-position: 0 0;
+}
+
+/* Keep the background position at 0 for filters and vertical tabs. */
+*:first-child+html fieldset.filter-wrapper,
+*:first-child+html fieldset.vertical-tabs-pane {
+  background-position: 0 0;
+}
 
 *:first-child+html fieldset > .description, *:first-child+html fieldset .fieldset-wrapper .description {
   padding-top: 1em;
@@ -847,8 +857,45 @@ html.js fieldset.collapsible legend a {
   background: url(images/menu-expanded.gif) no-repeat 0% 50%; /* LTR */
 }
 
+html.js fieldset.collapsible legend span.summary {
+  color: #898989;
+}
+
 html.js fieldset.collapsed legend a {
   background: url(images/menu-collapsed.gif) no-repeat 0% 50%; /* LTR */
+}
+
+/**
+ * Vertical tabs.
+ */
+div.vertical-tabs {
+  margin-right: 5%;
+  border-color: #d9eaf5;
+}
+
+div.vertical-tabs .vertical-tabs-panes fieldset.vertical-tabs-pane {
+  padding: 0.5em 1em;
+}
+
+div.vertical-tabs ul.vertical-tabs-list {
+  border-color: #d9eaf5;
+}
+
+div.vertical-tabs ul.vertical-tabs-list li {
+  background-color: #edf5fa;
+  border-color: #d9eaf5;
+}
+
+div.vertical-tabs ul.vertical-tabs-list li.selected {
+  background: #fff repeat-x 0 0;
+}
+
+div.vertical-tabs ul.vertical-tabs-list li.selected.first {
+  background-image: url(images/gradient-inner.png);
+}
+
+div.vertical-tabs ul.vertical-tabs-list li.selected a strong {
+  color: #494949;
 }
 
 /**

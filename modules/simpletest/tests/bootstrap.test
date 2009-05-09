@@ -1,9 +1,9 @@
 <?php
-// $Id: bootstrap.test,v 1.12 2009/01/31 16:50:57 webchick Exp $
+// $Id: bootstrap.test,v 1.15 2009/04/22 09:45:03 dries Exp $
 
 class BootstrapIPAddressTestCase extends DrupalWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('IP address and HTTP_HOST test'),
       'description' => t('Get the IP address from the current visitor from the server variables, check hostname validation.'),
@@ -20,6 +20,8 @@ class BootstrapIPAddressTestCase extends DrupalWebTestCase {
     $this->cluster_ip = '127.0.0.4';
     $this->untrusted_ip = '0.0.0.0';
 
+    drupal_static_reset('ip_address');
+
     $_SERVER['REMOTE_ADDR'] = $this->remote_ip;
     unset($_SERVER['HTTP_X_FORWARDED_FOR']);
     unset($_SERVER['HTTP_X_CLUSTER_CLIENT_IP']);
@@ -29,6 +31,7 @@ class BootstrapIPAddressTestCase extends DrupalWebTestCase {
 
   function tearDown() {
     $_SERVER = $this->oldserver;
+    drupal_static_reset('ip_address');
     parent::tearDown();
   }
 
@@ -38,37 +41,40 @@ class BootstrapIPAddressTestCase extends DrupalWebTestCase {
   function testIPAddressHost() {
     // Test the normal IP address.
     $this->assertTrue(
-      ip_address(true) == $this->remote_ip,
+      ip_address() == $this->remote_ip,
       t('Got remote IP address')
     );
 
     // Proxy forwarding on but no proxy addresses defined.
     variable_set('reverse_proxy', 1);
     $this->assertTrue(
-      ip_address(true) == $this->remote_ip,
+      ip_address() == $this->remote_ip,
       t('Proxy forwarding without trusted proxies got remote IP address')
     );
 
     // Proxy forwarding on and proxy address not trusted.
     variable_set('reverse_proxy_addresses', array($this->proxy_ip));
+    drupal_static_reset('ip_address');
     $_SERVER['REMOTE_ADDR'] = $this->untrusted_ip;
     $this->assertTrue(
-      ip_address(true) == $this->untrusted_ip,
+      ip_address() == $this->untrusted_ip,
       t('Proxy forwarding with untrusted proxy got remote IP address')
     );
 
     // Proxy forwarding on and proxy address trusted.
     $_SERVER['REMOTE_ADDR'] = $this->proxy_ip;
     $_SERVER['HTTP_X_FORWARDED_FOR'] = $this->forwarded_ip;
+    drupal_static_reset('ip_address');
     $this->assertTrue(
-      ip_address(true) == $this->forwarded_ip,
+      ip_address() == $this->forwarded_ip,
       t('Proxy forwarding with trusted proxy got forwarded IP address')
     );
 
     // Cluster environment.
     $_SERVER['HTTP_X_CLUSTER_CLIENT_IP'] = $this->cluster_ip;
+    drupal_static_reset('ip_address');
     $this->assertTrue(
-      ip_address(TRUE) == $this->cluster_ip,
+      ip_address() == $this->cluster_ip,
       t('Cluster environment got cluster client IP')
     );
     $this->assertFalse(drupal_valid_http_host('security/.drupal.org:80'), t('HTTP_HOST with / is invalid'));
@@ -82,7 +88,7 @@ class BootstrapIPAddressTestCase extends DrupalWebTestCase {
 
 class BootstrapPageCacheTestCase extends DrupalWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Page cache test'),
       'description' => t('Enable the page cache and test it with conditional HTTP requests.'),
@@ -90,18 +96,22 @@ class BootstrapPageCacheTestCase extends DrupalWebTestCase {
     );
   }
 
+  function setUp() {
+    parent::setUp('system_test');
+  }
+
   /**
-   * Enable cache and examine HTTP headers.
+   * Test support for requests containing If-Modified-Since and If-None-Match headers.
    */
-  function testPageCache() {
+  function testConditionalRequests() {
     variable_set('cache', CACHE_NORMAL);
 
     // Fill the cache.
     $this->drupalGet('');
 
     $this->drupalHead('');
+    $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', t('Page was cached.'));
     $etag = $this->drupalGetHeader('ETag');
-    $this->assertTrue($etag, t('An ETag header was sent, indicating that page was cached.'));
     $last_modified = $this->drupalGetHeader('Last-Modified');
 
     $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified, 'If-None-Match: ' . $etag));
@@ -115,19 +125,58 @@ class BootstrapPageCacheTestCase extends DrupalWebTestCase {
 
     $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified));
     $this->assertResponse(200, t('Conditional request without If-None-Match returned 200 OK.'));
-    $this->assertTrue($this->drupalGetHeader('ETag'), t('An ETag header was sent, indicating that page was cached.'));
+    $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', t('Page was cached.'));
 
     $this->drupalGet('', array(), array('If-Modified-Since: ' . gmdate(DATE_RFC1123, strtotime($last_modified) + 1), 'If-None-Match: ' . $etag));
     $this->assertResponse(200, t('Conditional request with new a If-Modified-Since date newer than Last-Modified returned 200 OK.'));
-    $this->assertTrue($this->drupalGetHeader('ETag'), t('An ETag header was sent, indicating that page was cached.'));
+    $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', t('Page was cached.'));
 
     $user = $this->drupalCreateUser();
     $this->drupalLogin($user);
     $this->drupalGet('', array(), array('If-Modified-Since: ' . $last_modified, 'If-None-Match: ' . $etag));
     $this->assertResponse(200, t('Conditional request returned 200 OK for authenticated user.'));
-    $this->assertFalse($this->drupalGetHeader('ETag'), t('An ETag header was not sent, indicating that page was not cached.'));
+    $this->assertFalse($this->drupalGetHeader('X-Drupal-Cache'), t('Absense of Page was not cached.'));
   }
 
+  /**
+   * Test cache headers.
+   */
+  function testPageCache() {
+    variable_set('cache', CACHE_NORMAL);
+
+    // Fill the cache.
+    $this->drupalGet('system-test/set-header', array('query' => array('name' => 'Foo', 'value' => 'bar')));
+    $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'MISS', t('Page was not cached.'));
+    $this->assertEqual($this->drupalGetHeader('Vary'), 'Cookie,Accept-Encoding', t('Vary header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Cache-Control'), 'public, max-age=0', t('Cache-Control header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Expires'), 'Sun, 19 Nov 1978 05:00:00 GMT', t('Expires header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Foo'), 'bar', t('Custom header was sent.'));
+
+    // Check cache.
+    $this->drupalGet('system-test/set-header', array('query' => array('name' => 'Foo', 'value' => 'bar')));
+    $this->assertEqual($this->drupalGetHeader('X-Drupal-Cache'), 'HIT', t('Page was cached.'));
+    $this->assertEqual($this->drupalGetHeader('Vary'), 'Cookie,Accept-Encoding', t('Vary: Cookie header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Cache-Control'), 'public, max-age=0', t('Cache-Control header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Expires'), 'Sun, 19 Nov 1978 05:00:00 GMT', t('Expires header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Foo'), 'bar', t('Custom header was sent.'));
+
+    // Check replacing default headers.
+    $this->drupalGet('system-test/set-header', array('query' => array('name' => 'Expires', 'value' => 'Fri, 19 Nov 2008 05:00:00 GMT')));
+    $this->assertEqual($this->drupalGetHeader('Expires'), 'Fri, 19 Nov 2008 05:00:00 GMT', t('Default header was replaced.'));
+    $this->drupalGet('system-test/set-header', array('query' => array('name' => 'Vary', 'value' => 'User-Agent')));
+    $this->assertEqual($this->drupalGetHeader('Vary'), 'User-Agent,Accept-Encoding', t('Default header was replaced.'));
+
+    // Check that authenticated users bypass the cache.
+    $user = $this->drupalCreateUser();
+    $this->drupalLogin($user);
+    $this->drupalGet('system-test/set-header', array('query' => array('name' => 'Foo', 'value' => 'bar')));
+    $this->assertFalse($this->drupalGetHeader('X-Drupal-Cache'), t('Caching was bypassed.'));
+    $this->assertFalse($this->drupalGetHeader('Vary'), t('Vary header was not sent.'));
+    $this->assertEqual($this->drupalGetHeader('Cache-Control'), 'no-cache, must-revalidate, post-check=0, pre-check=0', t('Cache-Control header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Expires'), 'Sun, 19 Nov 1978 05:00:00 GMT', t('Expires header was sent.'));
+    $this->assertEqual($this->drupalGetHeader('Foo'), 'bar', t('Custom header was sent.'));
+
+  }
 }
 
 class BootstrapVariableTestCase extends DrupalWebTestCase {
@@ -136,7 +185,7 @@ class BootstrapVariableTestCase extends DrupalWebTestCase {
     parent::setUp('system_test');
   }
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Variable test'),
       'description' => t('Make sure the variable system functions correctly.'),
@@ -182,7 +231,7 @@ class BootstrapVariableTestCase extends DrupalWebTestCase {
  */
 class HookBootExitTestCase extends DrupalWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Boot and exit hook invocation'),
       'description' => t('Test that hook_boot() and hook_exit() are called correctly.'),

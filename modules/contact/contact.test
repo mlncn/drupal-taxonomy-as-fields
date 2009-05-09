@@ -1,11 +1,11 @@
 <?php
-// $Id: contact.test,v 1.15 2009/03/08 05:08:22 webchick Exp $
+// $Id: contact.test,v 1.21 2009/04/30 21:44:18 dries Exp $
 
 /**
  * Test the sitewide contact form.
  */
 class ContactSitewideTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Site-wide contact form'),
       'description' => t('Tests site-wide contact form functionality.'),
@@ -22,13 +22,11 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
    */
   function testSiteWideContact() {
     // Create and login administrative user.
-    $admin_user = $this->drupalCreateUser(array('administer site-wide contact form', 'administer permissions'));
+    $admin_user = $this->drupalCreateUser(array('access site-wide contact form', 'administer site-wide contact form', 'administer permissions'));
     $this->drupalLogin($admin_user);
 
     // Set settings.
     $edit = array();
-    $contact_form_information = $this->randomName(100);
-    $edit['contact_form_information'] = $contact_form_information;
     $edit['contact_hourly_threshold'] = 3;
     $edit['contact_default_status'] = TRUE;
     $this->drupalPost('admin/build/contact/settings', $edit, t('Save configuration'));
@@ -41,12 +39,15 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     $this->setPermission('anonymous user', array('access site-wide contact form' => TRUE));
     $this->drupalLogout();
     $this->drupalGet('contact');
-    $this->assertText(t('The contact form has not been configured.'), t('Contact form will not work without categories configured.'));
+    $this->assertResponse(404);
     $this->drupalLogin($admin_user);
+    $this->drupalGet('contact');
+    $this->assertResponse(200);
+    $this->assertText(t('The contact form has not been configured.'));
 
     // Add categories.
     // Test invalid recipients.
-    $invalid_recipients = array('invalid', 'invalid@', 'invalid@site', 'invalid@site.', '@site.', '@site.com');
+    $invalid_recipients = array('invalid', 'invalid@', 'invalid@site.', '@site.', '@site.com');
     foreach ($invalid_recipients as $invalid_recipient) {
       $this->addCategory($this->randomName(16), $invalid_recipient, '', FALSE);
       $this->assertRaw(t('%recipient is an invalid e-mail address.', array('%recipient' => $invalid_recipient)), t('Caught invalid recipient (' . $invalid_recipient . ').'));
@@ -62,6 +63,9 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     $this->addCategory($category = $this->randomName(16), implode(',', array($recipients[0])), '', TRUE);
     $this->assertRaw(t('Category %category has been added.', array('%category' => $category)), t('Category successfully added.'));
 
+    // Make sure the newly created category is included in the list of categories.
+    $this->assertNoUniqueText($category, t('New category included in categories list.'));
+
     // Test update contact form category.
     $categories = $this->getCategories();
     $category_id = $this->updateCategory($categories, $category = $this->randomName(16), $recipients_str = implode(',', array($recipients[0], $recipients[1])), $reply = $this->randomName(30), FALSE);
@@ -76,7 +80,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
     $this->setPermission('anonymous user', array('access site-wide contact form' => TRUE));
     $this->drupalLogout();
     $this->drupalGet('contact');
-    $this->assertText($contact_form_information, t('Contact form is shown when there is one category.'));
+    $this->assertText(t('Your e-mail address'), t('Contact form is shown when there is one category.'));
     $this->assertNoText(t('Category'), t('When there is only one category, the category selection element is hidden.'));
     $this->drupalLogin($admin_user);
 
@@ -106,9 +110,6 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
 
     $this->drupalGet('contact');
     $this->assertResponse(200, t('Access granted to anonymous user with permission.'));
-
-    // Check that "Additional information" is displayed on the page.
-    $this->assertText($edit['contact_form_information'], t('Contact information displayed.'));
 
     // Submit contact form with invalid values.
     $this->submitContact('', $recipients[0], $this->randomName(16), $categories[0], $this->randomName(64));
@@ -256,7 +257,7 @@ class ContactSitewideTestCase extends DrupalWebTestCase {
  * Test the personal contact form.
  */
 class ContactPersonalTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Personal contact form'),
       'description' => t('Tests personal contact form functionality.'),

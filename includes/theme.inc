@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.470 2009/02/22 17:55:29 dries Exp $
+// $Id: theme.inc,v 1.481 2009/05/03 08:12:12 dries Exp $
 
 /**
  * @file
@@ -710,11 +710,16 @@ function theme() {
 function drupal_discover_template($paths, $suggestions, $extension = '.tpl.php') {
   global $theme_engine;
 
+  // Remove slashes or null to prevent files from being included from
+  // an unexpected location (especially on Windows servers).
+  $extension = str_replace(array("/", "\\", "\0"), '', $extension);
+
   // Loop through all paths and suggestions in FIFO order.
   $suggestions = array_reverse($suggestions);
   $paths = array_reverse($paths);
   foreach ($suggestions as $suggestion) {
     if (!empty($suggestion)) {
+      $suggestion = str_replace(array("/", "\\", "\0"), '', $suggestion);
       foreach ($paths as $path) {
         if (file_exists($file = $path . '/' . $suggestion . $extension)) {
           return $file;
@@ -901,23 +906,24 @@ function drupal_find_theme_templates($cache, $extension, $path) {
  */
 function theme_get_settings($key = NULL) {
   $defaults = array(
-    'mission'                       =>  '',
-    'default_logo'                  =>  1,
-    'logo_path'                     =>  '',
-    'default_favicon'               =>  1,
-    'favicon_path'                  =>  '',
-    'main_menu'                     =>  1,
-    'secondary_menu'                =>  1,
-    'toggle_logo'                   =>  1,
-    'toggle_favicon'                =>  1,
-    'toggle_name'                   =>  1,
-    'toggle_search'                 =>  0,
-    'toggle_slogan'                 =>  0,
-    'toggle_mission'                =>  1,
-    'toggle_node_user_picture'      =>  0,
-    'toggle_comment_user_picture'   =>  0,
-    'toggle_main_menu'              =>  1,
-    'toggle_secondary_menu'         =>  1,
+    'mission'                          =>  '',
+    'default_logo'                     =>  1,
+    'logo_path'                        =>  '',
+    'default_favicon'                  =>  1,
+    'favicon_path'                     =>  '',
+    'main_menu'                        =>  1,
+    'secondary_menu'                   =>  1,
+    'toggle_logo'                      =>  1,
+    'toggle_favicon'                   =>  1,
+    'toggle_name'                      =>  1,
+    'toggle_search'                    =>  0,
+    'toggle_slogan'                    =>  0,
+    'toggle_mission'                   =>  1,
+    'toggle_node_user_picture'         =>  0,
+    'toggle_comment_user_picture'      =>  0,
+    'toggle_comment_user_verification' =>  1,
+    'toggle_main_menu'                 =>  1,
+    'toggle_secondary_menu'            =>  1,
   );
 
   $settings = array_merge($defaults, variable_get('theme_settings', array()));
@@ -1232,17 +1238,6 @@ function theme_breadcrumb($breadcrumb) {
 }
 
 /**
- * Return a themed help message.
- *
- * @return a string containing the helptext for the current page.
- */
-function theme_help() {
-  if ($help = menu_get_active_help()) {
-    return '<div class="help">' . $help . '</div>';
-  }
-}
-
-/**
  * Return a themed submenu, typically displayed under the tabs.
  *
  * @param $links
@@ -1322,13 +1317,15 @@ function theme_submenu($links) {
  *   These optional tags are used to group and set properties on columns
  *   within a table. For example, one may easily group three columns and
  *   apply same background style to all.
+ * @param $sticky
+ *   Use a "sticky" table header. 
  * @return
  *   An HTML string representing the table.
  */
-function theme_table($header, $rows, $attributes = array(), $caption = NULL, $colgroups = array()) {
+function theme_table($header, $rows, $attributes = array(), $caption = NULL, $colgroups = array(), $sticky = TRUE) {
 
   // Add sticky headers, if applicable.
-  if (count($header)) {
+  if (count($header) && $sticky) {
     drupal_add_js('misc/tableheader.js');
     // Add 'sticky-enabled' class to the table to identify it for JS.
     // This is needed to target tables constructed by this function.
@@ -1469,23 +1466,6 @@ function theme_tablesort_indicator($style) {
 }
 
 /**
- * Return a themed box.
- *
- * @param $title
- *   The subject of the box.
- * @param $content
- *   The content of the box.
- * @param $region
- *   The region in which the box is displayed.
- * @return
- *   A string containing the box output.
- */
-function theme_box($title, $content, $region = 'main') {
-  $output = '<h2 class="title">' . $title . '</h2><div>' . $content . '</div>';
-  return $output;
-}
-
-/**
  * Return a themed marker, useful for marking new or updated
  * content.
  *
@@ -1597,21 +1577,6 @@ function theme_more_help_link($url) {
 }
 
 /**
- * Return code that emits an XML icon.
- *
- * For most use cases, this function has been superseded by theme_feed_icon().
- *
- * @see theme_feed_icon()
- * @param $url
- *   The url of the feed.
- */
-function theme_xml_icon($url) {
-  if ($image = theme('image', 'misc/xml.png', t('XML feed'), t('XML feed'))) {
-    return '<a href="' . check_url($url) . '" class="xml-icon">' . $image . '</a>';
-  }
-}
-
-/**
  * Return code that emits an feed icon.
  *
  * @param $url
@@ -1690,7 +1655,9 @@ function theme_username($object) {
       $output = check_plain($object->name);
     }
 
-    $output .= ' (' . t('not verified') . ')';
+    if (theme_get_setting('toggle_comment_user_verification')) {
+      $output .= ' (' . t('not verified') . ')';
+    }
   }
   else {
     $output = variable_get('anonymous', t('Anonymous'));
@@ -1832,7 +1799,7 @@ function template_preprocess_page(&$variables) {
 
   // Add favicon.
   if (theme_get_setting('toggle_favicon')) {
-    drupal_set_html_head('<link rel="shortcut icon" href="' . check_url(theme_get_setting('favicon')) . '" type="image/x-icon" />');
+    drupal_add_html_head('<link rel="shortcut icon" href="' . check_url(theme_get_setting('favicon')) . '" type="image/x-icon" />');
   }
 
   // Set up layout variable.
@@ -1866,7 +1833,6 @@ function template_preprocess_page(&$variables) {
   $variables['feed_icons']        = drupal_get_feeds();
   $variables['footer_message']    = filter_xss_admin(variable_get('site_footer', FALSE));
   $variables['head']              = drupal_get_html_head();
-  $variables['help']              = theme('help');
   $variables['language']          = $GLOBALS['language'];
   $variables['language']->dir     = $GLOBALS['language']->direction ? 'rtl' : 'ltr';
   $variables['logo']              = theme_get_setting('logo');
@@ -1901,12 +1867,8 @@ function template_preprocess_page(&$variables) {
   $body_classes[] = $variables['is_front'] ? 'front' : 'not-front';
   // Add a class that tells us whether the page is viewed by an authenticated user or not.
   $body_classes[] = $variables['logged_in'] ? 'logged-in' : 'not-logged-in';
-  // Add arg(0) to make it possible to theme the page depending on the current page
-  // type (e.g. node, admin, user, etc.). To avoid illegal characters in the class,
-  // we're removing everything disallowed. We are not using 'a-z' as that might leave
-  // in certain international characters (e.g. German umlauts).
-  $body_classes[] = preg_replace('![^abcdefghijklmnopqrstuvwxyz0-9-_]+!s', '', 'page-' . form_clean_id(drupal_strtolower(arg(0))));
-  // If on an individual node page, add the node type.
+
+  // If on an individual node page, add the node type to body classes.
   if (isset($variables['node']) && $variables['node']->type) {
     $body_classes[] = 'node-type-' . form_clean_id($variables['node']->type);
   }
@@ -1920,23 +1882,53 @@ function template_preprocess_page(&$variables) {
   else {
     $body_classes[] = 'one-sidebar sidebar-' . $variables['layout'];
   }
+
+  // Populate the page template suggestions.
+  if ($suggestions = template_page_suggestions(arg())) {
+    $variables['template_files'] = $suggestions;
+    foreach ($suggestions as $suggestion) {
+      if ($suggestion != 'page-front') {
+        // Add current suggestion to page classes to make it possible to theme the page
+        // depending on the current page type (e.g. node, admin, user, etc.) as well as
+        // more specific data like node-12 or node-edit. To avoid illegal characters in
+        // the class, we're removing everything disallowed. We are not using 'a-z' as
+        //  that might leave in certain international characters (e.g. German umlauts).
+        $body_classes[] = preg_replace('![^abcdefghijklmnopqrstuvwxyz0-9-_]+!s', '', form_clean_id(drupal_strtolower($suggestion)));
+      }
+    }
+  }
   // Implode with spaces.
   $variables['body_classes'] = implode(' ', $body_classes);
 
-  // Build a list of suggested template files in order of specificity. One
-  // suggestion is made for every element of the current path, though
-  // numeric elements are not carried to subsequent suggestions. For example,
-  // http://www.example.com/node/1/edit would result in the following
-  // suggestions:
+}
+
+/**
+ * Generate an array of page template suggestions.
+ *
+ * @param $args
+ *   An array of path arguments, such as from function arg().
+ *
+ * @return
+ *   An array of suggested template files.
+ */
+function template_page_suggestions($args) {
+
+  // Build a list of suggested template files and body classes in order of
+  // specificity. One suggestion is made for every element of the current path,
+  // though numeric elements are not carried to subsequent suggestions. For
+  // example, http://www.example.com/node/1/edit would result in the following
+  // suggestions and body classes:
   //
-  // page-node-edit.tpl.php
-  // page-node-1.tpl.php
-  // page-node.tpl.php
+  // page-node-edit.tpl.php  page-node-edit
+  // page-node-1.tpl.php     page-node-1
+  // page-node.tpl.php       page-node
   // page.tpl.php
-  $i = 0;
+
   $suggestion = 'page';
   $suggestions = array();
-  while ($arg = arg($i++)) {
+  foreach ($args as $arg) {
+    // Remove slashes or null per SA-CORE-2009-003.
+    $arg = str_replace(array("/", "\\", "\0"), '', $arg);
     $suggestions[] = $suggestion . '-' . $arg;
     if (!is_numeric($arg)) {
       $suggestion .= '-' . $arg;
@@ -1946,9 +1938,7 @@ function template_preprocess_page(&$variables) {
     $suggestions[] = 'page-front';
   }
 
-  if ($suggestions) {
-    $variables['template_files'] = $suggestions;
-  }
+  return $suggestions;
 }
 
 /**
@@ -1975,17 +1965,17 @@ function template_preprocess_node(&$variables) {
   $variables['node_url']  = url('node/' . $node->nid);
   $variables['title']     = check_plain($node->title);
   $variables['page']      = (bool)menu_get_object();
-  
+
   if ($node->build_mode == NODE_BUILD_PREVIEW) {
     unset($node->content['links']);
   }
-  
+
   // Render taxonomy links separately.
   $variables['terms']     = !empty($node->content['links']['terms']) ? drupal_render($node->content['links']['terms']) : '';
-  
+
   // Render all remaining node links.
   $variables['links']     = !empty($node->content['links']) ? drupal_render($node->content['links']) : '';
-  
+
   // Render any comments.
   $variables['comments']  = !empty($node->content['comments']) ? drupal_render($node->content['comments']) : '';
 
@@ -2013,35 +2003,3 @@ function template_preprocess_node(&$variables) {
   $variables += field_attach_preprocess('node', $node);
 }
 
-/**
- * Process variables for block.tpl.php
- *
- * Prepare the values passed to the theme_block function to be passed
- * into a pluggable template engine. Uses block properties to generate a
- * series of template file suggestions. If none are found, the default
- * block.tpl.php is used.
- *
- * Most themes utilize their own copy of block.tpl.php. The default is located
- * inside "modules/system/block.tpl.php". Look in there for the full list of
- * variables.
- *
- * The $variables array contains the following arguments:
- * - $block
- *
- * @see block.tpl.php
- */
-function template_preprocess_block(&$variables) {
-  static $block_counter = array();
-  $variables['block'] = $variables['block']['#block'];
-  // All blocks get an independent counter for each region.
-  if (!isset($block_counter[$variables['block']->region])) {
-    $block_counter[$variables['block']->region] = 1;
-  }
-  // Same with zebra striping.
-  $variables['block_zebra'] = ($block_counter[$variables['block']->region] % 2) ? 'odd' : 'even';
-  $variables['block_id'] = $block_counter[$variables['block']->region]++;
-
-  $variables['template_files'][] = 'block-' . $variables['block']->region;
-  $variables['template_files'][] = 'block-' . $variables['block']->module;
-  $variables['template_files'][] = 'block-' . $variables['block']->module . '-' . $variables['block']->delta;
-}

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.312 2009/03/17 15:26:29 dries Exp $
+// $Id: system.install,v 1.321 2009/05/07 15:29:08 webchick Exp $
 
 /**
  * Test and report Drupal installation requirements.
@@ -40,6 +40,17 @@ function system_requirements($phase) {
   if (version_compare(phpversion(), DRUPAL_MINIMUM_PHP) < 0) {
     $requirements['php']['description'] = $t('Your PHP installation is too old. Drupal requires at least PHP %version.', array('%version' => DRUPAL_MINIMUM_PHP));
     $requirements['php']['severity'] = REQUIREMENT_ERROR;
+  }
+
+  // Make sure the tokenizer extension is enabled, which is required by the code registry.
+  $requirements['php_tokenizer'] = array(
+    'title' => $t('PHP tokenizer'),
+    'value' => $t('Enabled'),
+  );
+  if (!function_exists('token_get_all')) {
+    $requirements['php_tokenizer']['value'] = $t('Not enabled');
+    $requirements['php_tokenizer']['description'] = $t('Drupal requires the <a href="@url">tokenizer extension</a> to be enabled.', array('@url' => 'http://php.net/tokenizer'));
+    $requirements['php_tokenizer']['severity'] = REQUIREMENT_ERROR;
   }
 
   // Test PHP register_globals setting.
@@ -1039,6 +1050,67 @@ function system_schema() {
       'router_path' => array(array('router_path', 128)),
     ),
     'primary key' => array('mlid'),
+  );
+
+  $schema['queue'] = array(
+    'description' => 'Stores items in queues.',
+    'fields' => array(
+      'item_id' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique item ID.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The queue name.',
+      ),
+      'consumer_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The ID of the dequeuing consumer.',
+      ),
+      'data' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'The arbitrary data for the item.',
+      ),
+      'expire' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when the claim lease expires on the item.',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when the item was created.',
+      ),
+    ),
+    'primary key' => array('item_id'),
+    'indexes' => array(
+      'consumer_queue' => array('consumer_id', 'name', 'created'),
+      'consumer_expire' => array('consumer_id', 'expire'),
+    ),
+  );
+
+  $schema['queue_consumer_id'] = array(
+    'description' => 'Stores queue consumer IDs, used to auto-increment the consumer ID so that a unique consumer ID is used.',
+    'fields' => array(
+      'consumer_id'  => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique consumer ID used to make sure only one consumer gets one item.',
+      ),
+    ),
+    'primary key' => array('consumer_id'),
   );
 
   $schema['registry'] = array(
@@ -2686,6 +2758,15 @@ function system_update_6047() {
 }
 
 /**
+ * @} End of "defgroup updates-5.x-to-6.x"
+ */
+
+/**
+ * @defgroup updates-6.x-extra Extra system updates for 6.x
+ * @{
+ */
+
+/**
  * Increase the size of the 'load_functions' and 'to_arg_functions' fields in
  * table 'menu_router'.
  */
@@ -2693,12 +2774,21 @@ function system_update_6048() {
   $ret = array();
   db_change_field($ret, 'menu_router', 'load_functions', 'load_functions', array('type' => 'text', 'not null' => TRUE));
   db_change_field($ret, 'menu_router', 'to_arg_functions', 'to_arg_functions', array('type' => 'text', 'not null' => TRUE));
-
   return $ret;
 }
 
 /**
- * @} End of "defgroup updates-5.x-to-6.x"
+ * Replace src index on the {url_alias} table with src, language.
+ */
+function system_update_6049() {
+  $ret = array();
+  db_drop_index($ret, 'url_alias', 'src');
+  db_add_index($ret, 'url_alias', 'src_language', array('src', 'language'));
+  return $ret;
+}
+
+/**
+ * @} End of "defgroup updates-6.x-extra"
  * The next series of updates should start at 7000.
  */
 
@@ -2794,7 +2884,7 @@ function system_update_7003() {
     }
   }
   if (isset($invalid_host)) {
-    drupal_set_message('Drupal no longer supports wildcard IP address blocking. Visitors whose IP addresses match ranges you have previously set using <em>access rules</em> will no longer be blocked from your site when you take it out of maintenance mode. See the <a href="http://drupal.org/node/24302">IP address and referrer blocking Handbook page</a> for alternative methods.', 'warning');
+    drupal_set_message('Drupal no longer supports wildcard IP address blocking. Visitors whose IP addresses match ranges you have previously set using <em>access rules</em> will no longer be blocked from your site when you put the site online. See the <a href="http://drupal.org/node/24302">IP address and referrer blocking Handbook page</a> for alternative methods.', 'warning');
     $ret[] = array('success' => TRUE, 'query' => '');
   }
   // Make sure not to block any IP addresses that were specifically allowed by access rules.
@@ -3203,20 +3293,9 @@ function system_update_7017() {
 }
 
 /**
- * Replace src index on the {url_alias} table with src, language.
- */
-function system_update_7018() {
-  $ret = array();
-  db_add_index($ret, 'url_alias', 'src_language', array('src', 'language'));
-  db_drop_index($ret, 'url_alias', 'src');
-
-  return $ret;
-}
-
-/**
  * Shorten the {system}.type column and add an index on type and name.
  */
-function system_update_7019() {
+function system_update_7018() {
   $ret = array();
   db_drop_index($ret, 'system', 'modules');
   db_change_field($ret, 'system', 'type', 'type', array('type' => 'varchar', 'length' => 12, 'not null' => TRUE, 'default' => ''));
@@ -3233,6 +3312,129 @@ function system_update_7020() {
   $module_list = array('field_sql_storage', 'field');
   drupal_install_modules($module_list);
   module_enable($module_list);
+  return $ret;
+}
+
+/**
+ * Add help block to the help region, migrate custom variables to blocks.
+ */
+function system_update_7021() {
+  $ret = array();
+  
+  // Collect a list of themes with blocks.
+  $themes_with_blocks = array();
+  $result = db_query("SELECT s.name FROM {system} s INNER JOIN {block} b ON s.name = b.theme WHERE s.type = 'theme' GROUP by s.name");
+  foreach ($result as $theme) {
+    $themes_with_blocks[] = $theme->name;
+    // Add new system generated help block.
+    $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, pages, cache) VALUES ('system', 'help', '" . $theme->name . "', 1, 0, 'help', '', 1)");
+  }
+
+  // Migrate contact form information and user register help to blocks.
+  $bid_max = db_query("SELECT MAX(bid) FROM {box}")->fetchField();
+  if ($contact_help = variable_get('contact_form_information', '')) {
+    db_insert('box')->fields(array('body' => $contact_help, 'info' => 'Contact page help', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    foreach ($themes_with_blocks as $theme) {
+      // Add contact help block for themes, which had blocks.
+      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, cache) VALUES ('block', '" . ($bid_max + 1) . "', '" . $theme . "', 1, 5, 'help', 1, 'contact', -1)");
+    }
+    drupal_set_message('The contact form information setting was migrated to <a href="' . url('admin/build/block/configure/block/' . ($bid_max + 1)) . '">a custom block</a> and set up to only show on the site-wide contact page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
+  }
+  if ($user_help = variable_get('user_registration_help', '')) {
+    db_insert('box')->fields(array('body' => $user_help, 'info' => 'User registration guidelines', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    foreach ($themes_with_blocks as $theme) {
+      // Add user registration help block for themes, which had blocks.
+      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, cache) VALUES ('block', '" . ($bid_max + 2) . "', '" . $theme . "', 1, 5, 'help', 1, 'user/register', -1)");
+    }
+    drupal_set_message('The user registration guidelines were migrated to <a href="' . url('admin/build/block/configure/block/' . ($bid_max + 2)) . '">a custom block</a> and set up to only show on the user registration page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
+  }
+  // Remove the two variables (even if they were saved empty on the admin interface),
+  // to avoid keeping clutter in the variables table.
+  variable_del('contact_form_information');
+  variable_del('user_registration_help');
+  
+  // Rebuild theme data, so the new 'help' region is identified.
+  _system_theme_data();
+
+  return $ret;
+}
+
+/**
+ * Add the queue tables.
+ */
+function system_update_7022() {
+  $schema['queue'] = array(
+    'description' => 'Stores items in queues.',
+    'fields' => array(
+      'item_id' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique item ID.',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The queue name.',
+      ),
+      'consumer_id' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'The ID of the dequeuing consumer.',
+      ),
+      'data' => array(
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
+        'serialize' => TRUE,
+        'description' => 'The arbitrary data for the item.',
+      ),
+      'expire' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when the claim lease expires on the item.',
+      ),
+      'created' => array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Timestamp when the item was created.',
+      ),
+    ),
+    'primary key' => array('item_id'),
+    'indexes' => array(
+      'consumer_queue' => array('consumer_id', 'name', 'created'),
+      'consumer_expire' => array('consumer_id', 'expire'),
+    ),
+  );
+
+  $schema['queue_consumer_id'] = array(
+    'description' => 'Stores queue consumer IDs, used to auto-incrament the consumer ID so that a unique consumer ID is used.',
+    'fields' => array(
+      'consumer_id'  => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique consumer ID used to make sure only one consumer gets one item.',
+      ),
+    ),
+    'primary key' => array('consumer_id'),
+  );
+  db_create_table($ret, 'queue', $schema['queue']);
+  db_create_table($ret, 'queue_consumer_id', $schema['queue_consumer_id']);
+
+  return $ret;
+}
+
+/**
+ * Change the PHP for settings permission.
+ */
+function system_update_7023() {
+  $ret = array();
+  $ret[] = update_sql("UPDATE {role_permission} SET permission = 'use PHP for settings' WHERE permission = 'use PHP for block visibility'");
   return $ret;
 }
 

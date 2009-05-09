@@ -1,5 +1,5 @@
 <?php
-// $Id: database.inc,v 1.50 2009/01/25 12:19:31 webchick Exp $
+// $Id: database.inc,v 1.53 2009/05/03 08:55:06 dries Exp $
 
 /**
  * @file
@@ -253,6 +253,13 @@ abstract class DatabaseConnection extends PDO {
    * @var string
    */
   protected $deleteClass = NULL;
+
+  /**
+   * The name of the Truncate class for this connection.
+   *
+   * @var string
+   */
+  protected $truncateClass = NULL;
 
   /**
    * The name of the Insert class for this connection.
@@ -516,7 +523,7 @@ abstract class DatabaseConnection extends PDO {
    *   A table prefix-parsed string for the sequence name.
    */
   public function makeSequenceName($table, $field) {
-    return $this->prefixTables('{'. $table .'}_'. $field .'_seq');
+    return $this->prefixTables('{' . $table . '}_' . $field . '_seq');
   }
 
   /**
@@ -594,7 +601,7 @@ abstract class DatabaseConnection extends PDO {
         else {
           $query_string = $query;
         }
-        throw new PDOException($query_string . " - \n" . print_r($args,1) . $e->getMessage());
+        throw new PDOException($query_string . " - \n" . print_r($args, 1) . $e->getMessage());
       }
       return NULL;
     }
@@ -759,6 +766,26 @@ abstract class DatabaseConnection extends PDO {
       }
     }
     $class = $this->deleteClass;
+    return new $class($this, $table, $options);
+  }
+
+  /**
+   * Prepare and return a TRUNCATE query object.
+   *
+   * @see TruncateQuery
+   * @param $options
+   *   An array of options on the query.
+   * @return
+   *   A new DeleteQuery object.
+   */
+  public function truncate($table, array $options = array()) {
+    if (empty($this->truncateClass)) {
+      $this->truncateClass = 'TruncateQuery_' . $this->driver();
+      if (!class_exists($this->truncateClass)) {
+        $this->truncateClass = 'TruncateQuery';
+      }
+    }
+    $class = $this->truncateClass;
     return new $class($this, $table, $options);
   }
 
@@ -1006,7 +1033,7 @@ abstract class DatabaseConnection extends PDO {
    * overridable lookup function. Database connections should define only
    * those operators they wish to be handled differently than the default.
    *
-   * @see DatabaseCondition::compile().
+   * @see DatabaseCondition::compile()
    * @param $operator
    *   The condition operator, such as "IN", "BETWEEN", etc. Case-sensitive.
    * @return
@@ -1463,7 +1490,7 @@ interface DatabaseStatementInterface extends Traversable {
    * @return
    *   TRUE on success, or FALSE on failure.
    */
-  public function execute($args, $options);
+  public function execute($args = array(), $options = array());
 
   /**
    * Get the query string of that statement.
@@ -1640,7 +1667,7 @@ class DatabaseStatementBase extends PDOStatement implements DatabaseStatementInt
     $this->setFetchMode(PDO::FETCH_OBJ);
   }
 
-  public function execute($args, $options) {
+  public function execute($args = array(), $options = array()) {
     if (isset($options['fetch'])) {
       if (is_string($options['fetch'])) {
         // Default to an object. Note: db fields will be added to the object
@@ -1878,6 +1905,23 @@ function db_delete($table, array $options = array()) {
     $options['target'] = 'default';
   }
   return Database::getConnection($options['target'])->delete($table, $options);
+}
+
+/**
+ * Returns a new TruncateQuery object for the active database.
+ *
+ * @param $table
+ *   The table from which to delete.
+ * @param $options
+ *   An array of options to control how the query operates.
+ * @return
+ *   A new TruncateQuery object for this connection.
+ */
+function db_truncate($table, array $options = array()) {
+  if (empty($options['target']) || $options['target'] == 'slave') {
+    $options['target'] = 'default';
+  }
+  return Database::getConnection($options['target'])->truncate($table, $options);
 }
 
 /**
@@ -2191,8 +2235,9 @@ function db_drop_table(&$ret, $table) {
  *   table along with adding the field. The format is the same as a
  *   table specification but without the 'fields' element. If you are
  *   adding a type 'serial' field, you MUST specify at least one key
- *   or index including it in this array. @see db_change_field for more
+ *   or index including it in this array. See db_change_field() for more
  *   explanation why.
+ * @see db_change_field()
  */
 function db_add_field(&$ret, $table, $field, $spec, $keys_new = array()) {
   return Database::getConnection()->schema()->addField($ret, $table, $field, $spec, $keys_new);
@@ -2616,7 +2661,7 @@ function db_rewrite_sql($query, $primary_table = 'n', $primary_field = 'nid',  $
     if ($where) {
       $n = strlen($matches[1]);
       $second_part = substr($query, $n);
-      $first_part = substr($matches[1], 0, $n - 5) ." $join WHERE $where AND ( ";
+      $first_part = substr($matches[1], 0, $n - 5) . " $join WHERE $where AND ( ";
       foreach (array('GROUP', 'ORDER', 'LIMIT') as $needle) {
         $pos = strrpos($second_part, $needle);
         if ($pos !== FALSE) {

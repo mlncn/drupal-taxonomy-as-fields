@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.test,v 1.15 2009/02/13 05:42:24 webchick Exp $
+// $Id: forum.test,v 1.17 2009/04/02 20:39:44 dries Exp $
 
 class ForumTestCase extends DrupalWebTestCase {
   protected $big_user;
@@ -11,7 +11,7 @@ class ForumTestCase extends DrupalWebTestCase {
   protected $root_forum;
   protected $nids;
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Forum functionality'),
       'description' => t('Create, view, edit, delete, and change forum entries and verify its consistency in the database.'),
@@ -135,7 +135,8 @@ class ForumTestCase extends DrupalWebTestCase {
     $this->assertRaw(t('Updated vocabulary %name.', array('%name' => $title)), t('Vocabulary was edited'));
 
     // Grab the newly edited vocabulary.
-    $current_settings = taxonomy_vocabulary_load($vid, TRUE);
+    drupal_static_reset('taxonomy_vocabulary_load_multiple');
+    $current_settings = taxonomy_vocabulary_load($vid);
 
     // Make sure we actually edited the vocabulary properly.
     $this->assertEqual($current_settings->name, $title, t('The name was updated'));
@@ -143,7 +144,8 @@ class ForumTestCase extends DrupalWebTestCase {
 
     // Restore the original vocabulary.
     taxonomy_vocabulary_save($original_settings);
-    $current_settings = taxonomy_vocabulary_load($vid, TRUE);
+    drupal_static_reset('taxonomy_vocabulary_load');
+    $current_settings = taxonomy_vocabulary_load($vid);
     $this->assertEqual($current_settings->name, $original_settings->name, 'The original vocabulary settings were restored');
   }
 

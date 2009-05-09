@@ -1,5 +1,5 @@
 <?php
-// $Id: search.module,v 1.287 2009/03/27 00:16:16 webchick Exp $
+// $Id: search.module,v 1.289 2009/05/06 10:48:01 dries Exp $
 
 /**
  * @file
@@ -133,6 +133,9 @@ function search_theme() {
       'arguments' => array('results' => NULL, 'type' => NULL),
       'file' => 'search.pages.inc',
       'template' => 'search-results',
+    ),
+    'search_results_listing' => array(
+      'arguments' => array('title' => NULL, 'content' => NULL),
     ),
   );
 }
@@ -1095,7 +1098,8 @@ function search_form(&$form_state, $action = '', $keys = '', $type = NULL, $prom
  *
  * @ingroup forms
  * @see search_box_form_submit()
- * @see theme_search_box_form()
+ * @see search-theme-form.tpl.php
+ * @see search-block-form.tpl.php
  */
 function search_box(&$form_state, $form_id) {
   $form[$form_id] = array(

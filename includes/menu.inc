@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.316 2009/03/21 17:58:14 dries Exp $
+// $Id: menu.inc,v 1.323 2009/05/07 16:24:33 dries Exp $
 
 /**
  * @file
@@ -350,7 +350,7 @@ function menu_set_item($path, $router_item) {
  *   filled in based on the database values and the objects loaded.
  */
 function menu_get_item($path = NULL, $router_item = NULL) {
-  static $router_items;
+  $router_items = &drupal_static(__FUNCTION__);
   if (!isset($path)) {
     $path = $_GET['q'];
   }
@@ -502,7 +502,7 @@ function _menu_check_access(&$item, $map) {
     if ($callback == 'user_access') {
       $item['access'] = (count($arguments) == 1) ? user_access($arguments[0]) : user_access($arguments[0], $arguments[1]);
     }
-    else {
+    elseif (drupal_function_exists($callback)) {
       $item['access'] = call_user_func_array($callback, $arguments);
     }
   }
@@ -777,7 +777,7 @@ function menu_get_object($type = 'node', $position = 1, $path = NULL) {
  *   The rendered HTML of that menu on the current page.
  */
 function menu_tree($menu_name) {
-  static $menu_output = array();
+  $menu_output = &drupal_static(__FUNCTION__, array());
 
   if (!isset($menu_output[$menu_name])) {
     $tree = menu_tree_page_data($menu_name);
@@ -842,7 +842,7 @@ function menu_tree_output($tree) {
  *   An tree of menu links in an array, in the order they should be rendered.
  */
 function menu_tree_all_data($menu_name, $item = NULL) {
-  static $tree = array();
+  $tree = &drupal_static(__FUNCTION__, array());
 
   // Use $mlid as a flag for whether the data being loaded is for the whole tree.
   $mlid = isset($item['mlid']) ? $item['mlid'] : 0;
@@ -938,7 +938,7 @@ function menu_tree_all_data($menu_name, $item = NULL) {
  *   same structure described for the top-level array.
  */
 function menu_tree_page_data($menu_name) {
-  static $tree = array();
+  $tree = &drupal_static(__FUNCTION__, array());
 
   // Load the menu item corresponding to the current page.
   if ($item = menu_get_item()) {
@@ -1326,10 +1326,10 @@ function menu_get_active_help() {
 /**
  * Build a list of named menus.
  */
-function menu_get_names($reset = FALSE) {
-  static $names;
+function menu_get_names() {
+  $names = &drupal_static(__FUNCTION__);
 
-  if ($reset || empty($names)) {
+  if (empty($names)) {
     $names = db_select('menu_links')
       ->distinct()
       ->fields('menu_links', 'menu_name')
@@ -1430,8 +1430,8 @@ function menu_navigation_links($menu_name, $level = 0) {
  *   a parent tab, if the current page is a default local task.
  */
 function menu_local_tasks($level = 0, $return_root = FALSE) {
-  static $tabs;
-  static $root_path;
+  $tabs = &drupal_static(__FUNCTION__);
+  $root_path = &drupal_static(__FUNCTION__ . ':root_path');
 
   if (!isset($tabs)) {
     $tabs = array();
@@ -1595,7 +1595,7 @@ function theme_menu_local_tasks() {
  * Set (or get) the active menu for the current page - determines the active trail.
  */
 function menu_set_active_menu_names($menu_names = NULL) {
-  static $active;
+  $active = &drupal_static(__FUNCTION__);
 
   if (isset($menu_names) && is_array($menu_names)) {
     $active = $menu_names;
@@ -1631,7 +1631,7 @@ function menu_set_active_item($path) {
  * Set (or get) the active trail for the current page - the path to root in the menu tree.
  */
 function menu_set_active_trail($new_trail = NULL) {
-  static $trail;
+  $trail = &drupal_static(__FUNCTION__);
 
   if (isset($new_trail)) {
     $trail = $new_trail;
@@ -1787,7 +1787,7 @@ function menu_link_load($mlid) {
  * Clears the cached cached data for a single named menu.
  */
 function menu_cache_clear($menu_name = 'navigation') {
-  static $cache_cleared = array();
+  $cache_cleared = &drupal_static(__FUNCTION__, array());
 
   if (empty($cache_cleared[$menu_name])) {
     cache_clear_all('links:' . $menu_name . ':', 'cache_menu', TRUE);
@@ -1819,9 +1819,10 @@ function menu_cache_clear_all() {
  */
 function menu_rebuild() {
   variable_del('menu_rebuild_needed');
-  menu_cache_clear_all();
-  $menu = menu_router_build(TRUE);
+  list($menu, $masks) = menu_router_build();
+  _menu_router_save($menu, $masks);
   _menu_navigation_links_rebuild($menu);
+  menu_cache_clear_all();
   // Clear the page and block caches.
   _menu_clear_page_cache();
   if (defined('MAINTENANCE_MODE')) {
@@ -1830,32 +1831,49 @@ function menu_rebuild() {
 }
 
 /**
- * Collect, alter and store the menu definitions.
+ * Collect and alter the menu definitions.
  */
-function menu_router_build($reset = FALSE) {
-  static $menu;
-
-  if (!isset($menu) || $reset) {
-    if (!$reset && ($cache = cache_get('router:', 'cache_menu')) && isset($cache->data)) {
-      $menu = $cache->data;
-    }
-    else {
-      // We need to manually call each module so that we can know which module
-      // a given item came from.
-      $callbacks = array();
-      foreach (module_implements('menu', TRUE) as $module) {
-        $router_items = call_user_func($module . '_menu');
-        if (isset($router_items) && is_array($router_items)) {
-          foreach (array_keys($router_items) as $path) {
-            $router_items[$path]['module'] = $module;
-          }
-          $callbacks = array_merge($callbacks, $router_items);
-        }
+function menu_router_build() {
+  // We need to manually call each module so that we can know which module
+  // a given item came from.
+  $callbacks = array();
+  foreach (module_implements('menu') as $module) {
+    $router_items = call_user_func($module .'_menu');
+    if (isset($router_items) && is_array($router_items)) {
+      foreach (array_keys($router_items) as $path) {
+        $router_items[$path]['module'] = $module;
       }
-      // Alter the menu as defined in modules, keys are like user/%user.
-      drupal_alter('menu', $callbacks);
-      $menu = _menu_router_build($callbacks);
+      $callbacks = array_merge($callbacks, $router_items);
     }
+  }
+  // Alter the menu as defined in modules, keys are like user/%user.
+  drupal_alter('menu', $callbacks);
+  list($menu, $masks) = _menu_router_build($callbacks);
+  _menu_router_cache($menu);
+
+  return array($menu, $masks);
+}
+
+/**
+ * Helper function to store the menu router if we have it in memory.
+ */
+function _menu_router_cache($new_menu = NULL) {
+  $menu = &drupal_static(__FUNCTION__);
+  
+  if (isset($new_menu)) {
+    $menu = $new_menu;
+  }
+  return $menu;
+}
+
+/**
+ * Get the menu router.
+ */
+function menu_get_router() {
+  // Check first if we have it in memory already.
+  $menu = _menu_router_cache();
+  if (empty($menu)) {
+    list($menu, $masks) = menu_router_build();
   }
   return $menu;
 }
@@ -1951,7 +1969,7 @@ function _menu_navigation_links_rebuild($menu) {
     )
     ->execute();
   foreach ($result as $item) {
-    $router_path = _menu_find_router_path($menu, $item['link_path']);
+    $router_path = _menu_find_router_path($item['link_path']);
     if (!empty($router_path) && ($router_path != $item['router_path'] || $item['updated'])) {
       // If the router path and the link path matches, it's surely a working
       // item, so we clear the updated flag.
@@ -2048,9 +2066,8 @@ function _menu_delete_item($item, $force = FALSE) {
  *   saved.
  */
 function menu_link_save(&$item) {
-  $menu = menu_router_build();
 
-  drupal_alter('menu_link', $item, $menu);
+  drupal_alter('menu_link', $item);
 
   // This is the easiest way to handle the unique internal path '<front>',
   // since a path marked as external does not need to match a router path.
@@ -2175,15 +2192,15 @@ function menu_link_save(&$item) {
     else {
       // Find the router path which will serve this path.
       $item['parts'] = explode('/', $item['link_path'], MENU_MAX_PARTS);
-      $item['router_path'] = _menu_find_router_path($menu, $item['link_path']);
+      $item['router_path'] = _menu_find_router_path($item['link_path']);
     }
   }
   // If every value in $existing_item is the same in the $item, there is no
   // reason to run the update queries or clear the caches. We use
-  // array_diff_assoc() with the $existing_item as the first parameter
-  // because $item has additional keys left over from the process of building
-  // the router item.
-  if (!$existing_item || array_diff_assoc($existing_item, $item)) {
+  // array_intersect_assoc() with the $item as the first parameter because
+  // $item may have additional keys left over from building a router entry.
+  // The intersect removes the extra keys, allowing a meaningful comparison.
+  if (!$existing_item || (array_intersect_assoc($item, $existing_item)) != $existing_item) {
     db_update('menu_links')
       ->fields(array(
         'menu_name' => $item['menu_name'],
@@ -2228,11 +2245,11 @@ function menu_link_save(&$item) {
  * Helper function to clear the page and block caches at most twice per page load.
  */
 function _menu_clear_page_cache() {
-  static $cache_cleared = 0;
+  $cache_cleared = &drupal_static(__FUNCTION__, 0);
 
   // Clear the page and block caches, but at most twice, including at
   //  the end of the page load when there are multiple links saved or deleted.
-  if (empty($cache_cleared)) {
+  if ($cache_cleared == 0) {
     cache_clear_all();
     // Keep track of which menus have expanded items.
     _menu_set_expanded_menus();
@@ -2257,25 +2274,40 @@ function _menu_set_expanded_menus() {
 /**
  * Find the router path which will serve this path.
  *
- * @param $menu
- *  The full built menu.
  * @param $link_path
  *  The path for we are looking up its router path.
  * @return
  *  A path from $menu keys or empty if $link_path points to a nonexisting
  *  place.
  */
-function _menu_find_router_path($menu, $link_path) {
-  $parts = explode('/', $link_path, MENU_MAX_PARTS);
+function _menu_find_router_path($link_path) {
+  // $menu will only have data during a menu rebuild.
+  $menu = _menu_router_cache();
+
   $router_path = $link_path;
-  if (!isset($menu[$router_path])) {
-    $ancestors = menu_get_ancestors($parts);
+  $parts = explode('/', $link_path, MENU_MAX_PARTS);
+  $ancestors = menu_get_ancestors($parts);
+
+  if (empty($menu)) {
+    // Not during a menu rebuild, so look up in the database.
+    $router_path = (string) db_select('menu_router')
+      ->fields('menu_router', array('path'))
+      ->condition('path', $ancestors, 'IN')
+      ->orderBy('fit', 'DESC')
+      ->range(0, 1)
+      ->execute()->fetchField();
+  }
+  elseif (!isset($menu[$router_path])) {
+    // Add an empty router path as a fallback.
     $ancestors[] = '';
     foreach ($ancestors as $key => $router_path) {
       if (isset($menu[$router_path])) {
+        // Exit the loop leaving $router_path as the first match.
         break;
       }
     }
+    // If we did not find the path, $router_path will be the empty string
+    // at the end of $ancestors.
   }
   return $router_path;
 }
@@ -2317,9 +2349,10 @@ function menu_link_maintain($module, $op, $link_path, $link_title) {
         ->condition('link_path', $link_path)
         ->condition('customized', 0)
         ->condition('module', $module)
-        ->execute();
-      foreach ($result as $item) {
-        menu_cache_clear($item['menu_name']);
+        ->groupBy('menu_name')
+        ->execute()->fetchCol();
+      foreach ($result as $menu_name) {
+        menu_cache_clear($menu_name);
       }
       break;
     case 'delete':
@@ -2451,6 +2484,7 @@ function _menu_router_build($callbacks) {
   // First pass: separate callbacks from paths, making paths ready for
   // matching. Calculate fitness, and fill some default values.
   $menu = array();
+  $masks = array();
   foreach ($callbacks as $path => $item) {
     $load_functions = array();
     $to_arg_functions = array();
@@ -2529,36 +2563,6 @@ function _menu_router_build($callbacks) {
     }
   }
   array_multisort($sort, SORT_NUMERIC, $menu);
-
-  if (!$menu) {
-    return array();
-  }
-  // Delete the existing router since we have some data to replace it.
-  db_delete('menu_router')->execute();
-
-  // Prepare insert object.
-  $insert = db_insert('menu_router')
-    ->fields(array(
-      'path',
-      'load_functions',
-      'to_arg_functions',
-      'access_callback',
-      'access_arguments',
-      'page_callback',
-      'page_arguments',
-      'fit',
-      'number_parts',
-      'tab_parent',
-      'tab_root',
-      'title',
-      'title_callback',
-      'title_arguments',
-      'type',
-      'block_callback',
-      'description',
-      'position',
-      'weight',
-    ));
   // Apply inheritance rules.
   foreach ($menu as $path => $v) {
     $item = &$menu[$path];
@@ -2623,7 +2627,47 @@ function _menu_router_build($callbacks) {
       'tab_root' => $path,
       'path' => $path,
     );
+  }
 
+  // Sort the masks so they are in order of descending fit.
+  $masks = array_keys($masks);
+  rsort($masks);
+
+  return array($menu, $masks);
+}
+
+/**
+ * Helper function to save data from menu_router_build() to the router table.
+ */
+function _menu_router_save($menu, $masks) {
+  // Delete the existing router since we have some data to replace it.
+  db_delete('menu_router')->execute();
+
+  // Prepare insert object.
+  $insert = db_insert('menu_router')
+    ->fields(array(
+      'path',
+      'load_functions',
+      'to_arg_functions',
+      'access_callback',
+      'access_arguments',
+      'page_callback',
+      'page_arguments',
+      'fit',
+      'number_parts',
+      'tab_parent',
+      'tab_root',
+      'title',
+      'title_callback',
+      'title_arguments',
+      'type',
+      'block_callback',
+      'description',
+      'position',
+      'weight',
+    ));
+
+  foreach ($menu as $path => $item) {
     // Fill in insert object values.
     $insert->values(array(
       'path' => $item['path'],
@@ -2649,12 +2693,9 @@ function _menu_router_build($callbacks) {
   }
   // Execute insert object.
   $insert->execute();
-
-  // Sort the masks so they are in order of descending fit, and store them.
-  $masks = array_keys($masks);
-  rsort($masks);
+  // Store the masks.
   variable_set('menu_masks', $masks);
-  cache_set('router:', $menu, 'cache_menu');
+
   return $menu;
 }
 
@@ -2678,15 +2719,15 @@ function menu_path_is_external($path) {
  *   TRUE for anonymous users not on the login page if the site is offline.
  */
 function _menu_site_is_offline() {
-  // Check if site is set to offline mode.
+  // Check if site is set to maintenance mode.
   if (variable_get('site_offline', 0)) {
     // Check if the user has administration privileges.
     if (user_access('administer site configuration')) {
       // Ensure that the offline message is displayed only once [allowing for
       // page redirects], and specifically suppress its display on the site
       // maintenance page.
-      if (drupal_get_normal_path($_GET['q']) != 'admin/settings/site-maintenance') {
-        drupal_set_message(t('Operating in offline mode. <a href="@url">Go online.</a>', array('@url' => url('admin/settings/site-maintenance'))), 'status', FALSE);
+      if (drupal_get_normal_path($_GET['q']) != 'admin/settings/maintenance-mode') {
+        drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/settings/maintenance-mode'))), 'status', FALSE);
       }
     }
     else {

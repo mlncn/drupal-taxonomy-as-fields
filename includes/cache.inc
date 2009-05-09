@@ -1,5 +1,5 @@
 <?php
-// $Id: cache.inc,v 1.28 2009/02/03 12:30:14 dries Exp $
+// $Id: cache.inc,v 1.31 2009/05/04 10:40:10 dries Exp $
 
 /**
  * Return data from the persistent cache. Data may be stored as either plain
@@ -18,10 +18,10 @@ function cache_get($cid, $table = 'cache') {
   global $user;
 
   // Garbage collection necessary when enforcing a minimum cache lifetime
-  $cache_flush = variable_get('cache_flush', 0);
+  $cache_flush = variable_get('cache_flush_' . $table, 0);
   if ($cache_flush && ($cache_flush + variable_get('cache_lifetime', 0) <= REQUEST_TIME)) {
     // Reset the variable immediately to prevent a meltdown in heavy load situations.
-    variable_set('cache_flush', 0);
+    variable_set('cache_flush_' . $table, 0);
     // Time to flush old cache data
     db_delete($table)
       ->condition('expire', CACHE_PERMANENT, '<>')
@@ -30,33 +30,30 @@ function cache_get($cid, $table = 'cache') {
   }
 
   $cache = db_query("SELECT data, created, headers, expire, serialized FROM {" . $table . "} WHERE cid = :cid", array(':cid' => $cid))->fetchObject();
-  if (isset($cache->data)) {
-    // If the data is permanent or we're not enforcing a minimum cache lifetime
-    // always return the cached data.
-    if ($cache->expire == CACHE_PERMANENT || !variable_get('cache_lifetime', 0)) {
-      if ($cache->serialized) {
-        $cache->data = unserialize($cache->data);
-      }
-    }
-    // If enforcing a minimum cache lifetime, validate that the data is
-    // currently valid for this user before we return it by making sure the
-    // cache entry was created before the timestamp in the current session's
-    // cache timer. The cache variable is loaded into the $user object by
-    // _sess_read() in session.inc.
-    else {
-      if ($user->cache > $cache->created) {
-        // This cache data is too old and thus not valid for us, ignore it.
-        return FALSE;
-      }
-      else {
-        if ($cache->serialized) {
-          $cache->data = unserialize($cache->data);
-        }
-      }
-    }
-    return $cache;
+
+  if (!isset($cache->data)) {
+    return FALSE;
   }
-  return FALSE;
+
+  // If enforcing a minimum cache lifetime, validate that the data is
+  // currently valid for this user before we return it by making sure the cache
+  // entry was created before the timestamp in the current session's cache
+  // timer. The cache variable is loaded into the $user object by _sess_read()
+  // in session.inc. If the data is permanent or we're not enforcing a minimum
+  // cache lifetime always return the cached data.
+  if ($cache->expire != CACHE_PERMANENT && variable_get('cache_lifetime', 0) && $user->cache > $cache->created) {
+    // This cache data is too old and thus not valid for us, ignore it.
+    return FALSE;
+  }
+
+  if ($cache->serialized) {
+    $cache->data = unserialize($cache->data);
+  }
+  if (isset($cache->headers)) {
+    $cache->headers = unserialize($cache->headers);
+  }
+
+  return $cache;
 }
 
 /**
@@ -104,12 +101,12 @@ function cache_get($cid, $table = 'cache') {
  * @param $headers
  *   A string containing HTTP header information for cached pages.
  */
-function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, $headers = NULL) {
+function cache_set($cid, $data, $table = 'cache', $expire = CACHE_PERMANENT, array $headers = NULL) {
   $fields = array(
     'serialized' => 0,
     'created' => REQUEST_TIME,
     'expire' => $expire,
-    'headers' => $headers,
+    'headers' => isset($headers) ? serialize($headers) : NULL,
   );
   if (!is_string($data)) {
     $fields['data'] = serialize($data);
@@ -165,10 +162,10 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
       // cached data that was cached before the timestamp.
       $user->cache = REQUEST_TIME;
 
-      $cache_flush = variable_get('cache_flush', 0);
+      $cache_flush = variable_get('cache_flush_' . $table, 0);
       if ($cache_flush == 0) {
         // This is the first request to clear the cache, start a timer.
-        variable_set('cache_flush', REQUEST_TIME);
+        variable_set('cache_flush_' . $table, REQUEST_TIME);
       }
       elseif (REQUEST_TIME > ($cache_flush + variable_get('cache_lifetime', 0))) {
         // Clear the cache for everyone, cache_flush_delay seconds have
@@ -177,7 +174,7 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
           ->condition('expire', CACHE_PERMANENT, '<>')
           ->condition('expire', REQUEST_TIME, '<')
           ->execute();
-        variable_set('cache_flush', 0);
+        variable_set('cache_flush_' . $table, 0);
       }
     }
     else {
@@ -191,7 +188,7 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
   else {
     if ($wildcard) {
       if ($cid == '*') {
-        db_delete($table)->execute();
+        db_truncate($table)->execute();
       }
       else {
         db_delete($table)

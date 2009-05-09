@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.161 2009/03/25 16:40:51 dries Exp $
+// $Id: install.php,v 1.167 2009/05/09 18:35:00 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -185,7 +185,8 @@ function install_verify_settings() {
     include_once DRUPAL_ROOT . '/includes/form.inc';
 
     $database = $databases['default']['default'];
-    $settings_file = './' . conf_path(FALSE, TRUE) . '/settings.php';
+    drupal_static_reset('conf_path');
+    $settings_file = './' . conf_path(FALSE) . '/settings.php';
 
     $form_state = array();
     _install_settings_form_validate($database, $settings_file, $form_state);
@@ -202,7 +203,8 @@ function install_verify_settings() {
 function install_change_settings($profile = 'default', $install_locale = '') {
   global $databases, $db_prefix;
 
-  $conf_path = './' . conf_path(FALSE, TRUE);
+  drupal_static_reset('conf_path');
+  $conf_path = './' . conf_path(FALSE);
   $settings_file = $conf_path . '/settings.php';
   $database = isset($databases['default']['default']) ? $databases['default']['default'] : array();
 
@@ -363,7 +365,7 @@ function _install_settings_form_validate($database, $settings_file, &$form_state
     }
     $class = "DatabaseInstaller_$driver";
     $test = new $class;
-    $databases = array('default' => array('default' => $database));
+    $databases['default']['default'] = $database;
     $return = $test->test();
     if (!$return || $test->error) {
       if (!empty($test->success)) {
@@ -725,14 +727,8 @@ function install_tasks($profile, $task) {
       drupal_add_js('misc/timezone.js');
       // We add these strings as settings because JavaScript translation does not
       // work on install time.
-      drupal_add_js(array('copyFieldValue' => array('edit-site-mail' => array('edit-account-mail')), 'cleanURL' => array('success' => st('Your server has been successfully tested to support this feature.'), 'failure' => st('Your system configuration does not currently support this feature. The <a href="http://drupal.org/node/15365">handbook page on Clean URLs</a> has additional troubleshooting information.'), 'testing' => st('Testing clean URLs...'))), 'setting');
-      drupal_add_js('
-// Global Killswitch
-if (Drupal.jsEnabled) {
-  jQuery(document).ready(function() {
-    Drupal.cleanURLsInstallCheck();
-  });
-}', 'inline');
+      drupal_add_js(array('copyFieldValue' => array('edit-site-mail' => array('edit-account-mail'))), 'setting');
+      drupal_add_js('jQuery(function () { Drupal.cleanURLsInstallCheck(); });', 'inline');
       // Build menu to allow clean URL check.
       menu_rebuild();
 
@@ -891,6 +887,64 @@ function install_reserved_tasks() {
 }
 
 /**
+ * Check installation requirements and report any errors.
+ */
+function install_check_requirements($profile, $verify) {
+  // Check the profile requirements.
+  $requirements = drupal_check_profile($profile);
+
+  // If Drupal is not set up already, we need to create a settings file.
+  if (!$verify) {
+    $writable = FALSE;
+    $conf_path = './' . conf_path(FALSE, TRUE);
+    $settings_file = $conf_path . '/settings.php';
+    $file = $conf_path;
+    $exists = FALSE;
+    // Verify that the directory exists.
+    if (drupal_verify_install_file($conf_path, FILE_EXIST, 'dir')) {
+      // Check to make sure a settings.php already exists.
+      $file = $settings_file;
+      if (drupal_verify_install_file($settings_file, FILE_EXIST)) {
+        $exists = TRUE;
+        // If it does, make sure it is writable.
+        $writable = drupal_verify_install_file($settings_file, FILE_READABLE|FILE_WRITABLE);
+        $exists = TRUE;
+      }
+    }
+
+    if (!$exists) {
+      $requirements['settings file exists'] = array(
+        'title'       => st('Settings file'),
+        'value'       => st('The settings file does not exist.'),
+        'severity'    => REQUIREMENT_ERROR,
+        'description' => st('The @drupal installer requires that you create a settings file as part of the installation process. Copy the %default_file file to %file. More details about installing Drupal are available in <a href="@install_txt">INSTALL.txt</a>.', array('@drupal' => drupal_install_profile_name(), '%file' => $file, '%default_file' => $conf_path .'/default.settings.php', '@install_txt' => base_path() .'INSTALL.txt')),
+      );
+    }
+    else {
+      $requirements['settings file exists'] = array(
+        'title'       => st('Settings file'),
+        'value'       => st('The %file file exists.', array('%file' => $file)),
+      );
+      if (!$writable) {
+        $requirements['settings file writable'] = array(
+          'title'       => st('Settings file'),
+          'value'       => st('The settings file is not writable.'),
+          'severity'    => REQUIREMENT_ERROR,
+          'description' => st('The @drupal installer requires write permissions to %file during the installation process. If you are unsure how to grant file permissions, please consult the <a href="@handbook_url">online handbook</a>.', array('@drupal' => drupal_install_profile_name(), '%file' => $file, '@handbook_url' => 'http://drupal.org/server-permissions')),
+        );
+      }
+      else {
+        $requirements['settings file'] = array(
+          'title'       => st('Settings file'),
+          'value'       => st('Settings file is writable.'),
+        );
+      }
+    }
+  }
+  return $requirements;
+}
+
+/**
  * Add the installation task list to the current page.
  */
 function install_task_list($active = NULL) {
@@ -1040,15 +1094,9 @@ function install_configure_form(&$form_state, $url) {
   );
 
   $form['server_settings']['clean_url'] = array(
-    '#type' => 'radios',
-    '#title' => st('Clean URLs'),
+    '#type' => 'hidden',
     '#default_value' => 0,
-    '#options' => array(0 => st('Disabled'), 1 => st('Enabled')),
-    '#description' => st('This option makes Drupal emit "clean" URLs (i.e. without <code>?q=</code> in the URL).'),
-    '#disabled' => TRUE,
-    '#prefix' => '<div id="clean-url" class="install">',
-    '#suffix' => '</div>',
-    '#weight' => 10,
+    '#attributes' => array('class' => 'install'),
   );
 
   $form['server_settings']['update_status_module'] = array(

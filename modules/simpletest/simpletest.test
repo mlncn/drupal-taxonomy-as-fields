@@ -1,5 +1,5 @@
 <?php
-// $Id: simpletest.test,v 1.16 2009/01/22 12:46:06 dries Exp $
+// $Id: simpletest.test,v 1.19 2009/05/01 11:01:53 dries Exp $
 
 class SimpleTestFunctionalTest extends DrupalWebTestCase {
   /**
@@ -13,7 +13,7 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
    */
   protected $test_ids = array();
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('SimpleTest functionality'),
       'description' => t('Test SimpleTest\'s web interface: check that the intended tests were
@@ -84,7 +84,7 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
       // Run twice so test_ids can be accumulated.
       for ($i = 0; $i < 2; $i++) {
         // Run this test from web interface.
-        $this->drupalGet('admin/build/testing');
+        $this->drupalGet('admin/development/testing');
 
         $edit = array();
         $edit['SimpleTestFunctionalTest'] = TRUE;
@@ -204,10 +204,10 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
       if ($fieldset = $this->getResultFieldSet()) {
         // Code assumes this is the only test in group.
         $results['summary'] = $this->asText($fieldset->div);
-        $results['name'] = $this->asText($fieldset->fieldset->legend);
+        $results['name'] = $this->asText($fieldset->legend);
 
         $results['assertions'] = array();
-        $tbody = $fieldset->fieldset->table->tbody;
+        $tbody = $fieldset->table->tbody;
         foreach ($tbody->tr as $row) {
           $assertion = array();
           $assertion['message'] = $this->asText($row->td[0]);
@@ -233,7 +233,7 @@ class SimpleTestFunctionalTest extends DrupalWebTestCase {
     $fieldsets = $this->xpath('//fieldset');
     $info = $this->getInfo();
     foreach ($fieldsets as $fieldset) {
-      if ($fieldset->legend == $info['group']) {
+      if ($fieldset->legend == $info['name']) {
         return $fieldset;
       }
     }

@@ -1,12 +1,12 @@
-// $Id: timezone.js,v 1.4 2009/03/13 23:15:08 webchick Exp $
-(function($) {
+// $Id: timezone.js,v 1.6 2009/04/27 20:19:35 webchick Exp $
+(function ($) {
 
 /**
  * Set the client's system time zone as default values of form fields.
  */
 Drupal.behaviors.setTimezone = {
-  attach: function(context, settings) {
-    $('select.timezone-detect:not(.timezone-processed)', context).addClass('timezone-processed').each(function() {
+  attach: function (context, settings) {
+    $('select.timezone-detect:not(.timezone-processed)', context).addClass('timezone-processed').each(function () {
       var dateString = Date();
       // In some client environments, date strings include a time zone
       // abbreviation, between 3 and 5 letters enclosed in parentheses,

@@ -1,5 +1,5 @@
 <?php
-// $Id: book.module,v 1.487 2009/03/08 04:25:04 webchick Exp $
+// $Id: book.module,v 1.493 2009/05/09 18:28:11 dries Exp $
 
 /**
  * @file
@@ -63,7 +63,7 @@ function book_perm() {
 /**
  * Inject links into $node as needed.
  */
-function book_node_view_link($node, $teaser, $page) {
+function book_node_view_link($node, $teaser) {
   $links = array();
 
   if (isset($node->book['depth'])) {
@@ -72,8 +72,8 @@ function book_node_view_link($node, $teaser, $page) {
       if ((user_access('add content to books') || user_access('administer book outlines')) && node_access('create', $child_type) && $node->status == 1 && $node->book['depth'] < MENU_MAX_DEPTH) {
         $links['book_add_child'] = array(
           'title' => t('Add child page'),
-          'href' => "node/add/" . str_replace('_', '-', $child_type),
-          'query' => "parent=" . $node->book['mlid'],
+          'href' => 'node/add/' . str_replace('_', '-', $child_type),
+          'query' => 'parent=' . $node->book['mlid'],
         );
       }
 
@@ -401,7 +401,7 @@ function _book_parent_select($book_link) {
       '#title' => t('Parent item'),
       '#default_value' => $book_link['plid'],
       '#description' => t('The parent page in the book. The maximum depth for a book and all child pages is !maxdepth. Some pages in the selected book may not be available as parents if selecting them would exceed this limit.', array('!maxdepth' => MENU_MAX_DEPTH)),
-      '#options' => book_toc($book_link['bid'], array($book_link['mlid']), $book_link['parent_depth_limit']),
+      '#options' => book_toc($book_link['bid'], $book_link['parent_depth_limit'], array($book_link['mlid'])),
       '#attributes' => array('class' => 'book-title-select'),
     );
   }
@@ -415,7 +415,6 @@ function _book_parent_select($book_link) {
 function _book_add_form_elements(&$form, $node) {
   // Need this for AJAX.
   $form['#cache'] = TRUE;
-  drupal_add_js("if (Drupal.jsEnabled) { jQuery(function() { jQuery('#edit-book-pick-book').css('display', 'none'); }); }", 'inline');
 
   $form['book'] = array(
     '#type' => 'fieldset',
@@ -423,6 +422,8 @@ function _book_add_form_elements(&$form, $node) {
     '#weight' => 10,
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
+    '#group' => 'additional_settings',
+    '#attached_js' => array(drupal_get_path('module', 'book') . '/book.js'),
     '#tree' => TRUE,
     '#attributes' => array('class' => 'book-outline-form'),
   );
@@ -489,7 +490,7 @@ function _book_add_form_elements(&$form, $node) {
  * Performs all additions and updates to the book outline through node addition,
  * node editing, node deletion, or the outline tab.
  */
-function _book_update_outline(&$node) {
+function _book_update_outline($node) {
   if (empty($node->book['bid'])) {
     return FALSE;
   }
@@ -689,37 +690,6 @@ function book_menu_name($bid) {
 }
 
 /**
- * Build an active trail to show in the breadcrumb.
- */
-function book_build_active_trail($book_link) {
-  static $trail;
-
-  if (!isset($trail)) {
-    $trail = array();
-    $trail[] = array('title' => t('Home'), 'href' => '<front>', 'localized_options' => array());
-
-    $tree = menu_tree_all_data($book_link['menu_name'], $book_link);
-    $curr = array_shift($tree);
-
-    while ($curr) {
-      if ($curr['link']['href'] == $book_link['href']) {
-        $trail[] = $curr['link'];
-        $curr = FALSE;
-      }
-      else {
-        if ($curr['below'] && $curr['link']['in_active_trail']) {
-          $trail[] = $curr['link'];
-          $tree = $curr['below'];
-        }
-        $curr = array_shift($tree);
-      }
-    }
-  }
-
-  return $trail;
-}
-
-/**
  * Implementation of hook_node_load().
  */
 function book_node_load($nodes, $types) {
@@ -735,22 +705,33 @@ function book_node_load($nodes, $types) {
 /**
  * Implementation of hook_node_view().
  */
-function book_node_view($node, $teaser, $page) {
+function book_node_view($node, $teaser) {
   if (!$teaser) {
     if (!empty($node->book['bid']) && $node->build_mode == NODE_BUILD_NORMAL) {
       $node->content['book_navigation'] = array(
         '#markup' => theme('book_navigation', $node->book),
         '#weight' => 100,
       );
-
-      if ($page) {
-        menu_set_active_trail(book_build_active_trail($node->book));
-        menu_set_active_menu_name($node->book['menu_name']);
-      }
     }
   }
 
-  book_node_view_link($node, $teaser, $page);
+  if ($node->build_mode != NODE_BUILD_RSS) {
+    book_node_view_link($node, $teaser);
+  }
+}
+
+/**
+ * Implementation of hook_page_alter().
+ *
+ * Add the book menu to the list of menus used to build the active trail when
+ * viewing a book page.
+ */
+function book_page_alter(&$page) {
+  if (($node = menu_get_object()) && !empty($node->book['bid'])) {
+    $active_menus = menu_get_active_menu_names();
+    $active_menus[] = $node->book['menu_name'];
+    menu_set_active_menu_names($active_menus);
+  }
 }
 
 /**
@@ -966,15 +947,15 @@ function _book_toc_recurse($tree, $indent, &$toc, $exclude, $depth_limit) {
  *
  * @param $bid
  *   The ID of the book whose pages are to be listed.
+ * @param $depth_limit
+ *   Any link deeper than this value will be excluded (along with its children).
  * @param $exclude
  *   Optional array of mlid values. Any link whose mlid is in this array
  *   will be excluded (along with its children).
- * @param $depth_limit
- *   Any link deeper than this value will be excluded (along with its children).
  * @return
  *   An array of mlid, title pairs for use as options for selecting a book page.
  */
-function book_toc($bid, $exclude = array(), $depth_limit) {
+function book_toc($bid, $depth_limit, $exclude = array()) {
   $tree = menu_tree_all_data(book_menu_name($bid));
   $toc = array();
   _book_toc_recurse($tree, '', $toc, $exclude, $depth_limit);

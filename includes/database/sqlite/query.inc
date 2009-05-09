@@ -1,5 +1,10 @@
 <?php
-// $Id $
+// $Id: query.inc,v 1.5 2009/05/03 08:55:06 dries Exp $
+
+/**
+ * @file
+ * Query code for SQLite embedded database engine.
+ */
 
 /**
  * @ingroup database
@@ -19,18 +24,22 @@ class InsertQuery_sqlite extends InsertQuery {
     if (count($this->insertFields) + count($this->defaultFields) == 0) {
       return NULL;
     }
+    // Don't execute query without values.
+    if (!isset($this->insertValues[0]) && count($this->insertFields) > 0) {
+      return NULL;
+    }
     if (count($this->insertFields)) {
       return parent::execute();
     }
     else {
-      return $this->connection->query('INSERT INTO {'. $this->table .'} DEFAULT VALUES', array(), $this->queryOptions);
+      return $this->connection->query('INSERT INTO {' . $this->table . '} DEFAULT VALUES', array(), $this->queryOptions);
     }
   }
 
   public function __toString() {
     // Produce as many generic placeholders as necessary.
     $placeholders = array_fill(0, count($this->insertFields), '?');
-    return 'INSERT INTO {'. $this->table .'} ('. implode(', ', $this->insertFields) .') VALUES ('. implode(', ', $placeholders) .')';
+    return 'INSERT INTO {' . $this->table . '} (' . implode(', ', $this->insertFields) . ') VALUES (' . implode(', ', $placeholders) . ')';
   }
 
 }
@@ -83,7 +92,7 @@ class UpdateQuery_sqlite extends UpdateQuery {
         // The IS NULL operator is badly managed by DatabaseCondition.
         $condition->where($field . ' IS NULL');
       }
-      else if (is_null($data)) {
+      elseif (is_null($data)) {
         // The field will be set to NULL.
         // The IS NULL operator is badly managed by DatabaseCondition.
         $condition->where($field . ' IS NOT NULL');
@@ -123,6 +132,18 @@ class DeleteQuery_sqlite extends DeleteQuery {
     else {
       return parent::execute();
     }
+  }
+}
+
+/**
+ * SQLite specific implementation of TruncateQuery.
+ *
+ * SQLite doesn't support TRUNCATE, but a DELETE query with no condition has
+ * exactly the effect (it is implemented by DROPing the table).
+ */
+class TruncateQuery_sqlite extends TruncateQuery {
+  public function __toString() {
+    return 'DELETE FROM {' . $this->connection->escapeTable($this->table) . '} ';
   }
 }
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.test,v 1.39 2009/02/11 05:33:18 webchick Exp $
+// $Id: system.test,v 1.41 2009/05/06 10:37:28 dries Exp $
 
 /**
  * Helper class for module test cases.
@@ -58,7 +58,7 @@ class ModuleTestCase extends DrupalWebTestCase {
  * Test module enabling/disabling functionality.
  */
 class EnableDisableTestCase extends ModuleTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Enable/disable modules'),
       'description' => t('Enable/disable core module and confirm table creation/deletion.'),
@@ -118,7 +118,7 @@ class EnableDisableTestCase extends ModuleTestCase {
  * Test module dependency functionality.
  */
 class ModuleDependencyTestCase extends ModuleTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Module dependencies'),
       'description' => t('Enable module without dependency enabled.'),
@@ -157,7 +157,7 @@ class ModuleDependencyTestCase extends ModuleTestCase {
  * Test required modules functionality.
  */
 class ModuleRequiredTestCase extends ModuleTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Required modules'),
       'description' => t('Attempt disabling of required modules.'),
@@ -184,7 +184,7 @@ class IPAddressBlockingTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('IP address blocking'),
       'description' => t('Test IP address blocking.'),
@@ -254,7 +254,7 @@ class CronRunTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Cron run'),
       'description' => t('Test cron run.'),
@@ -325,7 +325,7 @@ class AdminOverviewTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Admin overview'),
       'description' => t('Confirm that the admin overview page appears as expected.'),
@@ -392,7 +392,7 @@ class AdminMetaTagTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Fingerprinting meta tag'),
       'description' => t('Confirm that the fingerprinting meta tag appears as expected.'),
@@ -420,7 +420,7 @@ class AccessDeniedTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('403 functionality'),
       'description' => t("Tests page access denied functionality, including custom 403 pages."),
@@ -481,7 +481,7 @@ class PageNotFoundTestCase extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('404 functionality'),
       'description' => t("Tests page not found functionality, including custom 404 pages."),
@@ -540,7 +540,7 @@ class PageNotFoundTestCase extends DrupalWebTestCase {
  * Tests generic date and time handling capabilities of Drupal.
  */
 class DateTimeFunctionalTest extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Date and time'),
       'description' => t('Configure date and time settings. Test date formatting and time zone handling, including daylight saving time.'),
@@ -587,7 +587,7 @@ class PageTitleFiltering extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('HTML in page titles'),
       'description' => t('Tests correct handling or conversion by drupal_set_title() and drupal_get_title().'),
@@ -649,7 +649,7 @@ class PageTitleFiltering extends DrupalWebTestCase {
  */
 class FrontPageTestCase extends DrupalWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Front page'),
       'description' => t('Tests front page functionality and administration.'),
@@ -700,7 +700,7 @@ class FrontPageTestCase extends DrupalWebTestCase {
 }
 
 class SystemBlockTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Block functionality'),
       'description' => t('Configure and move powered-by block.'),
@@ -754,7 +754,7 @@ class SystemSettingsForm extends DrupalWebTestCase {
   /**
    * Implementation of getInfo().
    */
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('System setting forms'),
       'description' => t('Tests correctness of system_settings_form() processing.'),
@@ -833,7 +833,7 @@ class SystemSettingsForm extends DrupalWebTestCase {
  * Tests for the theme interface functionality.
  */
 class SystemThemeFunctionalTest extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Theme interface functionality'),
       'description' => t('Tests the theme interface functionality by enabling and switching themes, and using an administration theme.'),
@@ -893,5 +893,97 @@ class SystemThemeFunctionalTest extends DrupalWebTestCase {
 
     $this->drupalGet('node/add');
     $this->assertRaw('themes/garland', t('Site default theme used on the add content page.'));
+  }
+}
+
+
+/**
+ * Test the basic queue functionality.
+ */
+class QueueTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => t('Queue functionality'),
+      'description' => t('Queues and dequeues a set of items to check the basic queue functionality.'),
+      'group' => t('System'),
+    );
+  }
+
+  /**
+   * Queues and dequeues a set of items to check the basic queue functionality.
+   */
+  function testQueue() {
+    // Create two queues.
+    $queue1 = DrupalQueue::get($this->randomName());
+    $queue1->createQueue();
+    $queue2 = DrupalQueue::get($this->randomName());
+    $queue2->createQueue();
+
+    // Create four items.
+    $data = array();
+    for ($i = 0; $i < 4; $i++) {
+      $data[] = array($this->randomName() => $this->randomName());
+    }
+
+    // Queue items 1 and 2 in the queue1.
+    $queue1->createItem($data[0]);
+    $queue1->createItem($data[1]);
+
+    // Retrieve two items from queue1.
+    $items = array();
+    $new_items = array();
+
+    $items[] = $item = $queue1->claimItem();
+    $new_items[] = $item->data;
+
+    $items[] = $item = $queue1->claimItem();
+    $new_items[] = $item->data;
+
+    // First two dequeued items should match the first two items we queued.
+    $this->assertEqual($this->queueScore($data, $new_items), 2, t('Two items matched'));
+
+    // Add two more items.
+    $queue1->createItem($data[2]);
+    $queue1->createItem($data[3]);
+
+    $this->assertTrue($queue1->numberOfItems(), t('Queue 1 is not empty after adding items.'));
+    $this->assertFalse($queue2->numberOfItems(), t('Queue 2 is empty while Queue 1 has items'));
+
+    $items[] = $item = $queue1->claimItem();
+    $new_items[] = $item->data;
+
+    $items[] = $item = $queue1->claimItem();
+    $new_items[] = $item->data;
+
+    // All dequeued items should match the items we queued exactly once,
+    // therefore the score must be exactly 4.
+    $this->assertEqual($this->queueScore($data, $new_items), 4, t('Four items matched'));
+
+    // There should be no duplicate items.
+    $this->assertEqual($this->queueScore($new_items, $new_items), 4, t('Four items matched'));
+
+    // Delete all items from queue1.
+    foreach ($items as $item) {
+      $queue1->deleteItem($item);
+    }
+
+    // Check that both queues are empty.
+    $this->assertFalse($queue1->numberOfItems(), t('Queue 1 is empty'));
+    $this->assertFalse($queue2->numberOfItems(), t('Queue 2 is empty'));
+  }
+
+  /**
+   * This function returns the number of equal items in two arrays.
+   */
+  function queueScore($items, $new_items) {
+    $score = 0;
+    foreach ($items as $item) {
+      foreach ($new_items as $new_item) {
+        if ($item === $new_item) {
+          $score++;
+        }
+      }
+    }
+    return $score;
   }
 }

@@ -1,12 +1,12 @@
 <?php
-// $Id: common.test,v 1.30 2009/02/28 07:36:06 webchick Exp $
+// $Id: common.test,v 1.37 2009/05/03 07:35:37 dries Exp $
 
 /**
  * Tests for the l() function.
  */
 class CommonLUnitTest extends DrupalWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Tests for the l() function'),
       'description' => t('Confirm that url() works correctly with various input.'),
@@ -30,7 +30,7 @@ class CommonSizeTestCase extends DrupalWebTestCase {
   protected $exact_test_cases;
   protected $rounded_test_cases;
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Size parsing test'),
       'description' => t('Parse a predefined amount of bytes and compare the output with the expected value.'),
@@ -134,7 +134,7 @@ class DrupalTagsHandlingTestCase extends DrupalWebTestCase {
     '"Drupal, although it rhymes with sloopal, is as awesome as a troopal!"' => 'Drupal, although it rhymes with sloopal, is as awesome as a troopal!',
   );
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Drupal tags handling'),
       'description' => t("Performs tests on Drupal's handling of tags, both explosion and implosion tactics used."),
@@ -184,16 +184,16 @@ class DrupalTagsHandlingTestCase extends DrupalWebTestCase {
  * Test the Drupal CSS system.
  */
 class CascadingStylesheetsTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Cascading stylesheets'),
       'description' => t('Tests adding various cascading stylesheets to the page.'),
-      'group' => t('System')
+      'group' => t('System'),
     );
   }
 
   function setUp() {
-    parent::setUp();
+    parent::setUp('php');
     // Reset drupal_add_css() before each test.
     drupal_add_css(NULL, 'reset');
   }
@@ -230,13 +230,55 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     drupal_add_css($css);
     $this->assertTrue(strpos(drupal_get_css(), $css) > 0, t('Rendered CSS includes the added stylesheet.'));
   }
+
+  /**
+   * Tests rendering inline stylesheets with preprocessing on.
+   */
+  function testRenderInlinePreprocess() {
+    $css = 'body { padding: 0px; }';
+    $css_preprocessed = '<style type="text/css">' . drupal_load_stylesheet_content($css, TRUE) . '</style>';
+    drupal_add_css($css, 'inline');
+    $css = drupal_get_css();
+    $this->assertEqual($css, $css_preprocessed, t('Rendering preprocessed inline CSS adds it to the page.'));
+  }
+
+  /**
+   * Tests rendering inline stylesheets with preprocessing off.
+   */
+  function testRenderInlineNoPreprocess() {
+    $css = 'body { padding: 0px; }';
+    drupal_add_css($css, array('type' => 'inline', 'preprocess' => FALSE));
+    $this->assertTrue(strpos(drupal_get_css(), $css) > 0, t('Rendering non-preprocessed inline CSS adds it to the page.'));
+  }
+
+  /**
+   * Tests rendering inline stylesheets through a full page request.
+   */
+  function testRenderInlineFullPage() {
+    $css = 'body { padding: 0px; }';
+    $compressed_css = '<style type="text/css">' . drupal_load_stylesheet_content($css, TRUE) . '</style>';
+
+    // Create a node, using the PHP filter that tests drupal_add_css().
+    $settings = array(
+      'type' => 'page',
+      'format' => 3, // PHP filter.
+      'body_format' => 3,
+      'body' => t('This tests the inline CSS!') . "<?php drupal_add_css('$css', 'inline'); ?>",
+      'promote' => 1,
+    );
+    $node = $this->drupalCreateNode($settings);
+
+    // Fetch the page.
+    $this->drupalGet('node/' . $node->nid);
+    $this->assertRaw($compressed_css, t('Inline stylesheets appear in the full page rendering.'));
+  }
 }
 
 /**
  * Test drupal_http_request().
  */
 class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Drupal HTTP request'),
       'description' => t("Performs tests on Drupal's HTTP request mechanism."),
@@ -261,6 +303,12 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
     $this->assertEqual($result->code, 200, t('Fetched page successfully.'));
     $this->drupalSetContent($result->data);
     $this->assertTitle(variable_get('site_name', 'Drupal'), t('Site title matches.'));
+
+    // Test that code and status message is returned.
+    $result = drupal_http_request(url('pagedoesnotexist', array('absolute' => TRUE)));
+    $this->assertTrue(!empty($result->protocol),  t('Result protocol is returned.'));
+    $this->assertEqual($result->code, '404', t('Result code is 404'));
+    $this->assertEqual($result->status_message, 'Not Found', t('Result status message is "Not Found"'));
   }
 
   function testDrupalHTTPRequestBasicAuth() {
@@ -317,7 +365,7 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
  * Testing drupal_set_content and drupal_get_content.
  */
 class DrupalSetContentTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Drupal set/get content'),
       'description' => t('Performs tests on setting and retrieiving content from theme regions.'),
@@ -368,7 +416,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
    */
   var $preprocess_js = NULL;
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('JavaScript'),
       'description' => t('Tests the JavaScript system.'),
@@ -445,7 +493,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
    * Test adding inline scripts.
    */
   function testAddInline() {
-    $inline = 'jQuery(function(){});';
+    $inline = 'jQuery(function () { });';
     $javascript = drupal_add_js($inline, array('type' => 'inline', 'scope' => 'footer'));
     $this->assertTrue(array_key_exists('misc/jquery.js', $javascript), t('jQuery is added when inline scripts are added.'));
     $data = end($javascript);
@@ -467,7 +515,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
    * Test drupal_get_js() with a footer scope.
    */
   function testFooterHTML() {
-    $inline = 'jQuery(function(){});';
+    $inline = 'jQuery(function () { });';
     drupal_add_js($inline, array('type' => 'inline', 'scope' => 'footer'));
     $javascript = drupal_get_js('footer');
     $this->assertTrue(strpos($javascript, $inline) > 0, t('Rendered JavaScript footer returns the inline code.'));
@@ -520,7 +568,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
  * Tests for drupal_render().
  */
 class DrupalRenderUnitTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Drupal render'),
       'description' => t('Performs unit tests on drupal_render().'),
@@ -585,7 +633,7 @@ class DrupalRenderUnitTestCase extends DrupalWebTestCase {
  * Tests Drupal error and exception handlers.
  */
 class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Drupal error handlers'),
       'description' => t('Performs tests on the Drupal error and exception handler.'),
@@ -605,40 +653,40 @@ class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
       '%type' => 'Notice',
       '%message' => 'Undefined variable: bananas',
       '%function' => 'system_test_generate_warnings()',
-      '%line' => 184,
+      '%line' => 194,
       '%file' => realpath('modules/simpletest/tests/system_test.module'),
     );
     $error_warning = array(
       '%type' => 'Warning',
       '%message' => 'Division by zero',
       '%function' => 'system_test_generate_warnings()',
-      '%line' => 186,
+      '%line' => 196,
       '%file' => realpath('modules/simpletest/tests/system_test.module'),
     );
     $error_user_notice = array(
       '%type' => 'User notice',
       '%message' => 'Drupal is awesome',
       '%function' => 'system_test_generate_warnings()',
-      '%line' => 188,
+      '%line' => 198,
       '%file' => realpath('modules/simpletest/tests/system_test.module'),
     );
 
     // Set error reporting to collect notices.
-    variable_set('error_level', 2);
+    variable_set('error_level', ERROR_REPORTING_DISPLAY_ALL);
     $this->drupalGet('system-test/generate-warnings');
     $this->assertErrorMessage($error_notice);
     $this->assertErrorMessage($error_warning);
     $this->assertErrorMessage($error_user_notice);
 
     // Set error reporting to not collect notices.
-    variable_set('error_level', 1);
+    variable_set('error_level', ERROR_REPORTING_DISPLAY_SOME);
     $this->drupalGet('system-test/generate-warnings');
     $this->assertNoErrorMessage($error_notice);
     $this->assertErrorMessage($error_warning);
     $this->assertErrorMessage($error_user_notice);
 
     // Set error reporting to not show any errors.
-    variable_set('error_level', 0);
+    variable_set('error_level', ERROR_REPORTING_HIDE);
     $this->drupalGet('system-test/generate-warnings');
     $this->assertNoErrorMessage($error_notice);
     $this->assertNoErrorMessage($error_warning);
@@ -653,14 +701,14 @@ class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
       '%type' => 'Exception',
       '%message' => 'Drupal is awesome',
       '%function' => 'system_test_trigger_exception()',
-      '%line' => 197,
+      '%line' => 207,
       '%file' => realpath('modules/simpletest/tests/system_test.module'),
     );
     $error_pdo_exception = array(
       '%type' => 'PDOException',
       '%message' => 'SQLSTATE',
       '%function' => 'system_test_trigger_pdo_exception()',
-      '%line' => 205,
+      '%line' => 215,
       '%file' => realpath('modules/simpletest/tests/system_test.module'),
     );
 
@@ -697,7 +745,7 @@ class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
  * Test for valid_url().
  */
 class ValidUrlTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Valid Url'),
       'description' => t("Performs tests on Drupal's valid url function."),
@@ -805,7 +853,7 @@ class ValidUrlTestCase extends DrupalWebTestCase {
  * Tests for CRUD API functions.
  */
 class DrupalDataApiTest extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Data API functions'),
       'description' => t('Tests the performance of CRUD APIs.'),
@@ -862,7 +910,7 @@ class DrupalErrorCollectionUnitTest extends DrupalWebTestCase {
    */
   protected $collectedErrors = array();
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('SimpleTest error collecter'),
       'description' => t('Performs tests on the Simpletest error and exception collecter.'),

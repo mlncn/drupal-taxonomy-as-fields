@@ -1,5 +1,5 @@
 <?php
-// $Id: schema.inc,v 1.12 2009/03/14 20:34:17 dries Exp $
+// $Id: schema.inc,v 1.18 2009/04/25 16:57:19 webchick Exp $
 
 /**
  * @file
@@ -59,9 +59,11 @@ class DatabaseSchema_mysql extends DatabaseSchema {
    *   An array of SQL statements to create the table.
    */
   protected function createTableSql($name, $table) {
-    if (empty($table['mysql_suffix'])) {
-      $table['mysql_suffix'] = 'DEFAULT CHARACTER SET UTF8';
-    }
+    // Provide some defaults if needed
+    $table += array(
+      'mysql_engine' => 'InnoDB',
+      'mysql_character_set' => 'UTF8',
+    );
 
     $sql = "CREATE TABLE {" . $name . "} (\n";
 
@@ -79,7 +81,7 @@ class DatabaseSchema_mysql extends DatabaseSchema {
     // Remove the last comma and space.
     $sql = substr($sql, 0, -3) . "\n) ";
 
-    $sql .= $table['mysql_suffix'];
+    $sql .= 'ENGINE = ' . $table['mysql_engine'] . ' DEFAULT CHARACTER SET ' . $table['mysql_character_set'];
 
     // Add table comment.
     if (!empty($table['description'])) {
@@ -174,6 +176,7 @@ class DatabaseSchema_mysql extends DatabaseSchema {
     // Put :normal last so it gets preserved by array_flip. This makes
     // it much easier for modules (such as schema.module) to map
     // database types back into schema types.
+    // $map does not use drupal_static as its value never changes.
     static $map = array(
       'varchar:normal'  => 'VARCHAR',
       'char:normal'     => 'CHAR',
@@ -223,7 +226,7 @@ class DatabaseSchema_mysql extends DatabaseSchema {
     }
     if (!empty($spec['unique keys'])) {
       foreach ($spec['unique keys'] as $key => $fields) {
-        $keys[] = 'UNIQUE KEY ' . $key .' ('. $this->createKeysSqlHelper($fields) . ')';
+        $keys[] = 'UNIQUE KEY ' . $key . ' (' . $this->createKeysSqlHelper($fields) . ')';
       }
     }
     if (!empty($spec['indexes'])) {
@@ -351,7 +354,7 @@ class DatabaseSchema_mysql extends DatabaseSchema {
 
     // Work around a bug in some versions of PDO, see http://bugs.php.net/bug.php?id=41125
     $comment = str_replace("'", '’', $comment);
- 
+
     // Truncate comment to maximum comment length.
     if (isset($length)) {
       // Add table prefixes before truncating.
@@ -372,7 +375,9 @@ class DatabaseSchema_mysql extends DatabaseSchema {
       return db_query("SELECT column_comment FROM information_schema.columns WHERE " . (string) $condition, $condition->arguments())->fetchField();
     }
     $condition->compile($this->connection);
-    return db_query("SELECT table_comment FROM information_schema.tables WHERE " . (string) $condition, $condition->arguments())->fetchField();
+    $comment = db_query("SELECT table_comment FROM information_schema.tables WHERE " . (string) $condition, $condition->arguments())->fetchField();
+    // Work-around for MySQL 5.0 bug http://bugs.mysql.com/bug.php?id=11379
+    return preg_replace('/; InnoDB free:.*$/', '', $comment);
   }
 
 }

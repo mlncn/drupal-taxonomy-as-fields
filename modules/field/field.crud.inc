@@ -1,5 +1,5 @@
 <?php
-// $Id: field.crud.inc,v 1.7 2009/03/26 13:31:24 webchick Exp $
+// $Id: field.crud.inc,v 1.11 2009/04/30 14:40:03 dries Exp $
 
 /**
  * @file
@@ -42,7 +42,7 @@
  *     in $object->$field_name.
  * - type (string)
  *     The type of the field, such as 'text' or 'image'. Field types
- *     are defined by modules that implement hook_field_into().
+ *     are defined by modules that implement hook_field_info().
  * - cardinality (integer)
  *     The number of values the field can hold. Legal values are any
  *     positive integer or FIELD_CARDINALITY_UNLIMITED.
@@ -131,18 +131,26 @@
  *         Each field widget type module defines and documents its own
  *         widget settings.
  * - display (array)
- *     A sub-array of key/value pairs identifying display contexts
- *     and the way the field should be displayed in that context.
- *     TODO more work to do here.
- *     - (context_1)
- *       - label
- *       - exclude
- *       - type
- *       - settings
+ *     A sub-array of key/value pairs identifying display contexts and the way
+ *     the field should be displayed in that context.
+ *     - example_context_1 (array)
+ *         A sub-array of key/value pairs of the display options to be used
+ *         when the field is being displayed in the "example_context_1" context.
+ *         - label (string)
+ *             Position of the label. 'inline', 'above' and 'hidden' are the
+ *             values recognized by the default 'field' theme implementation.
+ *         - exclude (integer)
+ *             TODO This is subject to change, see: http://drupal.org/node/367215
+ *         - type (string)
+ *             The type of the display formatter to use for the field in
+ *             this context.
+ *         - settings (array)
+ *             A sub-array of key/value pairs of display options specific to
+ *             the display formatter used in this context.
+ *         - module (string, read-only)
+ *             The name of the module which implements the display formatter.
+ *     - example_context_2 
  *         - ...
- *       - module (internal)
- *     - (context 2)
- *       - ...
  *
  * TODO D7 : document max length for field types, widget types,
  * formatter names...
@@ -177,6 +185,10 @@ function field_create_field($field) {
   // Field name is required.
   if (empty($field['field_name'])) {
     throw new FieldException('Attempt to create an unnamed field.');
+  }
+  // Field type is required.
+  if (empty($field['type'])) {
+    throw new FieldException('Attempt to create a field with no type.');
   }
   // Field name cannot contain invalid characters.
   if (preg_match('/[^a-z0-9_]/', $field['field_name'])) {
@@ -346,10 +358,12 @@ function field_create_instance($instance) {
 
   _field_write_instance($instance);
 
-  module_invoke_all('field_create_instance', $instance);
-
   // Clear caches
   field_cache_clear();
+
+  // Invoke external hooks after the cache is cleared for API consistency.
+  module_invoke_all('field_create_instance', $instance);
+
   return FALSE;
 }
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: content_types.inc,v 1.64 2009/01/26 14:08:43 dries Exp $
+// $Id: content_types.inc,v 1.68 2009/05/07 15:15:43 webchick Exp $
 
 /**
  * @file
@@ -108,7 +108,6 @@ function node_type_form(&$form_state, $type = NULL) {
     '#type' => 'fieldset',
     '#title' => t('Submission form settings'),
     '#collapsible' => TRUE,
-    '#collapsed' => TRUE,
   );
   $form['submission']['title_label'] = array(
     '#title' => t('Title field label'),
@@ -133,7 +132,7 @@ function node_type_form(&$form_state, $type = NULL) {
     '#type' => 'select',
     '#title' => t('Minimum number of words'),
     '#default_value' => $type->min_word_count,
-    '#options' => drupal_map_assoc(array(0, 10, 25, 50, 75, 100, 125, 150, 175, 200)),
+    '#options' => drupal_map_assoc(array(0, 1, 10, 25, 50, 75, 100, 125, 150, 175, 200)),
     '#description' => t('The minimum number of words for the body field to be considered valid for this content type. This can be useful to rule out submissions that do not meet the site\'s standards, such as short test posts.')
   );
   $form['submission']['help']  = array(
@@ -391,7 +390,7 @@ function node_type_delete_confirm(&$form_state, $type) {
   $message = t('Are you sure you want to delete the content type %type?', array('%type' => $type->name));
   $caption = '';
 
-  $num_nodes = db_result(db_query("SELECT COUNT(*) FROM {node} WHERE type = '%s'", $type->type));
+  $num_nodes = db_query("SELECT COUNT(*) FROM {node} WHERE type = :type", array(':type' => $type->type))->fetchField();
   if ($num_nodes) {
     $caption .= '<p>' . format_plural($num_nodes, '<strong>Warning:</strong> there is currently 1 %type post on your site. It may not be able to be displayed or edited correctly, once you have removed this content type.', '<strong>Warning:</strong> there are currently @count %type posts on your site. They may not be able to be displayed or edited correctly, once you have removed this content type.', array('%type' => $type->name)) . '</p>';
   }

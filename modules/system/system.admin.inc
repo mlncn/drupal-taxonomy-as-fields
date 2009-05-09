@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.131 2009/03/17 15:26:29 dries Exp $
+// $Id: system.admin.inc,v 1.140 2009/05/03 07:35:37 dries Exp $
 
 /**
  * @file
@@ -253,7 +253,6 @@ function system_themes_form_submit($form, &$form_state) {
       foreach ($form_state['values']['status'] as $key => $choice) {
         // Always enable the default theme, despite its status checkbox being checked:
         if ($choice || $form_state['values']['theme_default'] == $key) {
-          system_initialize_theme_blocks($key);
           $new_theme_list[] = $key;
           db_query("UPDATE {system} SET status = 1 WHERE type = 'theme' and name = '%s'", $key);
         }
@@ -265,13 +264,6 @@ function system_themes_form_submit($form, &$form_state) {
         '%admin_theme' => $form_state['values']['admin_theme'],
         '%selected_theme' => $form_state['values']['theme_default'],
       )));
-    }
-    if ($form_state['values']['admin_theme'] && $form_state['values']['admin_theme'] != variable_get('admin_theme', 0)) {
-      // If we're changing themes, make sure the theme has its blocks initialized.
-      $result = db_result(db_query("SELECT COUNT(*) FROM {block} WHERE theme = '%s'", $form_state['values']['admin_theme']));
-      if (!$result) {
-        system_initialize_theme_blocks($form_state['values']['admin_theme']);
-      }
     }
 
     // Save the variables.
@@ -362,16 +354,17 @@ function system_theme_settings(&$form_state, $key = '') {
 
   // Toggle settings
   $toggles = array(
-    'logo'                 => t('Logo'),
-    'name'                 => t('Site name'),
-    'slogan'               => t('Site slogan'),
-    'mission'              => t('Mission statement'),
-    'node_user_picture'    => t('User pictures in posts'),
-    'comment_user_picture' => t('User pictures in comments'),
-    'search'               => t('Search box'),
-    'favicon'              => t('Shortcut icon'),
-    'main_menu'            => t('Main menu'),
-    'secondary_menu'      => t('Secondary menu'),
+    'logo'                      => t('Logo'),
+    'name'                      => t('Site name'),
+    'slogan'                    => t('Site slogan'),
+    'mission'                   => t('Mission statement'),
+    'node_user_picture'         => t('User pictures in posts'),
+    'comment_user_picture'      => t('User pictures in comments'),
+    'comment_user_verification' => t('User verification status in comments'),
+    'search'                    => t('Search box'),
+    'favicon'                   => t('Shortcut icon'),
+    'main_menu'                 => t('Main menu'),
+    'secondary_menu'            => t('Secondary menu'),
   );
 
   // Some features are not always available
@@ -475,7 +468,7 @@ function system_theme_settings(&$form_state, $key = '') {
     // Call engine-specific settings.
     $function = $themes[$key]->prefix . '_engine_settings';
     if (function_exists($function)) {
-      $group = $function($settings);
+      $group = $function($settings, $form);
       if (!empty($group)) {
         $form['engine_specific'] = array('#type' => 'fieldset', '#title' => t('Theme-engine-specific settings'), '#description' => t('These settings only exist for all the templates and styles based on the %engine theme engine.', array('%engine' => $themes[$key]->prefix)));
         $form['engine_specific'] = array_merge($form['engine_specific'], $group);
@@ -487,7 +480,7 @@ function system_theme_settings(&$form_state, $key = '') {
       $function = $themes[$key]->prefix . '_settings';
     }
     if (function_exists($function)) {
-      $group = $function($settings);
+      $group = $function($settings, $form);
       if (!empty($group)) {
         $form['theme_specific'] = array('#type' => 'fieldset', '#title' => t('Theme-specific settings'), '#description' => t('These settings only exist for the %theme theme and all the styles based on it.', array('%theme' => $themes[$key]->info['name'])));
         $form['theme_specific'] = array_merge($form['theme_specific'], $group);
@@ -1274,14 +1267,13 @@ function system_site_information_settings_validate($form, &$form_state) {
 function system_logging_settings() {
   $form['error_level'] = array(
     '#type' => 'radios',
-    '#title' => t('Error reporting'),
-    '#default_value' => 2,
+    '#title' => t('Display PHP messages'),
+    '#default_value' => ERROR_REPORTING_DISPLAY_ALL,
     '#options' => array(
-      0 => t('Site in production: do not display any errors.'),
-      1 => t('Site in development: display functional errors only.'),
-      2 => t('For developers: display all errors.'),
+      ERROR_REPORTING_HIDE => t('None'),
+      ERROR_REPORTING_DISPLAY_SOME => t('Errors and warnings'),
+      ERROR_REPORTING_DISPLAY_ALL => t('All messages'),
     ),
-    '#description' => t('Display settings for error messages. Note that all error messages are always logged.'),
   );
 
   return system_settings_form($form);
@@ -1295,38 +1287,27 @@ function system_logging_settings() {
  */
 function system_performance_settings() {
 
-  $description = '<p>' . t("The normal cache mode is suitable for most sites and does not cause any side effects. The aggressive cache mode causes Drupal to skip the loading (boot) and unloading (exit) of enabled modules when serving a cached page. This results in an additional performance boost but can cause unwanted side effects.") . '</p>';
-
-  // Check if the "Who's online" block is enabled.
-  $online_block_enabled = db_select('block')
-    ->condition('module', 'user')
-    ->condition('delta', 'online')
-    ->condition('status', 1)
-    ->countQuery()
-    ->execute()
-    ->fetchField();
-  if ($online_block_enabled) {
-    $description .= '<p>' . t("When caching is enabled, anonymous user sessions are only saved to the database when needed, so the \"Who's online\" block does not display the number of anonymous users.") . '</p>';
-  }
+  $description = '<p>' . t("The normal page cache mode is suitable for most sites and does not cause any side effects. The aggressive page cache mode causes Drupal to skip the loading (boot) and unloading (exit) of enabled modules when serving a cached page. This results in an additional performance boost but can cause unwanted side effects.") . '</p>';
 
   $problem_modules = array_unique(array_merge(module_implements('boot'), module_implements('exit')));
   sort($problem_modules);
 
   if (count($problem_modules) > 0) {
-    $description .= '<p>' . t('<strong class="error">The following enabled modules are incompatible with aggressive mode caching and will not function properly: %modules</strong>', array('%modules' => implode(', ', $problem_modules))) . '.</p>';
+    $description .= '<p>' . t('<strong class="error">The following enabled modules are incompatible with aggressive page caching mode and will not function properly: %modules</strong>', array('%modules' => implode(', ', $problem_modules))) . '.</p>';
   }
   else {
-    $description .= '<p>' . t('<strong class="ok">Currently, all enabled modules are compatible with the aggressive caching policy.</strong> Please note, if you use aggressive caching and enable new modules, you will need to check this page again to ensure compatibility.') . '</p>';
+    $description .= '<p>' . t('<strong class="ok">Currently, all enabled modules are compatible with the aggressive page caching policy.</strong> Please note, if you use aggressive page caching and enable new modules, you will need to check this setting again to ensure compatibility.') . '</p>';
   }
   $form['page_cache'] = array(
     '#type' => 'fieldset',
     '#title' => t('Page cache'),
     '#description' => t('Enabling the page cache will offer a significant performance boost. Drupal can store and send compressed cached pages requested by <em>anonymous</em> users. By caching a web page, Drupal does not have to construct the page each time it is viewed.'),
+    '#weight' => -1,
   );
 
   $form['page_cache']['cache'] = array(
     '#type' => 'radios',
-    '#title' => t('Caching mode'),
+    '#title' => t('Page caching mode'),
     '#default_value' => variable_get('cache', CACHE_DISABLED),
     '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Normal (recommended for production sites, no side effects)'), CACHE_AGGRESSIVE => t('Aggressive (experts only, possible side effects)')),
     '#description' => $description
@@ -1347,21 +1328,6 @@ function system_performance_settings() {
     '#default_value' => variable_get('page_compression', TRUE),
     '#options' => array(t('Disabled'), t('Enabled')),
     '#description' => t("By default, Drupal compresses the pages it caches in order to save bandwidth and improve download times. This option should be disabled when using a webserver that performs compression."),
-  );
-
-  $form['block_cache'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Block cache'),
-    '#description' => t('Enabling the block cache can offer a performance increase for all users by preventing blocks from being reconstructed on each page load. If the page cache is also enabled, performance increases from enabling the block cache will mainly benefit authenticated users.'),
-  );
-
-  $form['block_cache']['block_cache'] = array(
-    '#type' => 'radios',
-    '#title' => t('Block cache'),
-    '#default_value' => variable_get('block_cache', CACHE_DISABLED),
-    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Enabled (recommended)')),
-    '#disabled' => count(module_implements('node_grants')),
-    '#description' => t('Note that block caching is inactive when modules defining content access restrictions are enabled.'),
   );
 
   $form['bandwidth_optimizations'] = array(
@@ -1739,7 +1705,7 @@ function system_date_time_lookup() {
  * @ingroup forms
  * @see system_settings_form()
  */
-function system_site_maintenance_settings() {
+function system_site_maintenance_mode() {
 
   $form['site_offline'] = array(
     '#type' => 'radios',
@@ -1753,7 +1719,7 @@ function system_site_maintenance_settings() {
     '#type' => 'textarea',
     '#title' => t('Site offline message'),
     '#default_value' => t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal'))),
-    '#description' => t('Message to show visitors when the site is in offline mode.')
+    '#description' => t('Message to show visitors when the site is in maintenance mode.')
   );
 
   return system_settings_form($form, TRUE);

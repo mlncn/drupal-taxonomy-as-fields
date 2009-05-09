@@ -1,16 +1,16 @@
-// $Id: tableheader.js,v 1.22 2009/03/13 23:15:08 webchick Exp $
-(function($) {
+// $Id: tableheader.js,v 1.24 2009/04/27 20:19:35 webchick Exp $
+(function ($) {
 
-Drupal.tableHeaderDoScroll = function() {
-  if (typeof(Drupal.tableHeaderOnScroll)=='function') {
+Drupal.tableHeaderDoScroll = function () {
+  if ($.isFunction(Drupal.tableHeaderOnScroll)) {
     Drupal.tableHeaderOnScroll();
   }
 };
 
 Drupal.behaviors.tableHeader = {
-  attach: function(context, settings) {
+  attach: function (context, settings) {
     // This breaks in anything less than IE 7. Prevent it from running.
-    if ($.browser.msie && parseInt($.browser.version, 10) < 7) {
+    if ($.browser.msie && parseInt($.browser.version) < 7) {
       return;
     }
 
@@ -51,11 +51,11 @@ Drupal.behaviors.tableHeader = {
         e.vLength = e.table.clientHeight - 100;
         // Resize header and its cell widths.
         var parentCell = $('th', e.table);
-        $('th', e).each(function(index) {
+        $('th', e).each(function (index) {
           var cellWidth = parentCell.eq(index).css('width');
           // Exception for IE7.
           if (cellWidth == 'auto') {
-            cellWidth = parentCell.get(index).clientWidth +'px';
+            cellWidth = parentCell.get(index).clientWidth + 'px';
           }
           $(this).css('width', cellWidth);
         });
@@ -66,7 +66,7 @@ Drupal.behaviors.tableHeader = {
       var hScroll = document.documentElement.scrollLeft || document.body.scrollLeft;
       var vOffset = (document.documentElement.scrollTop || document.body.scrollTop) - e.vPosition;
       var visState = (vOffset > 0 && vOffset < e.vLength) ? 'visible' : 'hidden';
-      $(e).css({left: -hScroll + e.hPosition +'px', visibility: visState});
+      $(e).css({ left: -hScroll + e.hPosition + 'px', visibility: visState });
 
       // Check the previous anchor to see if we need to scroll to make room for the header.
       // Get the height of the header table and scroll up that amount.
@@ -88,7 +88,7 @@ Drupal.behaviors.tableHeader = {
     }
 
     // Track scrolling.
-    Drupal.tableHeaderOnScroll = function() {
+    Drupal.tableHeaderOnScroll = function () {
       $(headers).each(function () {
         tracker(this);
       });

@@ -1,5 +1,5 @@
 <?php
-// $Id: form_test.module,v 1.2 2009/03/17 23:26:33 webchick Exp $
+// $Id: form_test.module,v 1.5 2009/04/29 07:18:04 dries Exp $
 
 /**
  * @file
@@ -47,6 +47,21 @@ function form_test_menu() {
   $items['form_test/form_clean_id'] = array(
     'title' => 'form_clean_id test',
     'page callback' => 'form_test_form_clean_id_page',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['form_test/drupal_form_submit_batch_api'] = array(
+    'title' => 'BatchAPI Drupal_form_submit tests',
+    'page callback' => 'form_test_drupal_form_submit_batch_api',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['form_test/form-storage'] = array(
+    'title' => 'Form storage test',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('form_storage_test_form'),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
@@ -208,4 +223,145 @@ function _form_test_tableselect_js_select_form($form_state, $action) {
   }
 
   return _form_test_tableselect_form_builder($form_state, $options);
+}
+
+/**
+ * Page callback for the batch/drupal_form_submit interaction test.
+ *
+ * When called without any arguments we set up a batch that calls
+ * form_test_batch_callback. That function will submit a form using
+ * drupal_form_submit using the values specified in this function.
+ *
+ * The form's field test_value begins at 'initial_value', and is changed
+ * to 'form_submitted' when the form is submitted successfully. On 
+ * completion this function is passed 'done' to complete the process.
+ */
+function form_test_drupal_form_submit_batch_api($arg = '') {
+  // If we're at the end of the batch process, return.
+  if ($arg == 'done') {
+    return t('Done');
+  }
+
+  // Otherwise set up the batch.
+  $batch['operations'] = array(
+    array('form_test_batch_callback', array('form_submitted')),
+  );
+
+  // Set the batch and process it.
+  batch_set($batch);
+  batch_process('form_test/drupal_form_submit_batch_api/done');
+}
+
+/**
+ * Submits form_test_mock_form using drupal_form_submit using the given $value.
+ */
+function form_test_batch_callback($value) {
+  $state['values']['test_value'] = $value;
+  drupal_form_submit('form_test_mock_form', $state);
+}
+
+/**
+ * A simple form with a textfield and submit button.
+ */
+function form_test_mock_form($form_state) {
+  $form = array();
+
+  $form['test_value'] = array(
+    '#type' => 'textfield',
+    '#default_value' => 'initial_state',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+  );
+
+  return $form;
+}
+
+/**
+ * Form submission callback.
+ *
+ * Updates the variable 'form_test_mock_submit' to the submitted form value.
+ */
+function form_test_mock_form_submit($form, &$form_state) {
+  variable_set('form_test_mock_submit', $form_state['values']['test_value']);
+}
+
+/**
+ * A multistep form for testing the form storage.
+ *
+ * It uses two steps for editing a virtual "thing". Any changes to it are saved
+ * in the form storage and have to be present during any step. By setting the
+ * request parameter "cache" the form can be tested with caching enabled, as
+ * it would be the case, if the form would contain some #ahah callbacks.
+ *
+ * @see form_storage_test_form_submit().
+ */
+function form_storage_test_form(&$form_state) {
+  // Initialize
+  if (!isset($form_state['storage'])) {
+    if (empty($form_state['input'])) {
+      $_SESSION['constructions'] = 0;
+    }
+    // Put the initial thing into the storage
+    $form_state['storage'] = array(
+      'thing' => array(
+        'title' => 'none',
+        'value' => '',
+      ),
+    );
+    $form_state['storage'] += array('step' => 1);
+  }
+
+  // Count how often the form is constructed
+  $_SESSION['constructions']++;
+
+  if ($form_state['storage']['step'] == 1) {
+    $form['title'] = array(
+      '#type' => 'textfield',
+      '#title' => 'title',
+      '#default_value' => $form_state['storage']['thing']['title'],
+      '#required' => TRUE,
+    );
+    $form['value'] = array(
+      '#type' => 'textfield',
+      '#title' => 'value',
+      '#default_value' => $form_state['storage']['thing']['value'],
+    );
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => 'Continue',
+    );
+  }
+  else {
+    $form['content'] = array('#value' => 'This is the second step.');
+    $form['submit'] = array(
+      '#type' => 'submit',
+      '#value' => 'Save',
+    );
+  }
+
+  if (isset($_REQUEST['cache'])) {
+    // Manually activate caching, so we can test that the storage keeps working
+    // when it's enabled.
+    $form['#cache'] = TRUE;
+  }
+
+  return $form;
+}
+
+/**
+ * Multistep form submit callback.
+ */
+function form_storage_test_form_submit($form, &$form_state) {
+  if ($form_state['storage']['step'] == 1) {
+    $form_state['storage']['thing']['title'] = $form_state['values']['title'];
+    $form_state['storage']['thing']['value'] = $form_state['values']['value'];
+  }
+  else {
+    drupal_set_message("Title: ". check_plain($form_state['storage']['thing']['title']));
+  }
+  $form_state['storage']['step']++;
+  drupal_set_message("Form constructions: ". $_SESSION['constructions']);
 }

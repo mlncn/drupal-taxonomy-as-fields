@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.24 2009/03/10 16:08:43 dries Exp $
+// $Id: system.api.php,v 1.32 2009/05/06 11:30:19 dries Exp $
 
 /**
  * @file
@@ -242,8 +242,8 @@ function hook_page_alter($page) {
  * One popular use of this hook is to add form elements to the node form. When
  * altering a node form, the node object retrieved at from $form['#node'].
  *
- * Note that you can also use hook_FORM_ID_alter() to alter a specific form,
- * instead of this hook, which gets called for all forms.
+ * Note that instead of hook_form_alter(), which is called for all forms, you
+ * can also use hook_form_FORM_ID_alter() to alter a specific form.
  *
  * @param $form
  *   Nested array of form elements that comprise the form.
@@ -252,8 +252,6 @@ function hook_page_alter($page) {
  * @param $form_id
  *   String representing the name of the form itself. Typically this is the
  *   name of the function that generated the form.
- * @return
- *   None.
  */
 function hook_form_alter(&$form, $form_state, $form_id) {
   if (isset($form['type']) && $form['type']['#value'] . '_node_settings' == $form_id) {
@@ -313,10 +311,14 @@ function hook_form_FORM_ID_alter(&$form, &$form_state) {
  * See node_forms() for an actual example of how multiple forms share a common
  * building function.
  *
+ * @param $form_id
+ *   The unique string identifying the desired form.
+ * @param $args
+ *   An array containing the original arguments provided to drupal_get_form().
  * @return
- *   An array keyed by form id with callbacks and optional, callback arguments.
+ *   An array keyed by form_id with callbacks and optional, callback arguments.
  */
-function hook_forms() {
+function hook_forms($form_id, $args) {
   $forms['mymodule_first_form'] = array(
     'callback' => 'mymodule_form_builder',
     'callback arguments' => array('some parameter'),
@@ -324,6 +326,7 @@ function hook_forms() {
   $forms['mymodule_second_form'] = array(
     'callback' => 'mymodule_form_builder',
   );
+
   return $forms;
 }
 
@@ -451,7 +454,8 @@ function hook_link($type, $object, $teaser = FALSE) {
 
 /**
  * Perform alterations before links on a comment are rendered. One popular use of
- * this hook is to add/delete links from other modules.
+ * this hook is to modify/remove links from other modules. If you want to add a link 
+ * to the links section of a node, use hook_link instead.
  *
  * @param $links
  *   Nested array of links for the node keyed by providing module.
@@ -462,7 +466,7 @@ function hook_link($type, $object, $teaser = FALSE) {
  */
 function hook_link_alter(array &$links, $node) {
   foreach ($links as $module => $link) {
-    if (strstr($module, 'taxonomy_term')) {
+    if (strpos($module, 'taxonomy_term') !== FALSE) {
       // Link back to the forum and not the taxonomy term page
       $links[$module]['href'] = str_replace('taxonomy/term', 'forum', $link['href']);
     }
@@ -1249,8 +1253,8 @@ function hook_file_download($filepath) {
       return -1;
     }
     return array(
-      'Content-Type: ' . $file->filemime,
-      'Content-Length: ' . $file->filesize,
+      'Content-Type' => $file->filemime,
+      'Content-Length' => $file->filesize,
     );
   }
 }
@@ -1451,14 +1455,17 @@ function hook_schema_alter(&$schema) {
  *
  * @see hook_query_TAG_alter()
  * @see node_query_node_access_alter()
- *
+ * @see QueryAlterableInterface
+ * @see SelectQueryInterface
  * @param $query
  *   A Query object describing the composite parts of a SQL query.
  * @return
  *   None.
  */
 function hook_query_alter(QueryAlterableInterface $query) {
-
+  if ($query->hasTag('micro_limit')) {
+    $query->range(0, 2);
+  }
 }
 
 /**
@@ -1466,6 +1473,8 @@ function hook_query_alter(QueryAlterableInterface $query) {
  *
  * @see hook_query_alter()
  * @see node_query_node_access_alter()
+ * @see QueryAlterableInterface
+ * @see SelectQueryInterface
  *
  * @param $query
  *   An Query object describing the composite parts of a SQL query.
@@ -1576,17 +1585,54 @@ function hook_install() {
  * the same directory as mymodule.module. Drupal core's updates are implemented
  * using the system module as a name and stored in database/updates.inc.
  *
+ * If your update task is potentially time-consuming, you'll need to implement a 
+ * multipass update to avoid PHP timeouts. Multipass updates use the $sandbox 
+ * parameter provided by the batch API (normally, $context['sandbox']) to store 
+ * information between successive calls, and the $ret['#finished'] return value 
+ * to provide feedback regarding completion level.
+ *
+ * See the batch operations page for more information on how to use the batch API: 
+ * @link http://drupal.org/node/146843 http://drupal.org/node/146843 @endlink
+ *
  * @return An array with the results of the calls to update_sql(). An upate
  *   function can force the current and all later updates for this
  *   module to abort by returning a $ret array with an element like:
  *   $ret['#abort'] = array('success' => FALSE, 'query' => 'What went wrong');
  *   The schema version will not be updated in this case, and all the
  *   aborted updates will continue to appear on update.php as updates that
- *   have not yet been run.
+ *   have not yet been run. Multipass update functions will also want to pass
+ *   back the $ret['#finished'] variable to inform the batch API of progress.
  */
-function hook_update_N() {
+function hook_update_N(&$sandbox = NULL) {
+  // For most updates, the following is sufficient.
   $ret = array();
-  db_add_field($ret, 'mytable1', 'newcol', array('type' => 'int', 'not null' => TRUE));
+  db_add_field($ret, 'mytable1', 'newcol', array('type' => 'int', 'not null' => TRUE, 'description' => 'My new integer column.'));
+  return $ret;
+  
+  // However, for more complex operations that may take a long time, 
+  // you may hook into Batch API as in the following example.
+  $ret = array();
+  
+  // Update 3 users at a time to have an exclamation point after their names.
+  // (They're really happy that we can do batch API in this hook!)
+  if (!isset($sandbox['progress'])) {
+    $sandbox['progress'] = 0;
+    $sandbox['current_uid'] = 0;
+    // We'll -1 to disregard the uid 0...
+    $sandbox['max'] = db_query('SELECT COUNT(DISTINCT uid) FROM {users}')->fetchField() - 1;
+  }
+  
+  $users = db_query_range("SELECT uid, name FROM {users} WHERE uid > %d ORDER BY uid ASC", $sandbox['current_uid'], 0, 3);
+  foreach ($users as $user) {
+    $user->name .= '!';
+    $ret[] = update_sql("UPDATE {users} SET name = '$user->name' WHERE uid = $user->uid");
+    
+    $sandbox['progress']++;
+    $sandbox['current_uid'] = $user->uid;
+  }
+
+  $ret['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+  
   return $ret;
 }
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: field.form.inc,v 1.6 2009/03/26 13:31:24 webchick Exp $
+// $Id: field.form.inc,v 1.8 2009/05/03 09:49:32 dries Exp $
 
 /**
  * @file
@@ -22,9 +22,8 @@ function field_default_form($obj_type, $object, $field, $instance, $items, &$for
   $field_name = $field['field_name'];
 
   // If the field is not accessible, don't add anything. The field value will
-  // be left unchanged on update, or considered empty on insert.
-  // TODO : if/when field_attach_insert() takes care of default values,
-  // unaccessible fields will automatically get the default value on insert.
+  // be left unchanged on update, or considered empty on insert (default value
+  // will be inserted if applicable).
   if (!field_access('edit', $field)) {
     return $addition;
   }
@@ -185,7 +184,7 @@ function field_multiple_value_form($field, $instance, $items, &$form, &$form_sta
     }
 
     // Add AHAH add more button, if not working with a programmed form.
-    if ($field['cardinality'] == FIELD_CARDINALITY_UNLIMITED && empty($form['#programmed'])) {
+    if ($field['cardinality'] == FIELD_CARDINALITY_UNLIMITED && empty($form_state['programmed'])) {
       // Make sure the form is cached so ahah can work.
       $form['#cache'] = TRUE;
       $bundle_name_url_str = str_replace('_', '-', $instance['bundle']);
@@ -352,7 +351,7 @@ function field_add_more_js($bundle_name, $field_name) {
   }
 
   // Retrieve the cached form.
-  $form_state = array('submitted' => FALSE);
+  $form_state = form_state_defaults();
   $form_build_id = $_POST['form_build_id'];
   $form = form_get_cache($form_build_id, $form_state);
   if (!$form) {
@@ -388,7 +387,7 @@ function field_add_more_js($bundle_name, $field_name) {
   // $form_state, so we use copies of $form and $form_state.
   $form_copy = $form;
   $form_state_copy = $form_state;
-  $form_copy['#post'] = array();
+  $form_state_copy['input'] = array();
   form_builder($_POST['form_id'], $form_copy, $form_state_copy);
   // Just grab the data we need.
   $form_state['values'] = $form_state_copy['values'];
@@ -426,15 +425,12 @@ function field_add_more_js($bundle_name, $field_name) {
   // render the new element.
   $delta = max(array_keys($_POST[$field_name])) + 1;
   $_POST[$field_name][$delta]['_weight'] = $delta;
-  $form_state = array('submitted' => FALSE);
-  $form += array(
-    '#post' => $_POST,
-    '#programmed' => FALSE,
-  );
+  $form_state = form_state_defaults();
+  $form_state['input'] = $_POST;
   $form = form_builder($_POST['form_id'], $form, $form_state);
 
   // Render the new output.
-  // We get fetch the form element from the built $form.
+  // We fetch the form element from the built $form.
   $field_form = $form;
   foreach ($form_path as $key) {
     $field_form = $field_form[$key];

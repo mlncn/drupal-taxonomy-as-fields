@@ -1,9 +1,12 @@
 <?php
-// $Id: aggregator.test,v 1.19 2009/03/01 07:21:02 webchick Exp $
+// $Id: aggregator.test,v 1.23 2009/04/29 12:08:27 dries Exp $
+
+/**
+ * @file
+ * Creates tests for aggregator module.
+ */
 
 class AggregatorTestCase extends DrupalWebTestCase {
-  private static $prefix = 'simpletest_aggregator_';
-
   function setUp() {
     parent::setUp('aggregator', 'aggregator_test');
     $web_user = $this->drupalCreateUser(array('administer news feeds', 'access news feeds', 'create article content'));
@@ -33,7 +36,8 @@ class AggregatorTestCase extends DrupalWebTestCase {
   /**
    * Delete an aggregator feed.
    *
-   * @param object $feed Feed object representing the feed.
+   * @param $feed
+   *   Feed object representing the feed.
    */
   function deleteFeed($feed) {
     $this->drupalPost('admin/content/aggregator/edit/feed/' . $feed->fid, array(), t('Delete'));
@@ -49,7 +53,7 @@ class AggregatorTestCase extends DrupalWebTestCase {
    *   A feed array.
    */
   function getFeedEditArray($feed_url = NULL) {
-    $feed_name = $this->randomName(10, self::$prefix);
+    $feed_name = $this->randomName(10);
     if (!$feed_url) {
       $feed_url = $GLOBALS['base_url'] . '/rss.xml?feed=' . $feed_name;
     }
@@ -103,7 +107,8 @@ class AggregatorTestCase extends DrupalWebTestCase {
   /**
    * Confirm item removal from a feed.
    *
-   * @param object $feed Feed object representing the feed.
+   * @param $feed
+   *   Feed object representing the feed.
    */
   function removeFeedItems($feed) {
     $this->drupalPost('admin/content/aggregator/remove/' . $feed->fid, array(), t('Remove items'));
@@ -129,7 +134,8 @@ class AggregatorTestCase extends DrupalWebTestCase {
   /**
    * Pull feed categories from aggregator_category_feed table.
    *
-   * @param object $feed Feed object representing the feed.
+   * @param $feed
+   *   Feed object representing the feed.
    */
   function getFeedCategories($feed) {
     // add the categories to the feed so we can use them
@@ -142,9 +148,12 @@ class AggregatorTestCase extends DrupalWebTestCase {
   /**
    * Check if the feed name and url is unique.
    *
-   * @param string $feed_name Feed name to check.
-   * @param string $feed_url Feed url to check.
-   * @return boolean Feed is unique.
+   * @param $feed_name
+   *   String containing the feed name to check.
+   * @param $feed_url
+   *   String containing the feed url to check.
+   * @return
+   *   TRUE if feed is unique.
    */
   function uniqueFeed($feed_name, $feed_url) {
     $result = db_query("SELECT COUNT(*) FROM {aggregator_feed} WHERE title = :title AND url = :url", array(':title' => $feed_name, ':url' => $feed_url))->fetchField();
@@ -228,7 +237,7 @@ EOF;
   }
 
   function getRSS091Sample() {
-    return $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'aggregator') . '/aggregator_test_rss091.xml';
+    return $GLOBALS['base_url'] . '/' . drupal_get_path('module', 'aggregator') . '/tests/aggregator_test_rss091.xml';
   }
 
   function createSampleNodes() {
@@ -243,7 +252,7 @@ EOF;
 }
 
 class AddFeedTestCase extends AggregatorTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Add feed functionality'),
       'description' => t('Add feed test.'),
@@ -272,7 +281,7 @@ class AddFeedTestCase extends AggregatorTestCase {
 }
 
 class UpdateFeedTestCase extends AggregatorTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Update feed functionality'),
       'description' => t('Update feed test.'),
@@ -314,7 +323,7 @@ class UpdateFeedTestCase extends AggregatorTestCase {
 }
 
 class RemoveFeedTestCase extends AggregatorTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Remove feed functionality'),
       'description' => t('Remove feed test.'),
@@ -342,7 +351,7 @@ class RemoveFeedTestCase extends AggregatorTestCase {
 }
 
 class UpdateFeedItemTestCase extends AggregatorTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Update feed item functionality'),
       'description' => t('Update feed items from a feed.'),
@@ -403,7 +412,7 @@ class UpdateFeedItemTestCase extends AggregatorTestCase {
 }
 
 class RemoveFeedItemTestCase extends AggregatorTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Remove feed item functionality'),
       'description' => t('Remove feed items from a feed.'),
@@ -441,9 +450,7 @@ class RemoveFeedItemTestCase extends AggregatorTestCase {
 }
 
 class CategorizeFeedItemTestCase extends AggregatorTestCase {
-  private static $prefix = 'simpletest_aggregator_';
-
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Categorize feed item functionality'),
       'description' => t('Test feed item categorization.'),
@@ -459,7 +466,7 @@ class CategorizeFeedItemTestCase extends AggregatorTestCase {
     $this->createSampleNodes();
 
     // Simulate form submission on "admin/content/aggregator/add/category".
-    $edit = array('title' => $this->randomName(10, self::$prefix), 'description' => '');
+    $edit = array('title' => $this->randomName(10), 'description' => '');
     $this->drupalPost('admin/content/aggregator/add/category', $edit, t('Save'));
     $this->assertRaw(t('The category %title has been added.', array('%title' => $edit['title'])), t('The category %title has been added.', array('%title' => $edit['title'])));
 
@@ -500,9 +507,7 @@ class CategorizeFeedItemTestCase extends AggregatorTestCase {
 }
 
 class ImportOPMLTestCase extends AggregatorTestCase {
-  private static $prefix = 'simpletest_aggregator_';
-
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Import feeds from OPML functionality'),
       'description' => t('Test OPML import.'),
@@ -516,7 +521,7 @@ class ImportOPMLTestCase extends AggregatorTestCase {
   function openImportForm() {
     db_delete('aggregator_category')->execute();
 
-    $category = $this->randomName(10, self::$prefix);
+    $category = $this->randomName(10);
     $cid = db_insert('aggregator_category')
       ->fields(array(
         'title' => $category,
@@ -579,7 +584,7 @@ class ImportOPMLTestCase extends AggregatorTestCase {
     db_delete('aggregator_category')->execute();
     db_delete('aggregator_category_feed')->execute();
 
-    $category = $this->randomName(10, self::$prefix);
+    $category = $this->randomName(10);
     db_insert('aggregator_category')
       ->fields(array(
         'cid' => 1,

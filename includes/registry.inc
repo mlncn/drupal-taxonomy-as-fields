@@ -1,5 +1,5 @@
 <?php
-// $Id: registry.inc,v 1.12 2009/02/22 17:55:29 dries Exp $
+// $Id: registry.inc,v 1.14 2009/05/07 18:04:16 dries Exp $
 
 /**
  * @file
@@ -39,10 +39,16 @@ function _registry_rebuild() {
 
   // Reset the resources cache.
   _registry_get_resource_name();
+
+  // Get current list of modules and their files.
+  $modules = drupal_system_listing('/\.module$/', 'modules', 'name', 0);
+  system_get_files_database($modules, 'module');
   // Get the list of files we are going to parse.
   $files = array();
-  foreach (module_rebuild_cache() as $module) {
+  foreach ($modules as $module) {
     if ($module->status) {
+      // Parse .info file only for enabled modules.
+      $module->info = drupal_parse_info_file(dirname($module->filepath) . '/' . $module->name . '.info');
       $dir = dirname($module->filepath);
       foreach ($module->info['files'] as $file) {
         $files["$dir/$file"] = array('module' => $module->name, 'weight' => $module->weight);
@@ -145,7 +151,7 @@ function _registry_parse_files($files) {
  *   (optional) Weight of the module.
  */
 function _registry_parse_file($filename, $contents, $module = '', $weight = 0) {
-  static $map = array(T_FUNCTION => 'function', T_CLASS => 'class', T_INTERFACE => 'interface');
+  $map = &drupal_static(__FUNCTION__, array(T_FUNCTION => 'function', T_CLASS => 'class', T_INTERFACE => 'interface'));
   // Delete registry entries for this file, so we can insert the new resources.
   db_delete('registry')
     ->condition('filename', $filename)
@@ -207,7 +213,7 @@ function _registry_parse_file($filename, $contents, $module = '', $weight = 0) {
 function _registry_get_resource_name(&$tokens = NULL, $type = NULL) {
   // Keep a running list of all resources we've saved so far, so that we never
   // save one more than once.
-  static $resources;
+  $resources = &drupal_static(__FUNCTION__);
 
   if (!isset($tokens)) {
     $resources = array();

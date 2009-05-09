@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.test,v 1.26 2009/03/08 04:25:07 webchick Exp $
+// $Id: taxonomy.test,v 1.30 2009/04/13 18:52:38 dries Exp $
 
 /**
  * @file
@@ -43,7 +43,7 @@ class TaxonomyWebTestCase extends DrupalWebTestCase {
 */
 class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Taxonomy vocabulary interface'),
       'description' => t('Test the taxonomy vocabulary interface.'),
@@ -151,7 +151,8 @@ class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
     // Check the created vocabulary.
     $vocabularies = taxonomy_get_vocabularies();
     $vid = $vocabularies[count($vocabularies)-1]->vid;
-    $vocabulary = taxonomy_vocabulary_load($vid, TRUE);
+    drupal_static_reset('taxonomy_vocabulary_load_multiple');
+    $vocabulary = taxonomy_vocabulary_load($vid);
     $this->assertTrue($vocabulary, t('Vocabulary found in database'));
 
     // Delete the vocabulary.
@@ -163,7 +164,8 @@ class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
     // Confirm deletion.
     $this->drupalPost(NULL, NULL, t('Delete'));
     $this->assertRaw(t('Deleted vocabulary %name.', array('%name' => $vocabulary->name)), t('Vocabulary deleted'));
-    $this->assertFalse(taxonomy_vocabulary_load($vid, TRUE), t('Vocabulary is not found in the database'));
+    drupal_static_reset('taxonomy_vocabulary_load_multiple');
+    $this->assertFalse(taxonomy_vocabulary_load($vid), t('Vocabulary is not found in the database'));
   }
 }
 
@@ -173,7 +175,7 @@ class TaxonomyVocabularyFunctionalTest extends TaxonomyWebTestCase {
  */
 class TaxonomyVocabularyUnitTest extends TaxonomyWebTestCase {
 
-function getInfo() {
+public static function getInfo() {
      return array(
        'name' => t('Taxonomy vocabularies'),
        'description' => t('Test loading, saving and deleting vocabularies.'),
@@ -223,8 +225,8 @@ function getInfo() {
     $vocabulary->description = $this->randomName();
     taxonomy_vocabulary_save($vocabulary);
 
-    // Load the vocabulary with $reset TRUE.
-    $new_vocabulary = taxonomy_vocabulary_load($original_vocabulary->vid, TRUE);
+    // Load the vocabulary.
+    $new_vocabulary = taxonomy_vocabulary_load($original_vocabulary->vid);
     $this->assertEqual($new_vocabulary->name, $vocabulary->name);
     $this->assertEqual($new_vocabulary->name, $vocabulary->name);
 
@@ -233,6 +235,53 @@ function getInfo() {
     $vocabularies = taxonomy_get_vocabularies();
     $this->assertTrue(!isset($vocabularies[$this->vocabulary->vid]), t('The vocabulary was deleted'));
   }
+
+  /**
+   * Tests for loading multiple vocabularies.
+   */
+  function testTaxonomyVocabularyLoadMultiple() {
+
+    // Delete any existing vocabularies.
+    foreach (taxonomy_get_vocabularies() as $vocabulary) {
+      taxonomy_vocabulary_delete($vocabulary->vid);
+    }
+
+    // Create some vocabularies and assign weights.
+    $vocabulary1 = $this->createVocabulary();
+    $vocabulary1->weight = 0;
+    taxonomy_vocabulary_save($vocabulary1);
+    $vocabulary2 = $this->createVocabulary();
+    $vocabulary2->weight = 1;
+    taxonomy_vocabulary_save($vocabulary2);
+    $vocabulary3 = $this->createVocabulary();
+    $vocabulary3->weight = 2;
+    taxonomy_vocabulary_save($vocabulary3);
+
+    // Fetch all of the vocabularies using taxonomy_get_vocabularies().
+    // Confirm that the vocabularies are ordered by weight.
+    $vocabularies = taxonomy_get_vocabularies();
+    $this->assertEqual(array_shift($vocabularies), $vocabulary1, t('Vocabulary was found in the vocabularies array.'));
+    $this->assertEqual(array_shift($vocabularies), $vocabulary2, t('Vocabulary was found in the vocabularies array.'));
+    $this->assertEqual(array_shift($vocabularies), $vocabulary3, t('Vocabulary was found in the vocabularies array.'));
+
+    // Fetch the vocabularies with taxonomy_vocabulary_load_multiple(), specifying IDs.
+    // Ensure they are returned in the same order as the original array.
+    $vocabularies = taxonomy_vocabulary_load_multiple(array($vocabulary3->vid, $vocabulary2->vid, $vocabulary1->vid));
+    $this->assertEqual(array_shift($vocabularies), $vocabulary3, t('Vocabulary loaded successfully by ID.'));
+    $this->assertEqual(array_shift($vocabularies), $vocabulary2, t('Vocabulary loaded successfully by ID.'));
+    $this->assertEqual(array_shift($vocabularies), $vocabulary1, t('Vocabulary loaded successfully by ID.'));
+
+    // Fetch vocabulary 1 by name.
+    $this->assertTrue(current(taxonomy_vocabulary_load_multiple(array(), array('name' => $vocabulary1->name))) == $vocabulary1, t('Vocabulary loaded successfully by name.'));
+
+    // Fetch vocabulary 1 by name and ID.
+    $this->assertTrue(current(taxonomy_vocabulary_load_multiple(array($vocabulary1->vid), array('name' => $vocabulary1->name))) == $vocabulary1, t('Vocabulary loaded successfully by name and ID.'));
+
+    // Fetch vocabulary 1 with specified node type.
+    drupal_static_reset('taxonomy_vocabulary_load_multiple');
+    $vocabulary_node_type = current(taxonomy_vocabulary_load_multiple(array($vocabulary1->vid), array('type' => 'article')));
+    $this->assertEqual($vocabulary_node_type, $vocabulary1, t('Vocabulary with specified node type loaded successfully.'));
+  }
 }
 
 /**
@@ -240,7 +289,7 @@ function getInfo() {
  */
 class TaxonomyTermUnitTest extends TaxonomyWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Taxonomy term unit tests'),
       'description' => t('Unit tests for taxonomy term functions.'),
@@ -274,7 +323,7 @@ class TaxonomyTermUnitTest extends TaxonomyWebTestCase {
     $this->assertEqual(taxonomy_term_count_nodes($term2->tid), 1, t('Term has one valid node association.'));
 
     // Confirm that term3 is not associated with any nodes.
-    //$this->assertEqual(taxonomy_term_count_nodes($term3->tid), NULL, t('Term is not associated with any nodes'));
+    $this->assertEqual(taxonomy_term_count_nodes($term3->tid), 0, t('Term is not associated with any nodes'));
 
     // Set term3 as the parent of term1.
     $term1->parent = array($term3->tid);
@@ -284,29 +333,27 @@ class TaxonomyTermUnitTest extends TaxonomyWebTestCase {
     $children = taxonomy_get_children($term3->tid);
     $this->assertTrue(isset($children[$term1->tid]), t('Term 3 saved as parent of term 1'));
 
-    // Reset the taxonomy_get_tree() static cache to avoid stale data, since
-    // the hierarchy has been updated during this page request.
-    $this->assertEqual(count(taxonomy_get_tree($term3->vid, $term3->tid, NULL, TRUE)), 1, t('Term 3 has one child term'));
+    $this->assertEqual(count(taxonomy_get_tree($term3->vid, $term3->tid)), 1, t('Term 3 has one child term'));
 
     // Confirm that term3's parental relationship with term1 leads to a
     // node assocation being counted.
-    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL, TRUE), 1, t('Term has one valid node association due to child term.'));
+    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL), 1, t('Term has one valid node association due to child term.'));
 
     // Set term3 as the parent of term2.
     $term2->parent = array($term3->tid);
     taxonomy_term_save($term2);
 
     // term3 should now have two node associations counted.
-    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL, TRUE), 2, t('Term has two valid node associations due to child terms.'));
+    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL), 2, t('Term has two valid node associations due to child terms.'));
 
     // Save node1 with both child taxonomy terms, this should still result
     // in term3 having two node associations.
     $node1->taxonomy = array($term1->tid, $term2->tid);
     node_save($node1);
-    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL, TRUE), 2, t('Term has two valid node associations.'));
+    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, NULL), 2, t('Term has two valid node associations.'));
 
     // Confirm that the node type argument returns a single node association.
-    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, 'page', TRUE), 1, t("Term is associated with one node of type 'page'."));
+    $this->assertEqual(taxonomy_term_count_nodes($term3->tid, 'page'), 1, t("Term is associated with one node of type 'page'."));
   }
 }
 
@@ -315,7 +362,7 @@ class TaxonomyTermUnitTest extends TaxonomyWebTestCase {
  */
 class TaxonomyTermTestCase extends TaxonomyWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Taxonomy term functions and forms.'),
       'description' => t('Test load, save and delete for taxonomy terms.'),
@@ -521,7 +568,7 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
  */
 class TaxonomyLoadMultipleUnitTest extends TaxonomyWebTestCase {
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Taxonomy term multiple loading'),
       'description' => t('Test the loading of multiple taxonomy terms at once'),
@@ -566,11 +613,11 @@ class TaxonomyLoadMultipleUnitTest extends TaxonomyWebTestCase {
     // Remove one term from the array, then delete it.
     $deleted = array_shift($terms3);
     taxonomy_term_delete($deleted->tid);
-    $deleted_term = taxonomy_term_load($deleted->tid, TRUE);
+    $deleted_term = taxonomy_term_load($deleted->tid);
     $this->assertFalse($deleted_term);
 
     // Load terms from the vocabulary by vid.
-    $terms4 = taxonomy_term_load_multiple(NULL, array('vid' => $vocabulary->vid), TRUE);
+    $terms4 = taxonomy_term_load_multiple(NULL, array('vid' => $vocabulary->vid));
     $this->assertTrue(count($terms4 == 4), t('Correct number of terms were loaded.'));
     $this->assertFalse(isset($terms4[$deleted->tid]));
 
@@ -587,7 +634,7 @@ class TaxonomyLoadMultipleUnitTest extends TaxonomyWebTestCase {
  * Tests for taxonomy hook invocation.
  */
 class TaxonomyHooksTestCase extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Taxonomy term hooks'),
       'description' => t('Hooks for taxonomy term load/save/delete.'),
@@ -627,7 +674,8 @@ class TaxonomyHooksTestCase extends DrupalWebTestCase {
       'antonyms' => 'Short',
     );
     $this->drupalPost('taxonomy/term/' . $term->tid . '/edit', $edit, t('Save'));
-    $term = taxonomy_term_load($term->tid, TRUE);
+    taxonomy_terms_static_reset();
+    $term = taxonomy_term_load($term->tid);
     $this->assertTrue(in_array($edit['antonyms'], $term->antonyms), t('Antonym was successfully edited'));
 
     // Delete the term.

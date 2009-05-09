@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.7 2009/03/26 13:31:24 webchick Exp $
+// $Id: field.attach.inc,v 1.15 2009/05/09 19:02:11 dries Exp $
 
 /**
  * @file
@@ -57,7 +57,7 @@ class FieldValidationException extends FieldException {
 
 /**
  * Argument for an insert operation.
- * This is used in hook_field_storage_write when updating an 
+ * This is used in hook_field_storage_write when updating an
  * existing object.
  */
 define('FIELD_STORAGE_UPDATE', 'update');
@@ -94,16 +94,33 @@ define('FIELD_STORAGE_INSERT', 'insert');
  *
  * Fieldable types call Field Attach API functions during their own
  * API calls; for example, node_load() calls field_attach_load(). A
- * fieldable type may is not required to use all of the Field Attach
+ * fieldable type is not required to use all of the Field Attach
  * API functions.
  *
  * Most Field Attach API functions define a corresponding hook
  * function that allows any module to act on Field Attach operations
- * for any object, and access or modify all the field, form, or
- * display data for that object and operation. These all-module hooks
- * are distinct from those of the Field Types API, such as
- * hook_field_load(), that are only invoked for the module that
- * defines a specific field type.
+ * for any object after the operation is complete, and access or
+ * modify all the field, form, or display data for that object and
+ * operation. For example, field_attach_view() invokes
+ * hook_field_attach_view_alter().  These all-module hooks are distinct from
+ * those of the Field Types API, such as hook_field_load(), that are
+ * only invoked for the module that defines a specific field type.
+ *
+ * field_attach_load(), field_attach_insert(), and
+ * field_attach_update() also define pre-operation hooks,
+ * e.g. hook_field_attach_pre_load().  These hooks run before the
+ * corresponding Field Storage API and Field Type API operations.
+ * They allow modules to define additional storage locations
+ * (e.g. denormalizing, mirroring) for field data on a per-field
+ * basis.  They also allow modules to take over field storage
+ * completely by instructing other implementations of the same hook
+ * and the Field Storage API itself not to operate on specified
+ * fields.
+ *
+ * The pre-operation hooks do not make the Field Storage API
+ * irrelevant. The Field Storage API is essentially the "fallback
+ * mechanism" for any fields that aren't being intercepted explicitly
+ * by pre-operation hooks.
  */
 
 /**
@@ -166,10 +183,9 @@ function _field_invoke($op, $obj_type, &$object, &$a = NULL, &$b = NULL, $defaul
         $return[] = $result;
       }
     }
-    // Put back the altered items in the object, if the field was present to
-    // begin with (avoid replacing missing field with empty array(), those are
-    // not semantically equivalent on update).
-    if (isset($object->$field_name)) {
+    // Populate $items back in the field values, but avoid replacing missing
+    // fields with an empty array (those are not equivalent on update).
+    if ($items !== array() || property_exists($object, $field_name)) {
       $object->$field_name = $items;
     }
   }
@@ -241,7 +257,7 @@ function _field_attach_form($obj_type, $object, &$form, $form_state) {
 function _field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT) {
   $queried_objects = array();
 
-  // Fetch avaliable nodes from cache.
+  // Fetch avaliable objects from cache.
   foreach ($objects as $object) {
     list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
     $cid = "field:$obj_type:$id:$vid";
@@ -254,15 +270,43 @@ function _field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT) {
       $queried_objects[$id] = $objects[$id];
     }
   }
-  // Fetch other nodes from the database.
+
+  // Fetch other objects from the database.
   if ($queried_objects) {
-    // We need the raw additions to be able to cache them, so
-    // content_storage_load() and hook_field_load() must not alter
-    // nodes directly but return their additions.
-    $additions = module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_load', $obj_type, $queried_objects, $age);
+    // The loading order is:
+    // - hook_field_attach_pre_load()
+    // - storage engine's hook_field_storage_load()
+    // - field-type modules hook_field_load()
+    // - hook_field_attach_load()
+    // We need the raw additions to be able to cache them, so the hooks must
+    // not alter objects directly but return their additions. At each step,
+    // results are merged into the $queried_objects, and into the $additions
+    // array, that will eventually get cached.
+
+    // Invoke hook_field_attach_pre_load(): let any module load field
+    // data before the storage engine, accumulating along the way.
+    $additions_pre_load = array();
+    $skip_fields = array();
+    foreach (module_implements('field_attach_pre_load') as $module) {
+      $function = $module . '_field_attach_pre_load';
+      $function($obj_type, $queried_objects, $age, $additions_pre_load, $skip_fields);
+    }
+
+    // Invoke the storage engine's hook_field_storage_load(): the field storage
+    // engine loads the rest.
+    $additions = module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_load', $obj_type, $queried_objects, $age, $skip_fields);
+
+    // First, merge the additions from the storage engine.
     foreach ($additions as $id => $obj_additions) {
       foreach ($obj_additions as $key => $value) {
         $queried_objects[$id]->$key = $value;
+      }
+    }
+    // Then, merge the pre_load additions, so that they take precedence.
+    foreach ($additions_pre_load as $id => $obj_additions) {
+      foreach ($obj_additions as $key => $value) {
+        $queried_objects[$id]->$key = $value;
+        $additions[$id][$key] = $value;
       }
     }
 
@@ -281,13 +325,15 @@ function _field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT) {
         }
       }
 
+      // Invoke field-type modules hook_field_load().
       $custom_additions = _field_invoke('load', $obj_type, $object);
       foreach ($custom_additions as $key => $value) {
         $queried_objects[$id]->$key = $value;
         $additions[$id][$key] = $value;
       }
 
-      // Let other modules act on loading the object.
+      // Invoke hook_field_attach_load(): let other modules act on loading the
+      // object.
       // TODO : this currently doesn't get cached (we cache $additions).
       // This should either be called after we fetch from cache, or return an
       // array of additions.
@@ -348,7 +394,6 @@ function _field_attach_validate($obj_type, &$object) {
   // Let other modules validate the object.
   foreach (module_implements('field_attach_validate') as $module) {
     $function = $module . '_field_attach_validate';
-    $function($obj_type, $object, $form);
     $function($obj_type, $object, $errors);
   }
 
@@ -454,24 +499,35 @@ function _field_attach_presave($obj_type, &$object) {
 }
 
 /**
- * Save field data for a new object. The passed in object must
- * already contain its id and (if applicable) revision id attributes.
+ * Save field data for a new object.
+ *
+ * The passed in object must already contain its id and (if applicable)
+ * revision id attributes.
+ * Default values (if any) will be saved for fields not present in the
+ * $object.
  *
  * @param $obj_type
  *   The type of $object; e.g. 'node' or 'user'.
  * @param $object
  *   The object with fields to save.
+ * @return
+ *   Default values (if any) will be added to the $object parameter for fields
+ *   it leaves unspecified.
  */
 function _field_attach_insert($obj_type, &$object) {
+  _field_invoke_default('insert', $obj_type, $object);
+  _field_invoke('insert', $obj_type, $object);
 
-  // Let other modules act on inserting the object.
-  foreach (module_implements('field_attach_insert') as $module) {
-    $function = $module . '_field_attach_insert';
-    $function($obj_type, $object);
+  // Let other modules act on inserting the object, accumulating saved
+  // fields along the way.
+  $skip_fields = array();
+  foreach (module_implements('field_attach_pre_insert') as $module) {
+    $function = $module . '_field_attach_pre_insert';
+    $function($obj_type, $object, $skip_fields);
   }
 
-  _field_invoke('insert', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_INSERT);
+  // Field storage module saves any remaining unsaved fields.
+  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_INSERT, $skip_fields);
 
   list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
   if ($cacheable) {
@@ -489,14 +545,18 @@ function _field_attach_insert($obj_type, &$object) {
  */
 function _field_attach_update($obj_type, &$object) {
 
-  // Let other modules act on updating the object.
-  foreach (module_implements('field_attach_update') as $module) {
-    $function = $module . '_field_attach_update';
-    $function($output, $obj_type, $object);
+  _field_invoke('update', $obj_type, $object);
+
+  // Let other modules act on updating the object, accumulating saved
+  // fields along the way.
+  $skip_fields = array();
+  foreach (module_implements('field_attach_pre_update') as $module) {
+    $function = $module . '_field_attach_pre_update';
+    $function($obj_type, $object, $skip_fields);
   }
 
-  _field_invoke('update', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_UPDATE);
+  // Field storage module saves any remaining unsaved fields.
+  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_UPDATE, $skip_fields);
 
   list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
   if ($cacheable) {
@@ -576,10 +636,7 @@ function _field_attach_view($obj_type, &$object, $teaser = FALSE) {
   $output = _field_invoke_default('view', $obj_type, $object, $teaser);
 
   // Let other modules make changes after rendering the view.
-  foreach (module_implements('field_attach_view') as $module) {
-    $function = $module . '_field_attach_view';
-    $function($output, $obj_type, $object, $teaser);
-  }
+  drupal_alter('field_attach_view', $output, $obj_type, $object, $teaser);
 
   return $output;
 
@@ -601,7 +658,7 @@ function _field_attach_preprocess($obj_type, &$object) {
  *
  * TODO D7: We do not yet know if this really belongs in Field API.
  */
-function _field_attach_prepare_translation(&$node) {
+function _field_attach_prepare_translation($node) {
   // Prevent against invalid 'nodes' built by broken 3rd party code.
   if (isset($node->type)) {
     $type = content_types($node->type);
@@ -675,16 +732,16 @@ function _field_attach_rename_bundle($bundle_old, $bundle_new) {
  *   The bundle to delete.
  */
 function _field_attach_delete_bundle($bundle) {
-  // Let other modules act on deleting the bundle
-  foreach (module_implements('field_attach_delete_bundle') as $module) {
-    $function = $module . '_field_attach_delete_bundle';
-    $function($bundle);
-  }
-
   // Delete the instances themseves
   $instances = field_info_instances($bundle);
   foreach ($instances as $instance) {
     field_delete_instance($instance['field_name'], $bundle);
+  }
+
+  // Let other modules act on deleting the bundle.
+  foreach (module_implements('field_attach_delete_bundle') as $module) {
+    $function = $module . '_field_attach_delete_bundle';
+    $function($bundle, $instances);
   }
 }
 

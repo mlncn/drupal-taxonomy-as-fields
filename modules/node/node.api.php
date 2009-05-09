@@ -1,5 +1,5 @@
 <?php
-// $Id: node.api.php,v 1.13 2009/03/17 12:41:54 dries Exp $
+// $Id: node.api.php,v 1.18 2009/05/09 18:28:12 dries Exp $
 
 /**
  * @file
@@ -181,7 +181,9 @@ function hook_node_alter($node, $teaser) {
  *   None.
  */
 function hook_node_delete($node) {
-  db_query('DELETE FROM {mytable} WHERE nid = %d', $node->nid);
+  db_delete('mytable')
+    ->condition('nid', $node->nid)
+    ->execute();
 }
 
 /**
@@ -215,7 +217,12 @@ function hook_node_delete_revision($node) {
  *   None.
  */
 function hook_node_insert($node) {
-  db_query("INSERT INTO {mytable} (nid, extra) VALUES (%d, '%s')", $node->nid, $node->extra);
+  db_insert('mytable')
+    ->fields(array(
+      'nid' => $node->nid,
+      'extra' => $node->extra,
+    ))
+    ->execute();
 }
 
 /**
@@ -280,28 +287,6 @@ function hook_node_prepare_translation($node) {
 }
 
 /**
- * An RSS feed is being generated.
- *
- * The module can return properties to be added to the RSS item generated for
- * this node. This hook should only be used to add XML elements to the RSS
- * feed item itself. See comment_node_rss_item() and upload_node_rss_item()
- * for examples.
- *
- * @param $node
- *   The node the action is being performed on.
- * @return
- *   Extra information to be added to the RSS item.
- */
-function hook_node_rss_item($node) {
-  if ($node->comment != COMMENT_NODE_HIDDEN) {
-    return array(array('key' => 'comments', 'value' => url('node/' . $node->nid, array('fragment' => 'comments', 'absolute' => TRUE))));
-  }
-  else {
-    return array();
-  }
-}
-
-/**
  * The node is being displayed as a search result.
  *
  * If you want to display extra information with the result, return it.
@@ -344,7 +329,10 @@ function hook_node_presave($node) {
  *   None.
  */
 function hook_node_update($node) {
-  db_query("UPDATE {mytable} SET extra = '%s' WHERE nid = %d", $node->extra, $node->nid);
+  db_update('mytable')
+    ->fields(array('extra' => $node->extra))
+    ->condition('nid', $node->nid)
+    ->execute();
 }
 
 /**
@@ -362,7 +350,7 @@ function hook_node_update_index($node) {
   $text = '';
   $comments = db_query('SELECT subject, comment, format FROM {comment} WHERE nid = :nid AND status = :status', array(':nid' => $node->nid, ':status' => COMMENT_PUBLISHED));
   foreach ($comments as $comment) {
-    $text .= '<h2>' . check_plain($comment->subject) . '</h2>' . check_markup($comment->comment, $comment->format, FALSE);
+    $text .= '<h2>' . check_plain($comment->subject) . '</h2>' . check_markup($comment->comment, $comment->format, '', FALSE);
   }
   return $text;
 }
@@ -391,16 +379,25 @@ function hook_node_validate($node, $form) {
 /**
  * The node content is being assembled before rendering.
  *
- * The module may add elements $node->content prior to rendering. This hook
- * will be called after hook_view(). The structure of $node->content is a renderable
- * array as expected by drupal_render().
+ * TODO D7 This needs work to clearly explain the different build modes.
+ *
+ * The module may add elements to $node->content prior to rendering. This hook
+ * will be called after hook_view(). The structure of $node->content is a
+ * renderable array as expected by drupal_render().
+ *
+ * When $node->build_mode is NODE_BUILD_RSS modules can also add extra RSS
+ * elements and namespaces to $node->rss_elements and $node->rss_namespaces
+ * respectively for the RSS item generated for this node. For details on how
+ * this is used @see node_feed()
+ *
+ * @see taxonomy_node_view()
+ * @see upload_node_view()
+ * @see comment_node_view()
  *
  * @param $node
  *   The node the action is being performed on.
  * @param $teaser
- *   The $teaser parameter from node_view().
- * @return
- *   None.
+ *   The $teaser parameter from node_build().
  */
 function hook_node_view($node, $teaser) {
   $node->content['my_additional_field'] = array(
@@ -554,7 +551,7 @@ function hook_access($op, $node, $account) {
  * to take action when a node is being deleted from the database by, for
  * example, deleting information from related tables.
  *
- * @param &$node
+ * @param $node
  *   The node being deleted.
  * @return
  *   None.
@@ -564,22 +561,24 @@ function hook_access($op, $node, $account) {
  *
  * For a detailed usage example, see node_example.module.
  */
-function hook_delete(&$node) {
-  db_query('DELETE FROM {mytable} WHERE nid = %d', $node->nid);
+function hook_delete($node) {
+  db_delete('mytable')
+    ->condition('nid', $nid->nid)
+    ->execute();
 }
 
 /**
  * This is a hook used by node modules. It is called after load but before the
  * node is shown on the add/edit form.
  *
- * @param &$node
+ * @param $node
  *   The node being saved.
  * @return
  *   None.
  *
  * For a usage example, see image.module.
  */
-function hook_prepare(&$node) {
+function hook_prepare($node) {
   if ($file = file_check_upload($field_name)) {
     $file = file_save_upload($field_name, _image_filename($file->filename, NULL, TRUE));
     if ($file) {
@@ -604,7 +603,7 @@ function hook_prepare(&$node) {
  * that is displayed when one attempts to "create/edit" an item. This form is
  * displayed at the URI http://www.example.com/?q=node/<add|edit>/nodetype.
  *
- * @param &$node
+ * @param $node
  *   The node being added or edited.
  * @param $form_state
  *   The form state array. Changes made to this variable will have no effect.
@@ -619,7 +618,7 @@ function hook_prepare(&$node) {
  *
  * For a detailed usage example, see node_example.module.
  */
-function hook_form(&$node, $form_state) {
+function hook_form($node, $form_state) {
   $type = node_get_types('type', $node);
 
   $form['title'] = array(

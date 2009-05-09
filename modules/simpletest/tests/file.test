@@ -1,5 +1,5 @@
 <?php
-// $Id: file.test,v 1.26 2009/03/14 23:01:37 webchick Exp $
+// $Id: file.test,v 1.29 2009/04/22 09:45:03 dries Exp $
 
 /**
  *  @file
@@ -101,15 +101,35 @@ class FileTestCase extends DrupalWebTestCase {
    *   Optional message.
    */
   function assertFilePermissions($filepath, $expected_mode, $message = NULL) {
+    // Clear out PHP's file stat cache to be sure we see the current value.
+    clearstatcache();
+
     // Mask out all but the last three octets.
     $actual_mode = fileperms($filepath) & 511;
-    if (is_null($message)) {
-      if ($actual_mode == $expected_mode) {
-        $message = t('File permissions set correctly.');
-      }
-      else {
-        $message = t('Expected file permission to be %expected, actually were %actual.', array('%actual' => decoct($actual_mode), '%expected' => decoct($expected_mode)));
-      }
+    if (!isset($message)) {
+      $message = t('Expected file permission to be %expected, actually were %actual.', array('%actual' => decoct($actual_mode), '%expected' => decoct($expected_mode)));
+    }
+    $this->assertEqual($actual_mode, $expected_mode, $message);
+  }
+
+  /**
+   * Helper function to test the permissions of a directory.
+   *
+   * @param $directory
+   *   String directory path.
+   * @param $expected_mode
+   *   Octal integer like 0664 or 0777.
+   * @param $message
+   *   Optional message.
+   */
+  function assertDirectoryPermissions($directory, $expected_mode, $message = NULL) {
+    // Clear out PHP's file stat cache to be sure we see the current value.
+    clearstatcache();
+
+    // Mask out all but the last three octets.
+    $actual_mode = fileperms($directory) & 511;
+    if (!isset($message)) {
+      $message = t('Expected directory permission to be %expected, actually were %actual.', array('%actual' => decoct($actual_mode), '%expected' => decoct($expected_mode)));
     }
     $this->assertEqual($actual_mode, $expected_mode, $message);
   }
@@ -249,7 +269,7 @@ class FileHookTestCase extends FileTestCase {
  *  This will run tests against the file_space_used() function.
  */
 class FileSpaceUsedTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File space used tests'),
       'description' => t('Tests the file_space_used() function.'),
@@ -309,7 +329,7 @@ class FileSpaceUsedTest extends FileTestCase {
  *  This will run tests against the file validation functions (file_validate_*).
  */
 class FileValidatorTest extends DrupalWebTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File validator tests'),
       'description' => t('Tests the functions used to validate uploaded files.'),
@@ -467,7 +487,7 @@ class FileValidatorTest extends DrupalWebTestCase {
  *  Tests the file_unmanaged_save_data() function.
  */
 class FileUnmanagedSaveDataTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Unmanaged file save data'),
       'description' => t('Tests the unmanaged file save data function.'),
@@ -493,7 +513,7 @@ class FileUnmanagedSaveDataTest extends FileTestCase {
     $this->assertEqual(file_directory_path(), dirname($filepath), t("File was placed in Drupal's files directory."));
     $this->assertEqual('asdf.txt', basename($filepath), t('File was named correctly.'));
     $this->assertEqual($contents, file_get_contents(realpath($filepath)), t('Contents of the file are correct.'));
-    $this->assertFilePermissions($filepath, 0664);
+    $this->assertFilePermissions($filepath, variable_get('file_chmod_file', 0664));
   }
 }
 
@@ -511,7 +531,7 @@ class FileSaveUploadTest extends FileHookTestCase {
    */
   var $maxFidBefore;
 
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File uploading'),
       'description' => t('Tests the file uploading functions.'),
@@ -639,7 +659,7 @@ class FileSaveUploadTest extends FileHookTestCase {
  * Directory related tests.
  */
 class FileDirectoryTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File paths and directories'),
       'description' => t('Tests operations dealing with directories.'),
@@ -681,8 +701,8 @@ class FileDirectoryTest extends FileTestCase {
     // Test directory permission modification.
     $this->assertTrue(file_check_directory($directory, FILE_MODIFY_PERMISSIONS), t('No error reported when making directory writeable.'), 'File');
 
-    // Verify directory actually is writeable.
-    $this->assertTrue(is_writeable($directory), t('Directory is writeable.'), 'File');
+    // Test directory permission modification actually set correct permissions.
+    $this->assertDirectoryPermissions($directory, variable_get('file_chmod_directory', 0775));
 
     // Remove .htaccess file to then test that it gets re-created.
     @unlink(file_directory_path() .'/.htaccess');
@@ -804,7 +824,7 @@ class FileDirectoryTest extends FileTestCase {
  * Tests the file_scan_directory() function.
  */
 class FileScanDirectoryTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File scan directory'),
       'description' => t('Tests the file_scan_directory() function.'),
@@ -932,7 +952,7 @@ class FileScanDirectoryTest extends FileTestCase {
  * Deletion related tests.
  */
 class FileUnmanagedDeleteTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Unmanaged file delete'),
       'description' => t('Tests the unmanaged file delete function.'),
@@ -978,7 +998,7 @@ class FileUnmanagedDeleteTest extends FileTestCase {
  * Deletion related tests.
  */
 class FileUnmanagedDeleteRecursiveTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Unmanaged recursive file delete'),
       'description' => t('Tests the unmanaged file delete recursive function.'),
@@ -1055,7 +1075,7 @@ class FileUnmanagedDeleteRecursiveTest extends FileTestCase {
  * Unmanaged move related tests.
  */
 class FileUnmanagedMoveTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Unmanaged file moving'),
       'description' => t('Tests the unmanaged file move function.'),
@@ -1077,7 +1097,7 @@ class FileUnmanagedMoveTest extends FileTestCase {
     $this->assertEqual($new_filepath, $desired_filepath, t('Returned expected filepath.'));
     $this->assertTrue(file_exists($new_filepath), t('File exists at the new location.'));
     $this->assertFalse(file_exists($file->filepath), t('No file remains at the old location.'));
-    $this->assertFilePermissions($new_filepath, 0664);
+    $this->assertFilePermissions($new_filepath, variable_get('file_chmod_file', 0664));
 
     // Moving with rename.
     $desired_filepath = file_directory_path() . '/' . $this->randomName();
@@ -1088,7 +1108,7 @@ class FileUnmanagedMoveTest extends FileTestCase {
     $this->assertNotEqual($newer_filepath, $desired_filepath, t('Returned expected filepath.'));
     $this->assertTrue(file_exists($newer_filepath), t('File exists at the new location.'));
     $this->assertFalse(file_exists($new_filepath), t('No file remains at the old location.'));
-    $this->assertFilePermissions($newer_filepath, 0664);
+    $this->assertFilePermissions($newer_filepath, variable_get('file_chmod_file', 0664));
 
     // TODO: test moving to a directory (rather than full directory/file path)
   }
@@ -1127,7 +1147,7 @@ class FileUnmanagedMoveTest extends FileTestCase {
  * Unmanaged copy related tests.
  */
 class FileUnmanagedCopyTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('Unmanaged file copying'),
       'description' => t('Tests the unmanaged file copy function.'),
@@ -1149,17 +1169,17 @@ class FileUnmanagedCopyTest extends FileTestCase {
     $this->assertEqual($new_filepath, $desired_filepath, t('Returned expected filepath.'));
     $this->assertTrue(file_exists($file->filepath), t('Original file remains.'));
     $this->assertTrue(file_exists($new_filepath), t('New file exists.'));
-    $this->assertFilePermissions($new_filepath, 0664);
+    $this->assertFilePermissions($new_filepath, variable_get('file_chmod_file', 0664));
 
     // Copying with rename.
     $desired_filepath = file_directory_path() . '/' . $this->randomName();
     $this->assertTrue(file_put_contents($desired_filepath, ' '), t('Created a file so a rename will have to happen.'));
-    $newer_filepath = file_unmanaged_copy($new_filepath, $desired_filepath, FILE_EXISTS_RENAME);
+    $newer_filepath = file_unmanaged_copy($file->filepath, $desired_filepath, FILE_EXISTS_RENAME);
     $this->assertTrue($newer_filepath, t('Copy was successful.'));
     $this->assertNotEqual($newer_filepath, $desired_filepath, t('Returned expected filepath.'));
     $this->assertTrue(file_exists($file->filepath), t('Original file remains.'));
-    $this->assertTrue(file_exists($new_filepath), t('New file exists.'));
-    $this->assertFilePermissions($new_filepath, 0664);
+    $this->assertTrue(file_exists($newer_filepath), t('New file exists.'));
+    $this->assertFilePermissions($newer_filepath, variable_get('file_chmod_file', 0664));
 
     // TODO: test copying to a directory (rather than full directory/file path)
   }
@@ -1188,6 +1208,7 @@ class FileUnmanagedCopyTest extends FileTestCase {
     $this->assertNotEqual($new_filepath, $file->filepath, t('Copied file has a new name.'));
     $this->assertTrue(file_exists($file->filepath), t('Original file exists after copying onto itself.'));
     $this->assertTrue(file_exists($new_filepath), t('Copied file exists after copying onto itself.'));
+    $this->assertFilePermissions($new_filepath, variable_get('file_chmod_file', 0664));
 
     // Copy the file onto itself without renaming fails.
     $new_filepath = file_unmanaged_copy($file->filepath, $file->filepath, FILE_EXISTS_ERROR);
@@ -1205,16 +1226,15 @@ class FileUnmanagedCopyTest extends FileTestCase {
     $this->assertNotEqual($new_filepath, $file->filepath, t('Copied file has a new name.'));
     $this->assertTrue(file_exists($file->filepath), t('Original file exists after copying onto itself.'));
     $this->assertTrue(file_exists($new_filepath), t('Copied file exists after copying onto itself.'));
+    $this->assertFilePermissions($new_filepath, variable_get('file_chmod_file', 0664));
   }
 }
-
-
 
 /**
  * Deletion related tests.
  */
 class FileDeleteTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File delete'),
       'description' => t('Tests the file delete function.'),
@@ -1245,7 +1265,7 @@ class FileDeleteTest extends FileHookTestCase {
  * Move related tests
  */
 class FileMoveTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File moving'),
       'description' => t('Tests the file move function.'),
@@ -1406,7 +1426,7 @@ class FileMoveTest extends FileHookTestCase {
  * Copy related tests.
  */
 class FileCopyTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File copying'),
       'description' => t('Tests the file copy function.'),
@@ -1552,7 +1572,7 @@ class FileCopyTest extends FileHookTestCase {
  * Tests the file_load() function.
  */
 class FileLoadTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File loading'),
       'description' => t('Tests the file_load() function.'),
@@ -1649,7 +1669,7 @@ class FileLoadTest extends FileHookTestCase {
  * Tests the file_save() function.
  */
 class FileSaveTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File saving'),
       'description' => t('Tests the file_save() function.'),
@@ -1705,7 +1725,7 @@ class FileSaveTest extends FileHookTestCase {
  * Tests the file_validate() function..
  */
 class FileValidateTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File validate'),
       'description' => t('Tests the file_validate() function.'),
@@ -1744,7 +1764,7 @@ class FileValidateTest extends FileHookTestCase {
  *  Tests the file_save_data() function.
  */
 class FileSaveDataTest extends FileHookTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File save data'),
       'description' => t('Tests the file save data function.'),
@@ -1875,7 +1895,7 @@ class FileSaveDataTest extends FileHookTestCase {
  * Tests for download/file transfer functions.
  */
 class FileDownloadTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File download'),
       'description' => t('Tests for file download/transfer functions.'),
@@ -1899,7 +1919,7 @@ class FileDownloadTest extends FileTestCase {
     $url = file_create_url($file->filename);
 
     // Set file_test access header to allow the download.
-    file_test_set_return('download', array('x-foo: Bar'));
+    file_test_set_return('download', array('x-foo' => 'Bar'));
     $this->drupalHead($url);
     $headers = $this->drupalGetHeaders();
     $this->assertEqual($headers['x-foo'] , 'Bar', t('Found header set by file_test module on private download.'));
@@ -1921,7 +1941,7 @@ class FileDownloadTest extends FileTestCase {
  * Tests for file_munge_filename() and file_unmunge_filename().
  */
 class FileNameMungingTest extends FileTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('File naming'),
       'description' => t('Test filename munging and unmunging.'),

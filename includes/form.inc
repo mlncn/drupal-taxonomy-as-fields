@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.324 2009/03/14 20:13:26 dries Exp $
+// $Id: form.inc,v 1.333 2009/05/09 18:28:11 dries Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -38,7 +38,7 @@
  * @endcode
  *
  * Forms can also be built and submitted programmatically without any user input
- * using the drupal_execute() function.
+ * using the drupal_form_submit() function.
  *
  * For information on the format of the structured arrays used to define forms,
  * and more detailed explanations of the Form API workflow, see the
@@ -188,9 +188,8 @@ function drupal_build_form($form_id, &$form_state) {
 
     if ($cacheable && !empty($form['#cache']) && empty($form['#no_cache'])) {
       // Caching is done past drupal_process_form so #process callbacks can
-      // set #cache. By not sending the form state, we avoid storing
-      // $form_state['storage'].
-      form_set_cache($form_build_id, $original_form, NULL);
+      // set #cache.
+      form_set_cache($form_build_id, $original_form, $form_state);
     }
   }
 
@@ -201,14 +200,14 @@ function drupal_build_form($form_id, &$form_state) {
   // the form will simply be re-rendered with the values still in its
   // fields.
   //
-  // If $form_state['storage'] or $form_state['rebuild'] have been
-  // set by any submit or validate handlers, however, we know that
-  // we're in a complex multi-part process of some sort and the form's
-  // workflow is NOT complete. We need to construct a fresh copy of
-  // the form, passing in the latest $form_state in addition to any
-  // other variables passed into drupal_get_form().
+  // If $form_state['storage'] or $form_state['rebuild'] has been set
+  // and the form has been submitted, we know that we're in a complex
+  // multi-part process of some sort and the form's workflow is NOT
+  // complete. We need to construct a fresh copy of the form, passing
+  // in the latest $form_state in addition to any other variables passed
+  // into drupal_get_form().
 
-  if (!empty($form_state['rebuild']) || !empty($form_state['storage'])) {
+  if ((!empty($form_state['storage']) || !empty($form_state['rebuild'])) && !empty($form_state['submitted']) && !form_get_errors()) {
     $form = drupal_rebuild_form($form_id, $form_state);
   }
 
@@ -227,6 +226,7 @@ function form_state_defaults() {
     'method' => 'post',
     'rerender' => TRUE,
     'programmed' => FALSE,
+    'groups' => array(),
   );
 }
 
@@ -286,6 +286,10 @@ function drupal_rebuild_form($form_id, &$form_state, $form_build_id = NULL) {
   // then process the form for rendering.
   $form_state['input'] = array();
 
+  // Also clear out all group associations as these might be different
+  // when rerendering the form.
+  $form_state['groups'] = array();
+
   // Do not call drupal_process_form(), since it would prevent the rebuilt form
   // to submit.
   $form = form_builder($form_id, $form, $form_state);
@@ -343,7 +347,7 @@ function form_set_cache($form_build_id, $form, $form_state) {
  *   form submission.
  * @param ...
  *   Any additional arguments are passed on to the functions called by
- *   drupal_execute(), including the unique form constructor function.
+ *   drupal_form_submit(), including the unique form constructor function.
  *   For example, the node_edit form requires that a node object be passed
  *   in here when it is called.
  * For example:
@@ -354,7 +358,7 @@ function form_set_cache($form_build_id, $form, $form_state) {
  * $form_state['values']['mail'] = 'robouser@example.com';
  * $form_state['values']['pass'] = 'password';
  * $form_state['values']['op'] = t('Create new account');
- * drupal_execute('user_register', $form_state);
+ * drupal_form_submit('user_register', $form_state);
  *
  * // Create a new node
  * $form_state = array();
@@ -364,9 +368,9 @@ function form_set_cache($form_build_id, $form, $form_state) {
  * $form_state['values']['body'] = 'This is the body text!';
  * $form_state['values']['name'] = 'robo-user';
  * $form_state['values']['op'] = t('Save');
- * drupal_execute('story_node_form', $form_state, (object)$node);
+ * drupal_form_submit('story_node_form', $form_state, (object)$node);
  */
-function drupal_execute($form_id, &$form_state) {
+function drupal_form_submit($form_id, &$form_state) {
   if (!isset($form_state['args'])) {
     $args = func_get_args();
     array_shift($args);
@@ -398,7 +402,7 @@ function drupal_execute($form_id, &$form_state) {
  * @param ...
  *   Any additional arguments needed by the unique form constructor
  *   function. Generally, these are any arguments passed into the
- *   drupal_get_form() or drupal_execute() functions after the first
+ *   drupal_get_form() or drupal_form_submit() functions after the first
  *   argument. If a module implements hook_forms(), it can examine
  *   these additional arguments and conditionally return different
  *   builder functions as well.
@@ -507,7 +511,7 @@ function drupal_process_form($form_id, &$form, &$form_state) {
       // If batches were set in the submit handlers, we process them now,
       // possibly ending execution. We make sure we do not react to the batch
       // that is already being processed (if a batch operation performs a
-      // drupal_execute).
+      // drupal_form_submit).
       if ($batch =& batch_get() && !isset($batch['current_set'])) {
         // The batch uses its own copies of $form and $form_state for
         // late execution of submit handlers and post-batch redirection.
@@ -525,7 +529,7 @@ function drupal_process_form($form_id, &$form, &$form_state) {
       // bundle, and the $form_state['rebuild'] flag has not been set,
       // we're finished and should redirect to a new destination page
       // if one has been set (and a fresh, unpopulated copy of the form
-      // if one hasn't). If the form was called by drupal_execute(),
+      // if one hasn't). If the form was called by drupal_form_submit(),
       // however, we'll skip this and let the calling function examine
       // the resulting $form_state bundle itself.
       if (!$form_state['programmed'] && empty($form_state['rebuild']) && empty($form_state['storage'])) {
@@ -856,7 +860,10 @@ function form_execute_handlers($type, &$form, &$form_state) {
 
   foreach ($handlers as $function) {
     if (drupal_function_exists($function))  {
-      if ($type == 'submit' && ($batch =& batch_get())) {
+      // Check to see if a previous _submit handler has set a batch, but 
+      // make sure we do not react to a batch that is already being processed 
+      // (for instance if a batch operation performs a drupal_form_submit()).
+      if ($type == 'submit' && ($batch =& batch_get()) && !isset($batch['current_set'])) {
         // Some previous _submit handler has set a batch. We store the call
         // in a special 'control' batch set, for execution at the correct
         // time during the batch processing workflow.
@@ -936,7 +943,8 @@ function form_error(&$element, $message = '') {
 /**
  * Walk through the structured form array, adding any required
  * properties to each element and mapping the incoming $_POST
- * data to the proper elements.
+ * data to the proper elements. Also, execute any #process handlers
+ * attached to a specific element.
  *
  * @param $form_id
  *   A unique string identifying the form for validation, submission,
@@ -969,8 +977,21 @@ function form_builder($form_id, $form, &$form_state) {
     }
   }
 
+  if (!isset($form['#id'])) {
+    $form['#id'] = form_clean_id('edit-' . implode('-', $form['#parents']));
+  }
   if (isset($form['#input']) && $form['#input']) {
     _form_builder_handle_input_element($form_id, $form, $form_state, $complete_form);
+  }
+  // Allow for elements to expand to multiple elements, e.g., radios,
+  // checkboxes and files.
+  if (isset($form['#process']) && !$form['#processed']) {
+    foreach ($form['#process'] as $process) {
+      if (drupal_function_exists($process)) {
+        $form = $process($form, $form_state, $complete_form);
+      }
+    }
+    $form['#processed'] = TRUE;
   }
   $form['#defaults_loaded'] = TRUE;
 
@@ -1059,8 +1080,7 @@ function form_builder($form_id, $form, &$form_state) {
 
 /**
  * Populate the #value and #name properties of input elements so they
- * can be processed and rendered. Also, execute any #process handlers
- * attached to a specific element.
+ * can be processed and rendered.
  */
 function _form_builder_handle_input_element($form_id, &$form, &$form_state, $complete_form) {
   if (!isset($form['#name'])) {
@@ -1076,9 +1096,6 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
       $form['#name'] .= '[' . implode('][', $form['#parents']) . ']';
     }
     array_unshift($form['#parents'], $name);
-  }
-  if (!isset($form['#id'])) {
-    $form['#id'] = form_clean_id('edit-' . implode('-', $form['#parents']));
   }
 
   if (!empty($form['#disabled'])) {
@@ -1147,16 +1164,6 @@ function _form_builder_handle_input_element($form_id, &$form, &$form_state, $com
         $form_state['submit_handlers'] = $form['#submit'];
       }
     }
-  }
-  // Allow for elements to expand to multiple elements, e.g., radios,
-  // checkboxes and files.
-  if (isset($form['#process']) && !$form['#processed']) {
-    foreach ($form['#process'] as $process) {
-      if (drupal_function_exists($process)) {
-        $form = $process($form, isset($edit) ? $edit : NULL, $form_state, $complete_form);
-      }
-    }
-    $form['#processed'] = TRUE;
   }
   form_set_value($form, $form['#value'], $form_state);
 }
@@ -1594,6 +1601,7 @@ function theme_fieldset($element) {
       $element['#attributes']['class'] .= ' collapsed';
     }
   }
+  $element['#attributes']['id'] = $element['#id'];
 
   return '<fieldset' . drupal_attributes($element['#attributes']) . '>' . ($element['#title'] ? '<legend>' . $element['#title'] . '</legend>' : '') . (isset($element['#description']) && $element['#description'] ? '<div class="description">' . $element['#description'] . '</div>' : '') . (!empty($element['#children']) ? $element['#children'] : '') . (isset($element['#value']) ? $element['#value'] : '') . "</fieldset>\n";
 }
@@ -1813,6 +1821,14 @@ function form_ahah_callback() {
 
   // Get the form from the cache.
   $form = form_get_cache($form_build_id, $form_state);
+  if (!$form) {
+    // If $form cannot be loaded from the cache, the form_build_id in $_POST must
+    // be invalid, which means that someone performed a POST request onto
+    // system/ahah without actually viewing the concerned form in the browser.
+    // This is likely a hacking attempt as it never happens under normal
+    // circumstances, so we just do nothing.
+    exit;
+  }
 
   // We will run some of the submit handlers so we need to disable redirecting.
   $form['#redirect'] = FALSE;
@@ -1832,7 +1848,9 @@ function form_ahah_callback() {
 
   // Get the callback function from the clicked button.
   $callback = $form_state['clicked_button']['#ahah']['callback'];
-  $callback($form, $form_state);
+  if (drupal_function_exists($callback)) {
+    $callback($form, $form_state);
+  }
 }
 
 /**
@@ -1924,17 +1942,43 @@ function form_process_text_format($element) {
 
     // We need to break references, otherwise form_builder recurses infinitely.
     $element['value'] = (array)$element;
+    $element['value']['#weight'] = 0;
+    unset($element['value']['#description']);
     $element['#type'] = 'markup';
     $element['#theme'] = NULL;
-    $element['#theme_wrapper'] = NULL;
+    $element['#theme_wrapper'] = 'text_format_wrapper';
     $element['format'] = filter_form($element['#text_format'], 1, $element_parents);
 
     // We need to clear the #text_format from the new child otherwise we
     // would get into an infinite loop.
     unset($element['value']['#text_format']);
-    $element['value']['#weight'] = 0;
   }
   return $element;
+}
+
+/**
+ * Return a themed text format form element.
+ *
+ * @param element
+ *   An associative array containing the properties of the element.
+ *   Properties used: children, description
+ * @return
+ *   A string representing the form element.
+ *
+ * @ingroup themeable
+ */
+function theme_text_format_wrapper($element) {
+  $output = '<div class="text-format-wrapper">' . "\n";
+
+  $output .= $element['#children'] . "\n";
+
+  if (!empty($element['#description'])) {
+    $output .= '<div class="description">' . $element['#description'] . "</div>\n";
+  }
+
+  $output .= "</div>\n";
+
+  return $output;
 }
 
 /**
@@ -2114,7 +2158,6 @@ function form_process_checkboxes($element) {
  *   An associative array containing the properties and children of the
  *   tableselect element.
  *   Properties used: header, options, empty, js_select.
- *
  * @return
  *   A themed HTML string representing the table.
  *
@@ -2157,7 +2200,6 @@ function theme_tableselect($element) {
  * @param $element
  *   An associative array containing the properties and children of the
  *   tableselect element.
- *
  * @return
  *   The processed element.
  */
@@ -2216,6 +2258,142 @@ function form_process_tableselect($element) {
     $element['#value'] = array();
   }
   return $element;
+}
+
+/**
+ * Adds fieldsets to the specified group or adds group members to this
+ * fieldset.
+ *
+ * @param $element
+ *   An associative array containing the properties and children of the
+ *   fieldset.
+ * @param $form_state
+ *   The $form_state array for the form this fieldset belongs to.
+ * @return
+ *   The processed element.
+ */
+function form_process_fieldset(&$element, &$form_state) {
+  $parents = implode('][', $element['#parents']);
+
+  // Add this fieldset to a group if one is set and if it's not being
+  // added to itself.
+  if (isset($element['#group']) && $element['#group'] != $parents) {
+    if (isset($form_state['groups'][$element['#group']]) && !empty($form_state['groups'][$element['#group']]['#group_exists'])) {
+      // Trick drupal_render() into believing this has already been output.
+      // The group widget will rerender this later. This only happens when the
+      // group is actually defined ('#group_exists' is TRUE). This prevents
+      // fieldsets from disappearing when the group they are associated to
+      // does not exist.
+      // If the group does not exist yet, the element's #printed value is left
+      // as is. As soon as the group is processed (fieldsets are also groups;
+      // see below), this element's #printed value is set to TRUE to prevent
+      // rendering in the original context.
+      $element['#printed'] = TRUE;
+    }
+
+    // Store a reference to this fieldset for the vertical tabs processing
+    // function.
+    $form_state['groups'][$element['#group']][] = &$element;
+  }
+
+  // Each fieldset can be a group itself and gets a reference to all
+  // elements in its group.
+  $form_state['groups'][$parents]['#group_exists'] = TRUE;
+  // There might already be elements associated with this group. Since the
+  // group did not exist yet at the time they were added to this group, they
+  // couldn't set #printed to TRUE (see above). We now know that this group
+  // does in fact exist and set #printed to TRUE to prevent rendering in the
+  // original context.
+  foreach (element_children($form_state['groups'][$parents]) as $key) {
+    $form_state['groups'][$parents][$key]['#printed'] = TRUE;
+  }
+  $element['#group_members'] = &$form_state['groups'][$parents];
+
+  // Contains form element summary functionalities.
+  drupal_add_js('misc/form.js', array('weight' => JS_LIBRARY + 1));
+
+  return $element;
+}
+
+/**
+ * Adds members of this group as actual elements for rendering.
+ *
+ * @param $element
+ *   An associative array containing the properties and children of the
+ *   fieldset.
+ * @return
+ *   The modified element with all group members.
+ */
+function form_pre_render_fieldset($element) {
+  if (!empty($element['#group_members'])) {
+    // Add the group members to this fieldset for rendering purposes only.
+    foreach (element_children($element['#group_members']) as $key) {
+      // This was set in form_process_fieldset so that fieldsets which are
+      // added to groups are not rendered at their original location.
+      // drupal_render_children() will set this back to TRUE.
+      unset($element['#group_members'][$key]['#printed']);
+      $element[] = &$element['#group_members'][$key];
+    }
+
+    // Resort the element's children after the group members have been added.
+    $element['#sorted'] = FALSE;
+  }
+
+  return $element;
+}
+
+/**
+ * Creates a group formatted as vertical tabs.
+ *
+ * @param $element
+ *   An associative array containing the properties and children of the
+ *   fieldset.
+ * @param $form_state
+ *   The $form_state array for the form this vertical tab widget belongs to.
+ * @return
+ *   The processed element.
+ */
+function form_process_vertical_tabs($element, &$form_state) {
+  // To save us from modifying the existing element and changing its #type,
+  // a new form element is created as a child. The default #process hooks
+  // are called automatically by the form renderer and we don't have to do
+  // that manually.
+  $element['group'] = array(
+    '#type' => 'fieldset',
+    '#theme_wrapper' => '',
+    '#parents' => $element['#parents'],
+  );
+
+  // The JavaScript stores the currently selected tab in this hidden
+  // field so that the active tab can be restored the next time the
+  // form is rendered, e.g. on preview pages or when form validation
+  // fails.
+  $name = implode('__', $element['#parents']);
+  if (isset($form_state['values'][$name . '__active_tab'])) {
+    $element['#default_tab'] = $form_state['values'][$name . '__active_tab'];
+  }
+  $element[$name . '__active_tab'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $element['#default_tab'],
+    '#attributes' => array('class' => 'vertical-tabs-active-tab'),
+  );
+
+  return $element;
+}
+
+/**
+ * Makes the element's children fieldsets be vertical tabs.
+ *
+ * @param $element
+ *   An associative array containing the properties and children of the
+ *   fieldset.
+ */
+function theme_vertical_tabs($element) {
+  // Add required JavaScript and Stylesheet.
+  drupal_add_js('misc/vertical-tabs.js', array('weight' => JS_DEFAULT - 1));
+  drupal_add_css('misc/vertical-tabs.css');
+
+  return '<div class="vertical-tabs-panes">' . $element['#children'] . '</div>';
 }
 
 /**

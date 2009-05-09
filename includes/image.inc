@@ -1,5 +1,5 @@
 <?php
-// $Id: image.inc,v 1.30 2009/03/10 09:43:01 dries Exp $
+// $Id: image.inc,v 1.33 2009/04/20 20:02:30 dries Exp $
 
 /**
  * @file
@@ -68,7 +68,8 @@ function image_get_toolkit() {
     if (!isset($toolkits[$toolkit]) || !drupal_function_exists('image_' . $toolkit . '_load')) {
       // The selected toolkit isn't available so return the first one found. If
       // none are available this will return FALSE.
-      $toolkit = reset($toolkits);
+      reset($toolkits);
+      $toolkit = key($toolkits);
     }
   }
 
@@ -102,6 +103,8 @@ function image_toolkit_invoke($method, stdClass $image, array $params = array())
  *
  * Drupal only supports GIF, JPG and PNG file formats.
  *
+ * @param $filepath
+ *   String specifying the path of the image file.
  * @return
  *   FALSE, if the file could not be found or is not an image. Otherwise, a
  *   keyed array containing information about the image:
@@ -111,14 +114,14 @@ function image_toolkit_invoke($method, stdClass $image, array $params = array())
  *    'mime_type' - MIME type ('image/jpeg', 'image/gif', 'image/png').
  *    'file_size' - File size in bytes.
  */
-function image_get_info($file) {
-  if (!is_file($file)) {
+function image_get_info($filepath) {
+  if (!is_file($filepath)) {
     return FALSE;
   }
 
   $details = FALSE;
-  $data = @getimagesize($file);
-  $file_size = @filesize($file);
+  $data = @getimagesize($filepath);
+  $file_size = @filesize($filepath);
 
   if (isset($data) && is_array($data)) {
     $extensions = array('1' => 'gif', '2' => 'jpg', '3' => 'png');
@@ -373,10 +376,9 @@ function image_save(stdClass $image, $destination = NULL) {
     clearstatcache();
     $image->info = image_get_info($destination);
 
-    if (@chmod($destination, 0664)) {
+    if (drupal_chmod($destination)) {
       return $return;
     }
-    watchdog('image', 'Could not set permissions on destination file: %file', array('%file' => $destination));
   }
   return FALSE;
 }

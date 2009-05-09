@@ -1,5 +1,5 @@
 <?php
-// $Id: php.test,v 1.7 2009/01/21 16:58:42 dries Exp $
+// $Id: php.test,v 1.9 2009/04/22 09:57:10 dries Exp $
 
 /**
  * Base PHP test case class.
@@ -20,16 +20,10 @@ class PHPTestCase extends DrupalWebTestCase {
   /**
    * Create a test node with PHP code in the body.
    *
-   * @param stdObject User object to create node for.
    * @return stdObject Node object.
    */
-  function createNodeWithCode($user) {
-    $node = $this->drupalCreateNode(array('uid' => $user->uid));
-    $edit = array();
-    $edit['body'] = '<?php print "SimpleTest PHP was executed!"; ?>';
-    $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
-    $this->assertRaw(t('Page %title has been updated.', array('%title' => $node->title)), t('PHP code inserted into node.'));
-    return $node;
+  function createNodeWithCode() {
+    return $this->drupalCreateNode(array('body' => '<?php print "SimpleTest PHP was executed!"; ?>'));
   }
 }
 
@@ -37,7 +31,7 @@ class PHPTestCase extends DrupalWebTestCase {
  * Tests to make sure the PHP filter actually evaluates PHP code when used.
  */
 class PHPFilterTestCase extends PHPTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('PHP filter functionality'),
       'description' => t('Make sure that PHP filter properly evaluates PHP code when enabled.'),
@@ -58,10 +52,10 @@ class PHPFilterTestCase extends PHPTestCase {
     // Create node with PHP filter enabled.
     $web_user = $this->drupalCreateUser(array('access content', 'create page content', 'edit own page content'));
     $this->drupalLogin($web_user);
-
-    $node = $this->createNodeWithCode($web_user);
+    $node = $this->createNodeWithCode();
 
     // Make sure that the PHP code shows up as text.
+    $this->drupalGet('node/'. $node->nid);
     $this->assertText('print', t('PHP code is displayed.'));
 
     // Change filter to PHP filter and see that PHP code is evaluated.
@@ -80,7 +74,7 @@ class PHPFilterTestCase extends PHPTestCase {
  * Tests to make sure access to the PHP filter is properly restricted.
  */
 class PHPAccessTestCase extends PHPTestCase {
-  function getInfo() {
+  public static function getInfo() {
     return array(
       'name' => t('PHP filter access check'),
       'description' => t('Make sure that users who don\'t have access to the PHP filter can\'t see it.'),
@@ -95,10 +89,10 @@ class PHPAccessTestCase extends PHPTestCase {
     // Create node with PHP filter enabled.
     $web_user = $this->drupalCreateUser(array('access content', 'create page content', 'edit own page content'));
     $this->drupalLogin($web_user);
-
-    $node = $this->createNodeWithCode($web_user);
+    $node = $this->createNodeWithCode();
 
     // Make sure that the PHP code shows up as text.
+    $this->drupalGet('node/'. $node->nid);
     $this->assertText('print', t('PHP code is displayed.'));
 
     // Make sure that user doesn't have access to filter.

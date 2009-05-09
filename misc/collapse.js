@@ -1,25 +1,25 @@
-// $Id: collapse.js,v 1.20 2009/03/13 23:15:08 webchick Exp $
-(function($) {
+// $Id: collapse.js,v 1.23 2009/04/27 20:19:35 webchick Exp $
+(function ($) {
 
 /**
  * Toggle the visibility of a fieldset using smooth animations
  */
-Drupal.toggleFieldset = function(fieldset) {
+Drupal.toggleFieldset = function (fieldset) {
   if ($(fieldset).is('.collapsed')) {
     // Action div containers are processed separately because of a IE bug
     // that alters the default submit button behavior.
     var content = $('> div:not(.action)', fieldset);
     $(fieldset).removeClass('collapsed');
     content.hide();
-    content.slideDown( {
+    content.slideDown({
       duration: 'fast',
       easing: 'linear',
-      complete: function() {
+      complete: function () {
         Drupal.collapseScrollIntoView(this.parentNode);
         this.parentNode.animating = false;
         $('div.action', fieldset).show();
       },
-      step: function() {
+      step: function () {
         // Scroll the fieldset into view
         Drupal.collapseScrollIntoView(this.parentNode);
       }
@@ -27,7 +27,7 @@ Drupal.toggleFieldset = function(fieldset) {
   }
   else {
     $('div.action', fieldset).hide();
-    var content = $('> div:not(.action)', fieldset).slideUp('fast', function() {
+    var content = $('> div:not(.action)', fieldset).slideUp('fast', function () {
       $(this.parentNode).addClass('collapsed');
       this.parentNode.animating = false;
     });
@@ -52,18 +52,26 @@ Drupal.collapseScrollIntoView = function (node) {
 };
 
 Drupal.behaviors.collapse = {
-  attach: function(context, settings) {
-    $('fieldset.collapsible > legend:not(.collapse-processed)', context).each(function() {
+  attach: function (context, settings) {
+    $('fieldset.collapsible > legend:not(.collapse-processed)', context).each(function () {
       var fieldset = $(this.parentNode);
       // Expand if there are errors inside
       if ($('input.error, textarea.error, select.error', fieldset).size() > 0) {
         fieldset.removeClass('collapsed');
       }
 
+      var summary = $('<span class="summary"></span>');
+      fieldset.
+        bind('summaryUpdated', function () {
+          var text = $.trim(fieldset.getSummary());
+          summary.html(text ? ' (' + text + ')' : '');
+        })
+        .trigger('summaryUpdated');
+
       // Turn the legend into a clickable link and wrap the contents of the fieldset
       // in a div for easier animation
       var text = this.innerHTML;
-        $(this).empty().append($('<a href="#">'+ text +'</a>').click(function() {
+        $(this).empty().append($('<a href="#">' + text + '</a>').click(function () {
           var fieldset = $(this).parents('fieldset:first')[0];
           // Don't animate multiple times
           if (!fieldset.animating) {
@@ -72,9 +80,10 @@ Drupal.behaviors.collapse = {
           }
           return false;
         }))
+        .append(summary)
         .after($('<div class="fieldset-wrapper"></div>')
-        .append(fieldset.children(':not(legend):not(.action)')))
-        .addClass('collapse-processed');
+          .append(fieldset.children(':not(legend):not(.action)'))
+        ).addClass('collapse-processed');
     });
   }
 };

@@ -1,13 +1,16 @@
-// $Id: CHANGELOG.txt,v 1.300 2009/03/15 01:53:16 webchick Exp $
+// $Id: CHANGELOG.txt,v 1.306 2009/05/03 05:03:44 dries Exp $
 
 Drupal 7.0, xxxx-xx-xx (development version)
 ----------------------
 - Database:
     * Fully rewritten database layer utilizing PHP 5's PDO abstraction layer.
+    * Drupal now requires MySQL >= 5.0 or PostgreSQL >= 8.3.
     * Added query builders for INSERT, UPDATE, DELETE, MERGE, and SELECT queries.
     * Support for master/slave replication, transactions, multi-insert queries,
       delayed inserts, and other features.
     * Added support for the SQLite database engine.
+    * Default to InnoDB engine, rather than MyISAM, on MySQL when available.
+      This offers increased scalability and data integrity.
 - Security:
     * Protected cron.php -- cron will only run if the proper key is provided.
     * Implemented much stronger password hashes that are also compatible with the
@@ -34,11 +37,14 @@ Drupal 7.0, xxxx-xx-xx (development version)
     * Highlight duplicate URL aliases.
     * Renamed "input formats" to "text formats".
     * Added configurable ability for users to cancel their own accounts.
-    * Added optional filter that can use [internal:node/123] to link to internal
-      pages.
+    * Added "vertical tabs", a reusable interface component that features automatic
+      summaries and increases usability.
+    * Replaced fieldsets on node edit and add pages with vertical tabs.
 - Performance:
     * Improved performance on uncached page views by loading multiple core
       objects in a single database query.
+    * Improved support for HTTP proxies (including reverse proxies), allowing
+      anonymous pageviews to be served entirely from the proxy.
 - Documentation:
     * Hook API documentation now included in Drupal core.
 - News aggregator:
@@ -102,6 +108,8 @@ Drupal 7.0, xxxx-xx-xx (development version)
       and allow custom data fields to be attached to itself.
     * Provides a subset of the features of the Content Construction
       Kit (CCK) module.
+- Page organization
+    * Made the help text area a full featured region with blocks. 
 - Upgraded the core JavaScript library to jQuery version 1.3.2.
 - Upgraded the jQuery Forms library to 2.21.
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.676 2009/03/25 18:40:50 webchick Exp $
+// $Id: system.module,v 1.690 2009/05/06 10:37:28 dries Exp $
 
 /**
  * @file
@@ -70,7 +70,7 @@ function system_help($path, $arg) {
       $output .= '<li>' . t('support for enabling and disabling <a href="@themes">themes</a>, which determine the design and presentation of your site. Drupal comes packaged with several core themes and additional contributed themes are available at the <a href="@drupal-themes">Drupal.org theme page</a>.', array('@themes' => url('admin/build/themes'), '@drupal-themes' => 'http://drupal.org/project/themes')) . '</li>';
       $output .= '<li>' . t('a robust <a href="@cache-settings">caching system</a> that allows the efficient re-use of previously-constructed web pages and web page components. Drupal stores the pages requested by anonymous users in a compressed format; depending on your site configuration and the amount of your web traffic tied to anonymous visitors, Drupal\'s caching system may significantly increase the speed of your site.', array('@cache-settings' => url('admin/settings/performance'))) . '</li>';
       $output .= '<li>' . t('a set of routine administrative operations that rely on a correctly-configured <a href="@cron">cron maintenance task</a> to run automatically. A number of other modules, including the feed aggregator, and search also rely on <a href="@cron">cron maintenance tasks</a>. For more information, see the online handbook entry for <a href="@handbook">configuring cron jobs</a>.', array('@cron' => url('admin/reports/status'), '@handbook' => 'http://drupal.org/cron')) . '</li>';
-      $output .= '<li>' . t('basic configuration options for your site, including <a href="@regional-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@site-maintenance">site maintenance</a> function for taking your site temporarily offline.', array('@regional-settings' => url('admin/settings/regional-settings'), '@file-system' => url('admin/settings/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@site-maintenance' => url('admin/settings/site-maintenance'))) . '</li></ul>';
+      $output .= '<li>' . t('basic configuration options for your site, including <a href="@regional-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@maintenance-mode">maintenance mode</a> for taking your site temporarily offline.', array('@regional-settings' => url('admin/settings/regional-settings'), '@file-system' => url('admin/settings/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@maintenance-mode' => url('admin/settings/maintenance-mode'))) . '</li></ul>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@system">System module</a>.', array('@system' => 'http://drupal.org/handbook/modules/system/')) . '</p>';
       return $output;
     case 'admin/by-module':
@@ -381,6 +381,7 @@ function system_elements() {
     '#theme' => 'file',
     '#theme_wrapper' => 'form_element',
   );
+
   $type['tableselect'] = array(
     '#input' => TRUE,
     '#js_select' => TRUE,
@@ -419,8 +420,15 @@ function system_elements() {
     '#collapsible' => FALSE,
     '#collapsed' => FALSE,
     '#value' => NULL,
-    '#process' => array('form_process_ahah'),
+    '#process' => array('form_process_fieldset', 'form_process_ahah'),
+    '#pre_render' => array('form_pre_render_fieldset'),
     '#theme_wrapper' => 'fieldset',
+  );
+
+  $type['vertical_tabs'] = array(
+    '#theme_wrapper' => 'vertical_tabs',
+    '#default_tab' => '',
+    '#process' => array('form_process_vertical_tabs'),
   );
 
   $type['token'] = array(
@@ -638,7 +646,7 @@ function system_menu() {
     'access arguments' => array('administer site configuration'),
   );
   $items['admin/settings/logging'] = array(
-    'title' => 'Logging, errors and alerts',
+    'title' => 'Logging and errors',
     'description' => "Settings for logging and alerts modules. Various modules can route Drupal's system events to different destinations, such as syslog, database, email, etc.",
     'page callback' => 'drupal_get_form',
     'page arguments' => array('system_logging_settings'),
@@ -691,11 +699,11 @@ function system_menu() {
     'page callback' => 'system_date_time_lookup',
     'access arguments' => array('administer site configuration'),
   );
-  $items['admin/settings/site-maintenance'] = array(
-    'title' => 'Site maintenance',
+  $items['admin/settings/maintenance-mode'] = array(
+    'title' => 'Maintenance mode',
     'description' => 'Take the site offline for maintenance or bring it back online.',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_site_maintenance_settings'),
+    'page arguments' => array('system_site_maintenance_mode'),
     'access arguments' => array('administer site configuration'),
   );
   $items['admin/settings/clean-urls'] = array(
@@ -799,7 +807,7 @@ function system_init() {
  */
 function system_preprocess_page(&$variables) {
   // Get the major version
-  list($version,) = explode('.', VERSION);
+  list($version, ) = explode('.', VERSION);
 
   // Emit the META tag in the HTML HEAD section
   theme('meta_generator_html', $version);
@@ -884,8 +892,11 @@ function system_block_list() {
   $blocks['powered-by'] = array(
     'info' => t('Powered by Drupal'),
     'weight' => '10',
-     // Not worth caching.
     'cache' => BLOCK_NO_CACHE,
+  );
+  $blocks['help'] = array(
+    'info' => t('System help'),
+    'weight' => '5',
   );
   // System-defined menu blocks.
   foreach (menu_list_system_menus() as $menu_name => $title) {
@@ -903,7 +914,7 @@ function system_block_list() {
 function system_block_configure($delta = '') {
   if ($delta == 'powered-by') {
     $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
-    drupal_add_js(drupal_get_path('module', 'system') .'/system.js');
+    drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
     // Compile a list of fields to show
     $form['wrapper']['color'] = array(
       '#type' => 'select',
@@ -923,7 +934,7 @@ function system_block_configure($delta = '') {
       '#markup' => theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'), array('class' => 'powered-by-preview'), FALSE),
     );
     return $form;
-  }  
+  }
 }
 
 /**
@@ -948,9 +959,12 @@ function system_block_view($delta = '') {
   switch ($delta) {
     case 'powered-by':
       $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
-      // Don't display a title.
       $block['subject'] = NULL;
       $block['content'] = theme('system_powered_by', $image_path);
+      return $block;
+    case 'help':
+      $block['subject'] = NULL;
+      $block['content'] = menu_get_active_help();
       return $block;
     default:
       // All system menu blocks.
@@ -1113,10 +1127,12 @@ function system_theme_default() {
       'content' => 'Content',
       'header' => 'Header',
       'footer' => 'Footer',
+      'help' => 'Help',
     ),
     'description' => '',
     'features' => array(
       'comment_user_picture',
+      'comment_user_verification',
       'favicon',
       'mission',
       'logo',
@@ -1321,34 +1337,6 @@ function system_default_region($theme) {
   return isset($regions[0]) ? $regions[0] : '';
 }
 
-/**
- * Assign an initial, default set of blocks for a theme.
- *
- * This function is called the first time a new theme is enabled. The new theme
- * gets a copy of the default theme's blocks, with the difference that if a
- * particular region isn't available in the new theme, the block is assigned
- * to the new theme's default region.
- *
- * @param $theme
- *   The name of a theme.
- */
-function system_initialize_theme_blocks($theme) {
-  // Initialize theme's blocks if none already registered.
-  if (!(db_result(db_query("SELECT COUNT(*) FROM {block} WHERE theme = '%s'", $theme)))) {
-    $default_theme = variable_get('theme_default', 'garland');
-    $regions = system_region_list($theme);
-    $result = db_query("SELECT * FROM {block} WHERE theme = '%s'", $default_theme);
-    while ($block = db_fetch_array($result)) {
-      // If the region isn't supported by the theme, assign the block to the theme's default region.
-      if (!array_key_exists($block['region'], $regions)) {
-        $block['region'] = system_default_region($theme);
-      }
-      db_query("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, custom, cache) VALUES ('%s', '%s', '%s', %d, %d, '%s', %d, '%s', %d, %d)",
-          $block['module'], $block['delta'], $theme, $block['status'], $block['weight'], $block['region'], $block['visibility'], $block['pages'], $block['custom'], $block['cache']);
-    }
-  }
-}
-
 function _system_settings_form_automatic_defaults($form) {
   // Get an array of all non-property keys
   $keys = element_children($form);
@@ -1374,6 +1362,8 @@ function _system_settings_form_automatic_defaults($form) {
  * @see system_settings_form_submit()
  * @param $form
  *   An associative array containing the structure of the form.
+ * @param $automatic_defaults
+ *   Automatically load the saved values for each field from the system variables (defaults to TRUE).
  * @return
  *   The form structure.
  */
@@ -1582,8 +1572,8 @@ function system_cron() {
 
   // Remove temporary files that are older than DRUPAL_MAXIMUM_TEMP_FILE_AGE.
   // Use separate placeholders for the status to avoid a bug in some versions
-  // of PHP. @see http://drupal.org/node/352956
-  $result = db_query('SELECT fid FROM {files} WHERE status & :permanent1 != :permanent2 AND timestamp < :timestamp', array(':permanent1' => FILE_STATUS_PERMANENT, ':permanent2' => FILE_STATUS_PERMANENT, ':timestamp' => REQUEST_TIME - DRUPAL_MAXIMUM_TEMP_FILE_AGE));
+  // of PHP. See http://drupal.org/node/352956
+  $result = db_query('SELECT fid FROM {files} WHERE status & :permanent1 <> :permanent2 AND timestamp < :timestamp', array(':permanent1' => FILE_STATUS_PERMANENT, ':permanent2' => FILE_STATUS_PERMANENT, ':timestamp' => REQUEST_TIME - DRUPAL_MAXIMUM_TEMP_FILE_AGE));
   foreach ($result as $row) {
     if ($file = file_load($row->fid)) {
       if (!file_delete($file)) {
@@ -1597,6 +1587,16 @@ function system_cron() {
   foreach ($cache_tables as $table) {
     cache_clear_all(NULL, $table);
   }
+
+  // Reset expired items in the default queue implementation table. If that's
+  // not used, this will simply be a no-op.
+  db_update('queue')
+    ->fields(array(
+      'consumer_id' => 0,
+      'expire' => 0,
+    ))
+    ->condition('expire', REQUEST_TIME, '<')
+    ->execute();
 }
 
 /**
@@ -1639,6 +1639,7 @@ function system_action_info() {
         'comment' => array('view', 'insert', 'update', 'delete'),
         'user' => array('view', 'insert', 'update', 'delete', 'login'),
         'taxonomy' => array('insert', 'update', 'delete'),
+        'cron' => array('run'),
       )
     ),
     'system_block_ip_action' => array(
@@ -1699,7 +1700,7 @@ function system_actions_manage() {
   }
 
   if ($row) {
-    $pager = theme('pager', NULL, 50, 0);
+    $pager = theme('pager', NULL);
     if (!empty($pager)) {
       $row[] = array(array('data' => $pager, 'colspan' => '3'));
     }
@@ -1847,7 +1848,7 @@ function system_actions_configure($form_state, $action = NULL) {
 function system_actions_configure_validate($form, $form_state) {
   $function = actions_function_lookup($form_state['values']['actions_action']) . '_validate';
   // Hand off validation to the action.
-  if (function_exists($function)) {
+  if (drupal_function_exists($function)) {
     $function($form, $form_state);
   }
 }
@@ -2300,7 +2301,7 @@ function theme_system_compact_link() {
  * @ingroup themeable
  */
 function theme_meta_generator_html($version = VERSION) {
-  drupal_set_html_head('<meta name="Generator" content="Drupal ' . $version . ' (http://drupal.org)" />');
+  drupal_add_html_head('<meta name="Generator" content="Drupal ' . $version . ' (http://drupal.org)" />');
 }
 
 /**
@@ -2309,7 +2310,7 @@ function theme_meta_generator_html($version = VERSION) {
  * @ingroup themeable
  */
 function theme_meta_generator_header($version = VERSION) {
-  drupal_set_header('X-Generator: Drupal ' . $version . ' (http://drupal.org)');
+  drupal_set_header('X-Generator', 'Drupal ' . $version . ' (http://drupal.org)');
 }
 
 /**
