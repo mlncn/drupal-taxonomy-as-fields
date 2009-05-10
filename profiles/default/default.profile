@@ -8,7 +8,16 @@
  *   An array of modules to enable.
  */
 function default_profile_modules() {
-  return array('block', 'color', 'comment', 'help', 'menu', 'taxonomy', 'dblog');
+  return array(
+    'block',
+    'color',
+    'comment',
+    'help',
+    'menu',
+    'taxonomy',
+    'dblog',
+    'node_article',
+  );
 }
 
 /**
@@ -163,15 +172,6 @@ function default_profile_tasks(&$task, $url) {
       'modified' => 1,
       'locked' => 0,
     ),
-    array(
-      'type' => 'article',
-      'name' => st('Article'),
-      'base' => 'node_content',
-      'description' => st("An <em>article</em>, similar in form to a <em>page</em>, is ideal for creating and displaying content that informs or engages website visitors. Press releases, site announcements, and informal blog-like entries may all be created with an <em>article</em> entry. By default, an <em>article</em> entry is automatically featured on the site's initial home page, and provides the ability to post comments."),
-      'custom' => 1,
-      'modified' => 1,
-      'locked' => 0,
-    ),
   );
 
   foreach ($types as $type) {
@@ -185,24 +185,6 @@ function default_profile_tasks(&$task, $url) {
 
   // Don't display date and author information for page nodes by default.
   variable_set('node_submitted_page', FALSE);
-
-  // Create a default vocabulary named "Tags", enabled for the 'article' content type.
-  $description = st('Use tags to group articles on similar topics into categories.');
-  $help = st('Enter a comma-separated list of words.');
-
-  $vid = db_insert('taxonomy_vocabulary')->fields(array(
-    'name' => 'Tags',
-    'description' => $description,
-    'help' => $help,
-    'relations' => 0,
-    'hierarchy' => 0,
-    'multiple' => 0,
-    'required' => 0,
-    'tags' => 1,
-    'module' => 'taxonomy',
-    'weight' => 0,
-  ))->execute();
-  db_insert('taxonomy_vocabulary_node_type')->fields(array('vid' => $vid, 'type' => 'article'))->execute();
 
   // Update the menu router information.
   menu_rebuild();

@@ -1,0 +1,41 @@
+<?php
+
+/**
+ * Implementation of hook_install().
+ */
+function node_article_install() {
+  $article = array(
+    'type' => 'article',
+    'name' => st('Article'),
+    'base' => 'node_content',
+    'description' => st("An <em>article</em>, similar in form to a <em>page</em>, is ideal for creating and displaying content that informs or engages website visitors. Press releases, site announcements, and informal blog-like entries may all be created with an <em>article</em> entry. By default, an <em>article</em> entry is automatically featured on the site's initial home page, and provides the ability to post comments."),
+    'custom' => 1,
+    'modified' => 1,
+    'locked' => 0,
+  );
+
+  $article = node_type_set_defaults($article);
+  node_type_save($article);
+
+  // Create a default vocabulary named "Tags", enabled for the 'article' content type.
+  $description = st('Use tags to group articles on similar topics into categories.');
+  $help = st('Enter a comma-separated list of words.');
+
+  $vid = db_insert('taxonomy_vocabulary')->fields(array(
+    'name' => 'Tags',
+    'description' => $description,
+    'help' => $help,
+    'relations' => 0,
+    'hierarchy' => 0,
+    'multiple' => 0,
+    'required' => 0,
+    'tags' => 1,
+    'module' => 'taxonomy',
+    'weight' => 0,
+  ))->execute();
+  db_insert('taxonomy_vocabulary_node_type')->fields(array('vid' => $vid, 'type' => 'article'))->execute();
+  
+  // @TODO redundant? -- called as part of installing a module?
+  // Update the menu router information.
+  menu_rebuild();
+}
