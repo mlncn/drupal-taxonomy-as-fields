@@ -228,36 +228,10 @@ function taxonomy_vocabulary_save($vocabulary) {
 
   if (!empty($vocabulary->vid) && !empty($vocabulary->name)) {
     $status = drupal_write_record('taxonomy_vocabulary', $vocabulary, 'vid');
-    db_delete('taxonomy_vocabulary_node_type')
-      ->condition('vid', $vocabulary->vid)
-      ->execute();
-
-    if (!empty($vocabulary->nodes)) {
-      $query = db_insert('taxonomy_vocabulary_node_type')
-        ->fields(array('vid', 'type'));
-      foreach ($vocabulary->nodes as $type => $selected) {
-        $query->values(array(
-          'vid' => $vocabulary->vid,
-          'type' => $type,
-        ));
-      }
-      $query->execute();
-    }
     module_invoke_all('taxonomy_vocabulary_update', $vocabulary);
   }
   elseif (empty($vocabulary->vid)) {
     $status = drupal_write_record('taxonomy_vocabulary', $vocabulary);
-    if (!empty($vocabulary->nodes)) {
-      $query = db_insert('taxonomy_vocabulary_node_type')
-        ->fields(array('vid', 'type'));
-      foreach ($vocabulary->nodes as $type => $selected) {
-        $query->values(array(
-          'vid' => $vocabulary->vid,
-          'type' => $type,
-        ));
-      }
-      $query->execute();
-    }
     module_invoke_all('taxonomy_vocabulary_insert', $vocabulary);
   }
 
@@ -279,9 +253,6 @@ function taxonomy_vocabulary_delete($vid) {
   $vocabulary = (array) taxonomy_vocabulary_load($vid);
 
   db_delete('taxonomy_vocabulary')
-    ->condition('vid', $vid)
-    ->execute();
-  db_delete('taxonomy_vocabulary_node_type')
     ->condition('vid', $vid)
     ->execute();
   $result = db_query('SELECT tid FROM {taxonomy_term_data} WHERE vid = :vid', array(':vid' => $vid))->fetchCol();
@@ -579,7 +550,6 @@ function taxonomy_form_alter(&$form, $form_state, $form_id) {
       $terms = $node->taxonomy;
     }
     $query = db_select('taxonomy_vocabulary', 'v');
-    $query->join('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid');
     $query->addTag('term_access');
 
     $result = $query
@@ -842,26 +812,6 @@ function taxonomy_node_save($node, $terms) {
     }
     $query->execute();
   }
-}
-
-/**
- * Implementation of hook_node_type().
- */
-function taxonomy_node_type($op, $info) {
-  if ($op == 'update' && !empty($info->old_type) && $info->type != $info->old_type) {
-    db_update('taxonomy_vocabulary_node_type')
-      ->fields(array(
-        'type' => $info->type,
-      ))
-      ->condition('type', $info->old_type)
-      ->execute();
-  }
-  elseif ($op == 'delete') {
-    db_delete('taxonomy_vocabulary_node_type')
-      ->condition('type', $info->type)
-      ->execute();
-  }
-  drupal_static_reset('taxonomy_term_count_nodes');
 }
 
 /**
@@ -1183,13 +1133,6 @@ function taxonomy_vocabulary_load_multiple($vids = array(), $conditions = array(
       ->fields('v')
       ->orderBy('v.weight')
       ->orderBy('v.name');
-
-    if (!empty($type)) {
-      $query->leftJoin('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid AND n.type  = :type', array(':type' => $type));
-    }
-    else {
-      $query->leftJoin('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid');
-    }
 
     // If the $vids array is populated, add those to the query.
     if ($vids) {

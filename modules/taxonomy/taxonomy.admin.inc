@@ -97,7 +97,7 @@ function drupal_system_string($string, $replacement = '_') {
 function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
   if (!is_array($edit)) {
     $edit = (array)$edit;
-  } 
+  }
   $edit += array(
     'name' => '',
     'description' => '',
@@ -314,11 +314,6 @@ function taxonomy_overview_terms(&$form_state, $vocabulary) {
   if ($vocabulary->tags) {
     // We are not calling taxonomy_get_tree because that might fail with a big
     // number of tags in the freetagging vocabulary.
-<<<<<<< taxonomy.admin.inc
-    $results = pager_query(db_rewrite_sql('SELECT t.*, h.parent FROM {taxonomy_term_data} t INNER JOIN {taxonomy_term_hierarchy} h ON t.tid = h.tid WHERE t.vid = %d ORDER BY name', 't', 'tid'), $page_increment, 0, NULL, $vocabulary->vid);
-    $total_entries = db_query(db_rewrite_sql('SELECT COUNT(*) FROM {taxonomy_term_data} t INNER JOIN {taxonomy_term_hierarchy} h ON t.tid = h.tid WHERE t.vid = :vid'), array(':vid' => $vocabulary->vid));
-    while ($term = db_fetch_object($results)) {
-=======
     $query = db_select('taxonomy_term_data', 't')->extend('PagerDefault');
     $query->join('taxonomy_term_hierarchy', 'h', 't.tid = h.tid');
     $query->addTag('term_access');
@@ -342,7 +337,6 @@ function taxonomy_overview_terms(&$form_state, $vocabulary) {
       ->execute();
 
     foreach ($result as $term) {
->>>>>>> 1.50
       $key = 'tid:' . $term->tid . ':0';
       $current_page[$key] = $term;
       $page_entries++;
