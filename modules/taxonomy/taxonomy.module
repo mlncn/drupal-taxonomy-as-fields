@@ -278,8 +278,6 @@ function taxonomy_vocabulary_save($vocabulary) {
 function taxonomy_vocabulary_delete($vid) {
   $vocabulary = (array) taxonomy_vocabulary_load($vid);
 
-  while ($term = db_fetch_object($result)) {
-    taxonomy_term_delete($term->tid);
   db_delete('taxonomy_vocabulary')
     ->condition('vid', $vid)
     ->execute();
