@@ -1128,7 +1128,6 @@ function taxonomy_vocabulary_load_multiple($vids = array(), $conditions = array(
   // we have $vids still to load, or if no $vids were passed.
   if ($vids || !$passed_vids) {
     $query = db_select('taxonomy_vocabulary', 'v');
-    $query->addField('n', 'type');
     $query
       ->fields('v')
       ->orderBy('v.weight')
