@@ -1,6 +1,7 @@
 ; $Id$
 name = Term
 description = Defines taxonomy term field types. Use with Options to create selection lists.
+dependencies[] = options
 package = Core - fields
 core = 7.x
 files[]=term.module
