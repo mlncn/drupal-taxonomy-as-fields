@@ -554,7 +554,6 @@ function taxonomy_form_alter(&$form, $form_state, $form_id) {
 
     $result = $query
       ->fields('v')
-      ->condition('n.type', $node->type)
       ->orderBy('v.weight')
       ->orderBy('v.name')
       ->execute();
