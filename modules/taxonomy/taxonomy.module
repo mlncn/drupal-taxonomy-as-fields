@@ -228,8 +228,6 @@ function taxonomy_vocabulary_save($vocabulary) {
 
   if (!empty($vocabulary->vid) && !empty($vocabulary->name)) {
     $status = drupal_write_record('taxonomy_vocabulary', $vocabulary, 'vid');
-<<<<<<< taxonomy.module
-=======
     db_delete('taxonomy_vocabulary_node_type')
       ->condition('vid', $vocabulary->vid)
       ->execute();
@@ -245,14 +243,10 @@ function taxonomy_vocabulary_save($vocabulary) {
       }
       $query->execute();
     }
->>>>>>> 1.472
     module_invoke_all('taxonomy_vocabulary_update', $vocabulary);
   }
   elseif (empty($vocabulary->vid)) {
     $status = drupal_write_record('taxonomy_vocabulary', $vocabulary);
-<<<<<<< taxonomy.module
-=======
-
     if (!empty($vocabulary->nodes)) {
       $query = db_insert('taxonomy_vocabulary_node_type')
         ->fields(array('vid', 'type'));
@@ -264,7 +258,6 @@ function taxonomy_vocabulary_save($vocabulary) {
       }
       $query->execute();
     }
->>>>>>> 1.472
     module_invoke_all('taxonomy_vocabulary_insert', $vocabulary);
   }
 
@@ -285,12 +278,8 @@ function taxonomy_vocabulary_save($vocabulary) {
 function taxonomy_vocabulary_delete($vid) {
   $vocabulary = (array) taxonomy_vocabulary_load($vid);
 
-<<<<<<< taxonomy.module
-  db_query('DELETE FROM {taxonomy_vocabulary} WHERE vid = %d', $vid);
-  $result = db_query('SELECT tid FROM {taxonomy_term_data} WHERE vid = %d', $vid);
   while ($term = db_fetch_object($result)) {
     taxonomy_term_delete($term->tid);
-=======
   db_delete('taxonomy_vocabulary')
     ->condition('vid', $vid)
     ->execute();
@@ -300,7 +289,6 @@ function taxonomy_vocabulary_delete($vid) {
   $result = db_query('SELECT tid FROM {taxonomy_term_data} WHERE vid = :vid', array(':vid' => $vid))->fetchCol();
   foreach ($result as $tid) {
     taxonomy_term_delete($tid);
->>>>>>> 1.472
   }
 
   module_invoke_all('taxonomy', 'delete', 'vocabulary', $vocabulary);
@@ -567,19 +555,8 @@ function taxonomy_form_all($free_tags = 0) {
  *   vocabularies by type has gone. no core functions relied on this feature anyway.
  */
 function taxonomy_get_vocabularies($type = NULL) {
-<<<<<<< taxonomy.module
-  $result = db_query(db_rewrite_sql('SELECT * FROM {taxonomy_vocabulary} ORDER BY weight, name', 'taxonomy_vocabulary', 'vid'));
-
-  $vocabularies = array();
-  while ($voc = db_fetch_object($result)) {
-    $vocabularies[$voc->vid] = $voc;
-  }
-
-  return $vocabularies;
-=======
   $conditions = !empty($type) ? array('type' => $type) : NULL;
   return taxonomy_vocabulary_load_multiple(array(), $conditions);
->>>>>>> 1.472
 }
 
 /**
@@ -607,16 +584,12 @@ function taxonomy_form_alter(&$form, $form_state, $form_id) {
     $query->join('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid');
     $query->addTag('term_access');
 
-<<<<<<< taxonomy.module
-    $c = db_query(db_rewrite_sql("SELECT * FROM {taxonomy_vocabulary} ORDER BY weight, name", 'taxonomy_vocabulary', 'vid'), $node->type);
-=======
     $result = $query
       ->fields('v')
       ->condition('n.type', $node->type)
       ->orderBy('v.weight')
       ->orderBy('v.name')
       ->execute();
->>>>>>> 1.472
 
     foreach ($result as $vocabulary) {
       if ($vocabulary->tags) {
@@ -874,8 +847,6 @@ function taxonomy_node_save($node, $terms) {
 }
 
 /**
-<<<<<<< taxonomy.module
-=======
  * Implementation of hook_node_type().
  */
 function taxonomy_node_type($op, $info) {
@@ -896,7 +867,6 @@ function taxonomy_node_type($op, $info) {
 }
 
 /**
->>>>>>> 1.472
  * Find all term objects related to a given term ID.
  */
 function taxonomy_get_related($tid, $key = 'tid') {
@@ -1206,16 +1176,6 @@ function taxonomy_vocabulary_load_multiple($vids = array(), $conditions = array(
     }
   }
 
-<<<<<<< taxonomy.module
-  if (empty($vocabularies[$vid])) {
-    // Initialize so if this vocabulary does not exist, we have
-    // that cached, and we will not try to load this later.
-    $vocabularies[$vid] = FALSE;
-    // Try to load the data and fill up the object.
-    $result = db_query('SELECT * FROM {taxonomy_vocabulary} WHERE vid = %d', $vid);
-    while ($voc = db_fetch_object($result)) {
-      $vocabularies[$vid] = $voc;
-=======
   // Load any remaining vocabularies from the database, this is necessary if
   // we have $vids still to load, or if no $vids were passed.
   if ($vids || !$passed_vids) {
@@ -1271,7 +1231,6 @@ function taxonomy_vocabulary_load_multiple($vids = array(), $conditions = array(
       }
       $vocabularies += $queried_vocabularies;
       $vocabulary_cache += $queried_vocabularies;
->>>>>>> 1.472
     }
   }
 
