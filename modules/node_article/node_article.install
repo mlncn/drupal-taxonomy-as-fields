@@ -37,5 +37,20 @@ function node_article_install() {
   
   // @TODO redundant? -- called as part of installing a module?
   // Update the menu router information.
-  menu_rebuild();
+//  menu_rebuild();
+  
+  node_article_byline_field();
+}
+
+/**
+ * Helper function to add a field to the article content type.
+ */
+function node_article_byline_field() {
+  $byline = array(
+    'field_name' => 'node_article_byline',
+    'type' => 'text',
+    'cardinality' => 1,
+  );
+  field_create_field($byline);
+  field_create_instance($byline); 
 }
