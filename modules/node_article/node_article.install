@@ -54,3 +54,10 @@ function node_article_byline_field() {
   field_create_field($byline);
   field_create_instance($byline); 
 }
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function node_article_uninstall() {
+  // removed from system table automatically when this function is called.
+}
