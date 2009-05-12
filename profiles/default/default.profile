@@ -16,6 +16,7 @@ function default_profile_modules() {
     'menu',
     'taxonomy',
     'dblog',
+    'text',
     'node_article',
   );
 }
