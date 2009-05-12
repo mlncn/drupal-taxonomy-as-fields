@@ -1,9 +1,10 @@
 ; $Id$
 name = Article Node
 description = Allows article content to be submitted to the site and displayed on pages.
+dependencies[] = 'text'
 package = Core
 version = VERSION
 core = 7.x
 ; files[] = article.module
 files[] = node_article.install
-required = FALSE 
+required = FALSE

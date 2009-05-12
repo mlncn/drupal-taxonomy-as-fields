@@ -52,7 +52,8 @@ function node_article_byline_field() {
     'cardinality' => 1,
   );
   field_create_field($byline);
-  field_create_instance($byline); 
+  $byline['bundle'] = 'article';
+  field_create_instance($byline);
 }
 
 /**
