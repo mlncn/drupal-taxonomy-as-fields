@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.140 2009/05/03 07:35:37 dries Exp $
+// $Id: system.admin.inc,v 1.143 2009/05/12 13:43:44 dries Exp $
 
 /**
  * @file
@@ -357,7 +357,6 @@ function system_theme_settings(&$form_state, $key = '') {
     'logo'                      => t('Logo'),
     'name'                      => t('Site name'),
     'slogan'                    => t('Site slogan'),
-    'mission'                   => t('Mission statement'),
     'node_user_picture'         => t('User pictures in posts'),
     'comment_user_picture'      => t('User pictures in comments'),
     'comment_user_verification' => t('User verification status in comments'),
@@ -1085,11 +1084,11 @@ function system_ip_blocking() {
     );
   }
 
-  $output .= drupal_get_form('system_ip_blocking_form');
+  $build['system_ip_blocking_form'] = drupal_get_form('system_ip_blocking_form');
 
-  $output .= theme('table', $header, $rows);
+  $build['system_ip_blocking_table'] = array('#markup' => theme('table', $header, $rows));
 
-  return $output;
+  return $build;
 }
 
 /**
@@ -1188,18 +1187,6 @@ function system_site_information_settings() {
     '#title' => t('Slogan'),
     '#default_value' => '',
     '#description' => t("Your site's motto, tag line, or catchphrase (often displayed alongside the title of the site).")
-  );
-  $form['site_mission'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Mission'),
-    '#default_value' => '',
-    '#description' => t("Your site's mission or focus statement (often prominently displayed on the front page).")
-  );
-  $form['site_footer'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Footer message'),
-    '#default_value' => '',
-    '#description' => t('This text will be displayed at the bottom of each page. Useful for adding a copyright notice to your pages.')
   );
   $form['anonymous'] = array(
     '#type' => 'textfield',
@@ -1467,6 +1454,12 @@ function system_image_toolkit_settings() {
  */
 function system_rss_feeds_settings() {
 
+  $form['feed_description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Feed description'),
+    '#default_value' => '',
+    '#description' => t('Description of your site, included in each feed.')
+  );
   $form['feed_default_items'] = array(
     '#type' => 'select',
     '#title' => t('Number of items in each feed'),

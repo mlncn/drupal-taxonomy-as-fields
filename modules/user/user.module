@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.983 2009/04/30 21:44:19 dries Exp $
+// $Id: user.module,v 1.985 2009/05/12 09:07:18 dries Exp $
 
 /**
  * @file
@@ -138,7 +138,7 @@ function user_external_load($authname) {
  *    TRUE if the login succeeds, FALSE otherwise.
  */
 function user_external_login($account, $edit = array()) {
-  $form = drupal_get_form('user_login');
+  $form = drupal_render(drupal_get_form('user_login'));
 
   $state['values'] = $edit;
   if (empty($state['values']['name'])) {
@@ -961,6 +961,15 @@ function user_user_validate(&$edit, &$account, $category = NULL) {
         form_set_error('mail', t('The e-mail address %email is already registered. <a href="@password">Have you forgotten your password?</a>', array('%email' => $edit['mail'], '@password' => url('user/password'))));
       }
     }
+
+    // Make sure the signature isn't longer than the size of the database field.
+    // Signatures are disabled by default, so make sure it exists first.
+    if (isset($edit['signature'])) {
+      $user_schema = drupal_get_schema('users');
+      if (strlen($edit['signature']) > $user_schema['fields']['signature']['length']) {
+        form_set_error('signature', t('The signature is too long: it must be %max characters or less.', array('%max' => $user_schema['fields']['signature']['length'])));
+      }
+    }
   }
 }
 
@@ -1099,7 +1108,7 @@ function user_block_view($delta = '') {
       if (!$user->uid && !(arg(0) == 'user' && !is_numeric(arg(1)))) {
 
         $block['subject'] = t('User login');
-        $block['content'] = drupal_get_form('user_login_block');
+        $block['content'] = drupal_render(drupal_get_form('user_login_block'));
       }
       return $block;
 

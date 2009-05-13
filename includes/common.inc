@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.896 2009/05/09 18:39:03 dries Exp $
+// $Id: common.inc,v 1.898 2009/05/12 08:37:44 dries Exp $
 
 /**
  * @file
@@ -522,7 +522,6 @@ function drupal_http_request($url, array $options = array()) {
   // Merge the default headers.
   $options['headers'] += array(
     'User-Agent' => 'Drupal (+http://drupal.org/)',
-    'Content-Length' => strlen($options['data']),
   );
 
   // RFC 2616: "non-standard ports MUST, default ports MAY be included".
@@ -530,7 +529,15 @@ function drupal_http_request($url, array $options = array()) {
   // checking the host that do not take into account the port number.
   $options['headers']['Host'] = $host;
 
-  // If the server url has a user then attempt to use basic authentication
+  // Only add Content-Length if we actually have any content or if it is a POST
+  // or PUT request. Some non-standard servers get confused by Content-Length in
+  // at least HEAD/GET requests, and Squid always requires Content-Length in
+  // POST/PUT requests.
+  if (!empty($options['data']) || $options['method'] == 'POST' || $options['method'] == 'PUT') {
+    $options['headers']['Content-Length'] = strlen($options['data']);
+  }
+
+  // If the server URL has a user then attempt to use basic authentication.
   if (isset($uri['user'])) {
     $options['headers']['Authorization'] = 'Basic ' . base64_encode($uri['user'] . (!empty($uri['pass']) ? ":" . $uri['pass'] : ''));
   }
@@ -3245,8 +3252,8 @@ function drupal_get_page($content = NULL) {
  * @see drupal_get_page()
  */
 function drupal_render_page($page) {
-  // Allow menu callbacks to return strings.
-  if (is_string($page)) {
+  // Allow menu callbacks to return strings, or bare content arrays.
+  if (is_string($page) || empty($page['content'])) {
     $page = drupal_get_page($page);
   }
   // Modules alter the $page as needed. Blocks are populated into regions like
