@@ -147,13 +147,11 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#description' => t('Description of the vocabulary; can be used by modules.'),
   );
   if (module_exists('term')) {
-    $edit['field_name'] = '';
     $edit['nodes'] = array();
     if (array_key_exists('vid', $edit)) {
       $instances = array();
-      foreach (field_read_fields(array('module' => 'term')) as $field) {
+      foreach (field_read_fields(array('field_name' => $edit['machine_name'], 'module' => 'term')) as $field) {
         if ($field['settings']['vid'] == $edit['vid']) {
-          $edit['field_name'] = $field['field_name'];
           $fields[] = $field['field_name'];
           $instances = array_merge(field_read_instances(array('field_name' => $fields)), $instances);
         }
@@ -162,13 +160,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
         $edit['nodes'][] = $instance['bundle'];
       }
     }
-    $form['field_name'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Field name'),
-      '#default_value' => $edit['field_name'],
-      '#maxlength' => 32,
-      '#description' => t('The machine-readable name for this vocabulary\'s field. This name must contain only lowercase letters, numbers, and underscores. This name must be unique.'),
-    );
     $form['nodes'] = array(
       '#type' => 'checkboxes',
       '#title' => t('Content types'),
@@ -240,7 +231,7 @@ function taxonomy_form_vocabulary_validate($form, &$form_state) {
     // Do not allow duplicate machine names.
     $vocabularies = taxonomy_get_vocabularies();
     foreach ($vocabularies as $vocabulary) {
-      if ($machine_name == $vocabulary->machine_name && (!(isset($form_state['values']['vid']) && $vocabulary->vid != $form_state['values']['vid']))) {
+      if ($machine_name == $vocabulary->machine_name && (!(isset($form_state['values']['vid']) && $vocabulary->vid == $form_state['values']['vid']))) {
         form_set_error('machine_name', t('This machine-readable name is already in use by another vocabulary and must be unique.'));
       }
     }
@@ -274,9 +265,9 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       break;
   }
   if (module_exists('term')) {
-    if (!field_read_field($vocabulary->field_name)) {
+    if (!field_read_field($vocabulary->machine_name)) {
       $field = array(
-        'field_name' => $vocabulary->field_name,
+        'field_name' => $vocabulary->machine_name,
         'module' => 'term',
         'type' => 'term',
         'cardinality' => ($vocabulary->multiple ? FIELD_CARDINALITY_UNLIMITED : 1),
@@ -287,7 +278,7 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       field_create_field($field);
     }
     $instance = array(
-      'field_name' => $vocabulary->field_name,
+      'field_name' => $vocabulary->machine_name,
       'bundle' => '',
       'label' => $vocabulary->name,
       'description' => $vocabulary->description,
@@ -298,7 +289,7 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
     );
     foreach ($vocabulary->nodes as $node_type) {
       $instance['bundle'] = $node_type;
-      if (!field_read_instance($vocabulary->field_name, $node_type)) {
+      if (!field_read_instance($vocabulary->machine_name, $node_type)) {
         field_create_instance($instance);
       }
     }

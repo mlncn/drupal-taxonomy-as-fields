@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function term_theme() {
   return array(
@@ -18,7 +18,7 @@ function term_theme() {
 }
 
 /**
- * Implementation of hook_field_info().
+ * Implement hook_field_info().
  */
 function term_field_info() {
   return array(
@@ -34,12 +34,9 @@ function term_field_info() {
 }
 
 /**
- * Implementation of hook_field_columns().
- * 
- * @TODO text.module calls this an implementation of hook_field_schema(),
- * any deep meaning in that or just correct it in text.module?
+ * Implement hook_field_schema().
  */
-function term_field_columns($field) {
+function term_field_schema($field) {
   $columns = array(
     'value' => array(
       'type' => 'int',
@@ -47,29 +44,36 @@ function term_field_columns($field) {
       'not null' => FALSE,
     ),
   );
-  return $columns;
+  return array(
+    'columns' => $columns,
+    'indexes' => array(
+      'value' => array('value'),
+    ),
+  );
 }
 
 /**
- * Implementation of hook_field_validate().
+ * Implement hook_field_validate().
+ *
+ * Possible error codes:
+ * - 'term_illegal_value': The value is not part of the list of allowed values.
  */
-function term_field_validate($obj_type, $object, $field, $instance, $items, $form) {
+function term_field_validate($obj_type, $object, $field, $instance, $items, &$errors) {
   $allowed_values = term_allowed_values($field);
-  if (is_array($items)) {
-    foreach ($items as $delta => $item) {
-      $error_element = isset($item['_error_element']) ? $item['_error_element'] : '';
-      if (is_array($item) && isset($item['_error_element'])) unset($item['_error_element']);
-      if (!empty($item['value'])) {
-        if (count($allowed_values) && !array_key_exists($item['value'], $allowed_values)) {
-          form_set_error($error_element, t('%name: illegal value.', array('%name' => t($instance['label']))));
-        }
+  foreach ($items as $delta => $item) {
+    if (!empty($item['value'])) {
+      if (count($allowed_values) && !array_key_exists($item['value'], $allowed_values)) {
+        $errors[$field['field_name']][$delta][] = array(
+          'error' => 'term_illegal_value',
+          'message' => t('%name: illegal value.', array('%name' => t($instance['label']))),
+        );
       }
     }
   }
 }
 
 /**
- * Implementation of hook_field_is_empty().
+ * Implement hook_field_is_empty().
  */
 function term_field_is_empty($item, $field) {
   if (empty($item['value']) && (string)$item['value'] !== '0') {
@@ -79,7 +83,7 @@ function term_field_is_empty($item, $field) {
 }
 
 /**
- * Implementation of hook_field_formatter_info().
+ * Implement hook_field_formatter_info().
  */
 function term_field_formatter_info() {
   return array(
