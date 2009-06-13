@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.admin.inc,v 1.51 2009/05/12 08:37:45 dries Exp $
+// $Id: taxonomy.admin.inc,v 1.54 2009/06/12 13:59:56 dries Exp $
 
 /**
  * @file
@@ -55,7 +55,7 @@ function taxonomy_overview_vocabularies_submit($form, &$form_state) {
  */
 function theme_taxonomy_overview_vocabularies($form) {
   $rows = array();
- 
+
   foreach (element_children($form) as $key) {
     if (isset($form[$key]['name'])) {
       $vocabulary = &$form[$key];
@@ -96,11 +96,13 @@ function drupal_system_string($string, $replacement = '_') {
  * @see taxonomy_form_vocabulary_submit()
  */
 function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
+  drupal_add_js(drupal_get_path('module', 'taxonomy') . '/vocabulary.js');
   if (!is_array($edit)) {
     $edit = (array)$edit;
   }
   $edit += array(
     'name' => '',
+    'machine_name' => '',
     'description' => '',
     'help' => '',
     'hierarchy' => 0,
@@ -109,6 +111,7 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     'multiple' => 0,
     'required' => 0,
   );
+  $form['#vocabulary'] = (object) $edit;
   // Check whether we need a deletion confirmation form.
   if (isset($form_state['confirm_delete']) && isset($form_state['values']['vid'])) {
     return taxonomy_vocabulary_confirm_delete($form_state, $form_state['values']['vid']);
@@ -120,7 +123,15 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#maxlength' => 255,
     '#description' => t('The name for this vocabulary, e.g., <em>"Tags"</em>.'),
     '#required' => TRUE,
-    '#field_suffix' => ' <small id="vocabulary-field-name-suffix">&nbsp;</small>',
+    '#field_suffix' => ' <small id="vocabulary-name-suffix">&nbsp;</small>',
+  );
+  $form['machine_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Machine readable name'),
+    '#default_value' => $edit['machine_name'],
+    '#maxlength' => 255,
+    '#description' => t('The unique machine readable name for this vocabulary, used for theme templates, can only contain lowercase letters, numbers and underscores.'),
+    '#required' => TRUE,
   );
   $form['help'] = array(
     '#type' => 'textfield',
@@ -162,7 +173,7 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
       '#type' => 'checkboxes',
       '#title' => t('Content types'),
       '#default_value' => $edit['nodes'],
-      '#options' => array_map('check_plain', node_get_types('names')),
+      '#options' => array_map('check_plain', node_type_get_names()),
       '#description' => t('Select content types to categorize using this vocabulary.'),
     );
   }
@@ -176,7 +187,7 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#title' => t('Tags'),
     '#default_value' => $edit['tags'],
     '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
-    );
+  );
   $form['settings']['multiple'] = array(
     '#type' => 'checkbox',
     '#title' => t('Multiple select'),
@@ -213,9 +224,33 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
 }
 
 /**
+ * Validation handler for the vocabulary form.
+ *
+ * @see taxonomy_form_vocabulary()
+ */
+function taxonomy_form_vocabulary_validate($form, &$form_state) {
+  if ($form_state['clicked_button']['#value'] != t('Delete') && isset($form_state['values']['machine_name'])) {
+
+    // Restrict machine names to appropriate characters.
+    $machine_name = $form_state['values']['machine_name'];
+    if (!preg_match('!^[a-z0-9_]+$!', $form_state['values']['machine_name'])) {
+      form_set_error('machine_name', t('The machine-readable name must contain only lowercase letters, numbers, and underscores.'));
+    }
+
+    // Do not allow duplicate machine names.
+    $vocabularies = taxonomy_get_vocabularies();
+    foreach ($vocabularies as $vocabulary) {
+      if ($machine_name == $vocabulary->machine_name && (!(isset($form_state['values']['vid']) && $vocabulary->vid != $form_state['values']['vid']))) {
+        form_set_error('machine_name', t('This machine-readable name is already in use by another vocabulary and must be unique.'));
+      }
+    }
+  }
+}
+/**
  * Accept the form submission for a vocabulary and save the results.
  */
 function taxonomy_form_vocabulary_submit($form, &$form_state) {
+  $old_vocabulary = $form['#vocabulary'];
   if ($form_state['clicked_button']['#value'] == t('Delete')) {
     // Rebuild the form to confirm vocabulary deletion.
     $form_state['rebuild'] = TRUE;
@@ -225,6 +260,9 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
   // Fix up the nodes array to remove unchecked nodes.
   $form_state['values']['nodes'] = array_filter($form_state['values']['nodes']);
   $vocabulary = (object) $form_state['values'];
+  if ($vocabulary->machine_name != $old_vocabulary->machine_name) {
+    field_attach_rename_bundle($old_vocabulary->machine_name, $vocabulary->machine_name);
+  }
   switch (taxonomy_vocabulary_save($vocabulary)) {
     case SAVED_NEW:
       drupal_set_message(t('Created new vocabulary %name.', array('%name' => $vocabulary->name)));
@@ -685,14 +723,22 @@ function taxonomy_form_term(&$form_state, $vocabulary, $edit = array()) {
   $edit += array(
     'name' => '',
     'description' => '',
+    'vocabulary_machine_name' => $vocabulary->machine_name,
     'tid' => NULL,
     'weight' => 0,
   );
+
+  // Take into account multi-step rebuilding.
+  if (isset($form_state['term'])) {
+    $edit = $form_state['term'] + $edit;
+  }
 
   $parent = array_keys(taxonomy_get_parents($edit['tid']));
   $form['#term'] = $edit;
   $form['#term']['parent'] = $parent;
   $form['#vocabulary'] = $vocabulary;
+  $form['#vocabulary']->nodes = drupal_map_assoc($vocabulary->nodes);
+  $form['#builder_function'] = 'taxonomy_form_term_submit_builder';
 
   // Check for confirmation forms.
   if (isset($form_state['confirm_delete'])) {
@@ -719,6 +765,14 @@ function taxonomy_form_term(&$form_state, $vocabulary, $edit = array()) {
     '#title' => t('Description'),
     '#default_value' => $edit['description'],
     '#description' => t('A description of the term. To be displayed on taxonomy/term pages and RSS feeds.'));
+
+  $form['vocabulary_machine_name'] = array(
+    '#type' => 'textfield',
+    '#access' => FALSE,
+    '#value' => isset($edit['vocabulary_machine_name']) ? $edit['vocabulary_machine_name'] : $vocabulary->name,
+  );
+
+  field_attach_form('taxonomy_term', (object) $edit, $form, $form_state);
 
   $form['advanced'] = array(
     '#type' => 'fieldset',
@@ -779,11 +833,14 @@ function taxonomy_form_term(&$form_state, $vocabulary, $edit = array()) {
 }
 
 /**
- * Validation handler for the term edit form. Ensure numeric weight values.
+ * Validation handler for the term form.
  *
  * @see taxonomy_form_term()
  */
 function taxonomy_form_term_validate($form, &$form_state) {
+  field_attach_form_validate('taxonomy_term', (object) $form_state['values'], $form, $form_state);
+
+  // Ensure numeric values.
   if (isset($form_state['values']['weight']) && !is_numeric($form_state['values']['weight'])) {
     form_set_error('weight', t('Weight value must be numeric.'));
   }
@@ -812,7 +869,8 @@ function taxonomy_form_term_submit($form, &$form_state) {
     return;
   }
 
-  $term = (object) $form_state['values'];
+  $term = taxonomy_form_term_submit_builder($form, $form_state);
+
   $status = taxonomy_term_save($term);
   switch ($status) {
     case SAVED_NEW:
@@ -853,6 +911,19 @@ function taxonomy_form_term_submit($form, &$form_state) {
 }
 
 /**
+ * Build a term by processing form values and prepare for a form rebuild.
+ */
+function taxonomy_form_term_submit_builder($form, &$form_state) {
+  $term = (object) $form_state['values'];
+  field_attach_submit('taxonomy_term', $term, $form, $form_state);
+
+  $form_state['term'] = (array)$term;
+  $form_state['rebuild'] = TRUE;
+
+  return $term;
+}
+
+/**
  * Form builder for the confirmation of multiple term parents.
  *
  * @ingroup forms
@@ -884,6 +955,7 @@ function taxonomy_term_confirm_delete(&$form_state, $tid) {
   $form['type'] = array('#type' => 'value', '#value' => 'term');
   $form['name'] = array('#type' => 'value', '#value' => $term->name);
   $form['tid'] = array('#type' => 'value', '#value' => $tid);
+  $form['vocabulary_machine_name'] = array('#type' => 'value', '#value' => $term->vocabulary_machine_name);
   $form['delete'] = array('#type' => 'value', '#value' => TRUE);
   return confirm_form($form,
                   t('Are you sure you want to delete the term %title?',

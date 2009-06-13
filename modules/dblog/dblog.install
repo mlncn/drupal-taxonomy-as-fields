@@ -1,8 +1,13 @@
 <?php
-// $Id: dblog.install,v 1.14 2009/02/26 07:30:26 webchick Exp $
+// $Id: dblog.install,v 1.16 2009/05/27 18:33:56 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the dblog module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function dblog_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function dblog_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function dblog_uninstall() {
   // Remove tables.
@@ -18,7 +23,7 @@ function dblog_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function dblog_schema() {
   $schema['watchdog'] = array(

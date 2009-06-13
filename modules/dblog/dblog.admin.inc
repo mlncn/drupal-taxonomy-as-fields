@@ -1,5 +1,5 @@
 <?php
-// $Id: dblog.admin.inc,v 1.17 2009/05/12 08:37:44 dries Exp $
+// $Id: dblog.admin.inc,v 1.22 2009/06/06 10:27:42 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function dblog_form_system_logging_settings_alter(&$form, $form_state) {
   $form['dblog_row_limit'] = array(
@@ -47,11 +47,11 @@ function dblog_overview() {
     WATCHDOG_EMERG    => 'dblog-emerg',
   );
 
-  $output = drupal_render(drupal_get_form('dblog_filter_form'));
-  $output .= drupal_render(drupal_get_form('dblog_clear_log_form'));
+  $build['dblog_filter_form'] = drupal_get_form('dblog_filter_form');
+  $build['dblog_clear_log_form'] = drupal_get_form('dblog_clear_log_form');
 
   $header = array(
-    ' ',
+    '', // Icon column.
     array('data' => t('Type'), 'field' => 'w.type'),
     array('data' => t('Date'), 'field' => 'w.wid', 'sort' => 'desc'),
     t('Message'),
@@ -59,28 +59,18 @@ function dblog_overview() {
     array('data' => t('Operations')),
   );
 
-  $query = db_select('watchdog', 'w');
+  $query = db_select('watchdog', 'w')->extend('PagerDefault')->extend('TableSort');
   $query->join('users', 'u', 'w.uid = u.uid');
   $query
     ->fields('w', array('wid', 'uid', 'severity', 'type', 'timestamp', 'message', 'variables', 'link'))
     ->addField('u', 'name');
   if (!empty($filter['where'])) {
-    //setHeader may not be chainable see Line 138
-    $query
-      ->where($filter['where'], $filter['args'])
-      ->extend('PagerDefault')->extend('TableSort')
-      ->limit(50, 0)
-      ->setHeader($header);
-    $result = $query->execute();
+    $query->where($filter['where'], $filter['args']);
   }
-  else {
-    //setHeader may not be chainable see Line 138
-    $query
-      ->extend('PagerDefault')->extend('TableSort')
-      ->limit(50)
-      ->setHeader($header);
-    $result = $query->execute();
-  }
+  $result = $query
+    ->limit(50)
+    ->orderByHeader($header)
+    ->execute();
 
   foreach ($result as $dblog) {
     $rows[] = array('data' =>
@@ -102,10 +92,10 @@ function dblog_overview() {
     $rows[] = array(array('data' => t('No log messages available.'), 'colspan' => 6));
   }
 
-  $output .= theme('table', $header, $rows, array('id' => 'admin-dblog'));
-  $output .= theme('pager', NULL);
+  $build['dblog_table'] = array('#markup' => theme('table', $header, $rows, array('id' => 'admin-dblog')));
+  $build['dblog_pager'] = array('#markup' => theme('pager', NULL));
 
-  return $output;
+  return $build;
 }
 
 /**
@@ -122,16 +112,15 @@ function dblog_top($type) {
   $count_query->addExpression('COUNT(DISTINCT(message))');
   $count_query->condition('type', $type);
 
-  $query = db_select('watchdog', 'w');
+  $query = db_select('watchdog', 'w')->extend('PagerDefault')->extend('TableSort');
   $query->addExpression('COUNT(wid)', 'count');
   $query = $query
     ->fields('w', array('message', 'variables'))
     ->condition('w.type', $type)
     ->groupBy('message')
     ->groupBy('variables')
-    ->extend('PagerDefault')->extend('TableSort')
-    ->limit(30);
-  $query = $query->setHeader($header);
+    ->limit(30)
+    ->orderByHeader($header);
   $query->setCountQuery($count_query);
   $result = $query->execute();
 
@@ -286,10 +275,6 @@ function _dblog_format_message($dblog) {
  * @see dblog_filter_form_validate()
  */
 function dblog_filter_form() {
-  if (!isset($_SESSION['dblog_overview_filter'])) {
-    drupal_set_session('dblog_overview_filter', array());
-  }
-  $session = &$_SESSION['dblog_overview_filter'];
   $filters = dblog_filters();
 
   $form['filters'] = array(
@@ -307,8 +292,8 @@ function dblog_filter_form() {
       '#size' => 8,
       '#options' => $filter['options'],
     );
-    if (!empty($session[$key])) {
-      $form['filters']['status'][$key]['#default_value'] = $session[$key];
+    if (!empty($_SESSION['dblog_overview_filter'][$key])) {
+      $form['filters']['status'][$key]['#default_value'] = $_SESSION['dblog_overview_filter'][$key];
     }
   }
 
@@ -316,7 +301,7 @@ function dblog_filter_form() {
     '#type' => 'submit',
     '#value' => t('Filter'),
   );
-  if (!empty($session)) {
+  if (!empty($_SESSION['dblog_overview_filter'])) {
     $form['filters']['buttons']['reset'] = array(
       '#type' => 'submit',
       '#value' => t('Reset')
@@ -345,15 +330,12 @@ function dblog_filter_form_submit($form, &$form_state) {
     case t('Filter'):
       foreach ($filters as $name => $filter) {
         if (isset($form_state['values'][$name])) {
-          if (!isset($_SESSION['dblog_overview_filter'])) {
-            drupal_set_session('dblog_overview_filter', array());
-          }
           $_SESSION['dblog_overview_filter'][$name] = $form_state['values'][$name];
         }
       }
       break;
     case t('Reset'):
-      drupal_set_session('dblog_overview_filter', array());
+      $_SESSION['dblog_overview_filter'] = array();
       break;
   }
   return 'admin/reports/dblog';

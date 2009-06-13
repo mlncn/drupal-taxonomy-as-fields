@@ -1,5 +1,5 @@
 <?php
-// $Id: query.inc,v 1.21 2009/05/03 08:55:06 dries Exp $
+// $Id: query.inc,v 1.25 2009/06/06 16:57:52 webchick Exp $
 
 /**
  * @ingroup database
@@ -31,10 +31,8 @@ interface QueryConditionInterface {
    *   dependent on the $operator.
    * @param $operator
    *   The comparison operator, such as =, <, or >=. It also accepts more complex
-   *   options such as IN, LIKE, or BETWEEN.
-   * @param $num_args
-   *   For internal use only. This argument is used to track the recursive calls when
-   *   processing complex conditions.
+   *   options such as IN, LIKE, or BETWEEN. Defaults to IN if $value is an array
+   *   = otherwise.
    * @return
    *   The called object.
    */
@@ -287,8 +285,16 @@ class InsertQuery extends Query {
    */
   protected $insertValues = array();
 
+  /**
+   * A SelectQuery object to fetch the rows that should be inserted.
+   * 
+   */
+  protected $fromQuery;
+
   public function __construct($connection, $table, array $options = array()) {
-    $options['return'] = Database::RETURN_INSERT_ID;
+    if (!isset($options['return'])) {
+      $options['return'] = Database::RETURN_INSERT_ID;
+    }
     $options += array('delay' => FALSE);
     parent::__construct($connection, $options);
     $this->table = $table;
@@ -408,6 +414,11 @@ class InsertQuery extends Query {
     return $this;
   }
 
+  public function from(SelectQueryInterface $query) {
+    $this->fromQuery = $query;
+    return $this;
+  }
+
   /**
    * Executes the insert query.
    *
@@ -423,6 +434,11 @@ class InsertQuery extends Query {
   public function execute() {
 
     $last_insert_id = 0;
+
+    // Check if a SelectQuery is passed in and use that.
+    if (!empty($this->fromQuery)) {
+      return $this->connection->query((string) $this, array(), $this->queryOptions);
+    }
 
     // Confirm that the user did not try to specify an identical
     //  field and default field.
@@ -460,6 +476,10 @@ class InsertQuery extends Query {
 
     // Default fields are always placed first for consistency.
     $insert_fields = array_merge($this->defaultFields, $this->insertFields);
+
+    if (!empty($this->fromQuery)) {
+      return "INSERT $delay INTO {" . $this->table . '} (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
+    }
 
     // For simplicity, we will use the $placeholders array to inject
     // default keywords even though they are not, strictly speaking,
@@ -609,7 +629,7 @@ class MergeQuery extends Query {
    *   The called object.
    */
   public function update(array $fields, array $values = array()) {
-   if ($values) {
+    if ($values) {
       $fields = array_combine($fields, $values);
     }
     $this->updateFields = $fields;
@@ -772,11 +792,8 @@ class DeleteQuery extends Query implements QueryConditionInterface {
     $this->condition = new DatabaseCondition('AND');
   }
 
-  public function condition($field, $value = NULL, $operator = '=') {
-    if (!isset($num_args)) {
-      $num_args = func_num_args();
-    }
-    $this->condition->condition($field, $value, $operator, $num_args);
+  public function condition($field, $value = NULL, $operator = NULL) {
+    $this->condition->condition($field, $value, $operator);
     return $this;
   }
 
@@ -917,11 +934,8 @@ class UpdateQuery extends Query implements QueryConditionInterface {
     $this->condition = new DatabaseCondition('AND');
   }
 
-  public function condition($field, $value = NULL, $operator = '=') {
-    if (!isset($num_args)) {
-      $num_args = func_num_args();
-    }
-    $this->condition->condition($field, $value, $operator, $num_args);
+  public function condition($field, $value = NULL, $operator = NULL) {
+    $this->condition->condition($field, $value, $operator);
     return $this;
   }
 
@@ -1072,7 +1086,10 @@ class DatabaseCondition implements QueryConditionInterface, Countable {
     return count($this->conditions) - 1;
   }
 
-  public function condition($field, $value = NULL, $operator = '=') {
+  public function condition($field, $value = NULL, $operator = NULL) {
+    if (!isset($operator)) {
+      $operator = is_array($value) ? 'IN' : '=';
+    }
     $this->conditions[] = array(
       'field' => $field,
       'value' => $value,

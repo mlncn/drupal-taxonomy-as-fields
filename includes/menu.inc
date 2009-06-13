@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.323 2009/05/07 16:24:33 dries Exp $
+// $Id: menu.inc,v 1.328 2009/06/10 21:52:36 dries Exp $
 
 /**
  * @file
@@ -366,6 +366,7 @@ function menu_get_item($path = NULL, $router_item = NULL) {
       ->condition('path', $ancestors, 'IN')
       ->orderBy('fit', 'DESC')
       ->range(0, 1)
+      ->addTag('menu_get_item')
       ->execute()->fetchAssoc();
     if ($router_item) {
       $map = _menu_translate($router_item, $original_map);
@@ -808,13 +809,14 @@ function menu_tree_output($tree) {
 
   $num_items = count($items);
   foreach ($items as $i => $data) {
-    $extra_class = NULL;
+    $extra_class = array();
     if ($i == 0) {
-      $extra_class = 'first';
+      $extra_class[] = 'first';
     }
     if ($i == $num_items - 1) {
-      $extra_class = 'last';
+      $extra_class[] = 'last';
     }
+    $extra_class = implode(' ', $extra_class);
     $link = theme('menu_item_link', $data['link']);
     if ($data['below']) {
       $output .= theme('menu_item', $link, $data['link']['has_children'], menu_tree_output($data['below']), $data['link']['in_active_trail'], $extra_class);
@@ -1264,7 +1266,26 @@ function theme_menu_tree($tree) {
 /**
  * Generate the HTML output for a menu item and submenu.
  *
+ * The menu item's LI element is given one of the following classes:
+ * - expanded: The menu item is showing its submenu.
+ * - collapsed: The menu item has a submenu which is not shown.
+ * - leaf: The menu item has no submenu. 
+ *
  * @ingroup themeable
+ *
+ * @param $link
+ *   The fully-formatted link for this menu item.
+ * @param $has_children
+ *   Boolean value indicating if this menu item has children.
+ * @param $menu
+ *   Contains a fully-formatted submenu, if one exists for this menu item.
+ *   Defaults to NULL.
+ * @param $in_active_trail
+ *   Boolean determining if the current page is below the menu item in the
+ *   menu system. Defaults to FALSE.
+ * @param $extra_class
+ *   Extra classes that should be added to the class of the list item.
+ *   Defaults to NULL.
  */
 function theme_menu_item($link, $has_children, $menu = '', $in_active_trail = FALSE, $extra_class = NULL) {
   $class = ($menu ? 'expanded' : ($has_children ? 'collapsed' : 'leaf'));
@@ -1316,7 +1337,7 @@ function menu_get_active_help() {
     }
     // Add "more help" link on admin pages if the module provides a
     // standalone help page.
-    if ($arg[0] == "admin" && module_exists('help') && $function('admin/help#' . $arg[2], $empty_arg) && $help) {
+    if ($arg[0] == "admin" && user_access('access administration pages') && module_exists('help') && $function('admin/help#' . $arg[2], $empty_arg) && $help) {
       $output .= theme("more_help_link", url('admin/help/' . $arg[2]));
     }
   }
@@ -1838,7 +1859,7 @@ function menu_router_build() {
   // a given item came from.
   $callbacks = array();
   foreach (module_implements('menu') as $module) {
-    $router_items = call_user_func($module .'_menu');
+    $router_items = call_user_func($module . '_menu');
     if (isset($router_items) && is_array($router_items)) {
       foreach (array_keys($router_items) as $path) {
         $router_items[$path]['module'] = $module;
@@ -1859,7 +1880,7 @@ function menu_router_build() {
  */
 function _menu_router_cache($new_menu = NULL) {
   $menu = &drupal_static(__FUNCTION__);
-  
+
   if (isset($new_menu)) {
     $menu = $new_menu;
   }

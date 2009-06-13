@@ -1,5 +1,5 @@
 <?php
-// $Id: blog.module,v 1.319 2009/05/03 10:11:33 dries Exp $
+// $Id: blog.module,v 1.323 2009/06/12 08:39:35 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_node_info().
+ * Implement hook_node_info().
  */
 function blog_node_info() {
   return array(
@@ -20,14 +20,14 @@ function blog_node_info() {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function blog_perm() {
   return node_list_permissions('blog');
 }
 
 /**
- * Implementation of hook_access().
+ * Implement hook_access().
  */
 function blog_access($op, $node, $account) {
   switch ($op) {
@@ -42,7 +42,7 @@ function blog_access($op, $node, $account) {
 }
 
 /**
- * Implementation of hook_user_view().
+ * Implement hook_user_view().
  */
 function blog_user_view(&$edit, &$user, $category) {
   if (user_access('create blog content', $user)) {
@@ -56,13 +56,13 @@ function blog_user_view(&$edit, &$user, $category) {
 }
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function blog_help($path, $arg) {
   switch ($path) {
     case 'admin/help#blog':
       $output  = '<p>' . t('The blog module allows registered users to maintain an online journal, or <em>blog</em>. Blogs are made up of individual <em>blog entries</em>, and the blog entries are most often displayed in descending order by creation time.') . '</p>';
-      $output .= '<p>' . t('There is an (optional) <em>Blogs</em> menu item added to the Navigation menu, which displays all blogs available on your site, and a <em>My blog</em> item displaying the current user\'s blog entries. The <em>Blog entry</em> menu item under <em>Create content</em> allows new blog entries to be created.') . '</p>';
+      $output .= '<p>' . t("There is an (optional) <em>Blogs</em> menu item added to the Navigation menu, which displays all blogs available on your site, and a <em>My blog</em> item displaying the current user's blog entries. The <em>Blog entry</em> menu item under <em>Add new content</em> allows new blog entries to be created.") . '</p>';
       $output .= '<p>' . t('Each blog entry is displayed with an automatic link to other blogs created by the same user. By default, blog entries have comments enabled and are automatically promoted to the site front page. The blog module also creates a <em>Recent blog posts</em> block that may be enabled at the <a href="@blocks">blocks administration page</a>.', array('@blocks' => url('admin/build/block'))) . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@blog">Blog module</a>.', array('@blog' => 'http://drupal.org/handbook/modules/blog/')) . '</p>';
       return $output;
@@ -70,31 +70,25 @@ function blog_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_form().
+ * Implement hook_form().
  */
 function blog_form($node, $form_state) {
-  global $nid;
-  $type = node_get_types('type', $node);
-
-  $form['title'] = array('#type' => 'textfield', '#title' => check_plain($type->title_label), '#required' => TRUE, '#default_value' => !empty($node->title) ? $node->title : NULL, '#weight' => -5);
-  $form['body_field'] = node_body_field($node, $type->body_label, $type->min_word_count);
-  return $form;
+  return node_content_form($node, $form_state);
 }
 
 /**
- * Implementation of hook_view().
+ * Implement hook_view().
  */
 function blog_view($node, $teaser) {
   if ((bool)menu_get_object()) {
     // Breadcrumb navigation.
     drupal_set_breadcrumb(array(l(t('Home'), NULL), l(t('Blogs'), 'blog'), l(t("!name's blog", array('!name' => $node->name)), 'blog/' . $node->uid)));
   }
-
-  return node_prepare($node, $teaser);
+  return $node;
 }
 
 /**
- * Implementation of hook_node_view.
+ * Implement hook_node_view.
  */
 function blog_node_view($node, $teaser = FALSE) {
   if ($node->build_mode != NODE_BUILD_RSS) {
@@ -113,7 +107,7 @@ function blog_node_view($node, $teaser = FALSE) {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function blog_menu() {
   $items['blog'] = array(
@@ -173,7 +167,7 @@ function _blog_post_exists($account) {
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function blog_block_list() {
   $block['recent']['info'] = t('Recent blog posts');
@@ -181,7 +175,7 @@ function blog_block_list() {
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  *
  * Displays the most recent 10 blog titles.
  */

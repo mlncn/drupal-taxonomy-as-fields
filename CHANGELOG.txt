@@ -1,4 +1,4 @@
-// $Id: CHANGELOG.txt,v 1.308 2009/05/12 13:43:44 dries Exp $
+// $Id: CHANGELOG.txt,v 1.315 2009/06/12 13:59:56 dries Exp $
 
 Drupal 7.0, xxxx-xx-xx (development version)
 ----------------------
@@ -29,6 +29,8 @@ Drupal 7.0, xxxx-xx-xx (development version)
       order can now be customised using the Views module.
     * Added additional features to the default install profile, and implemented
       a "slimmed down" install profile designed for developers.
+    * Added an administrator role which is assigned all permisions for
+      installed modules automatically.
     * Image toolkits are now provided by modules (rather than requiring a manual
       file copy to the includes directory).
     * Added an edit tab to taxonomy term pages.
@@ -43,6 +45,8 @@ Drupal 7.0, xxxx-xx-xx (development version)
 - Performance:
     * Improved performance on uncached page views by loading multiple core
       objects in a single database query.
+    * Improved performance for logged-in users by reducing queries for path
+      alias lookups.
     * Improved support for HTTP proxies (including reverse proxies), allowing
       anonymous pageviews to be served entirely from the proxy.
 - Documentation:
@@ -55,6 +59,8 @@ Drupal 7.0, xxxx-xx-xx (development version)
 - Aggregator:
     * Introduced architecture that allows pluggable parsers and processors for
       syndicating RSS and Atom feeds.
+    * Added options to suspend updating specific feeds and never discard feeds 
+      items.
 - Testing:
     * Added test framework and tests.
 - Improved time zone support:
@@ -103,7 +109,9 @@ Drupal 7.0, xxxx-xx-xx (development version)
     * Modules can declare RDF namespaces which are serialized in the <html> tag
       for RDFa support.
 - Field API:
-    * Custom data fields may be attached to nodes and users in Drupal.
+    * Custom data fields may be attached to nodes and users, and taxonomy terms.
+    * Node bodies and teasers are now Field API fields instead of
+      being a hard-coded property of node objects.
     * In addition, any other object type may register with Field API
       and allow custom data fields to be attached to itself.
     * Provides a subset of the features of the Content Construction
@@ -113,6 +121,12 @@ Drupal 7.0, xxxx-xx-xx (development version)
     * Site mission is replaced with the highlighted content block region and 
       separate RSS feed description settings.
     * The footer message setting was removed in favor of custom blocks. 
+    * Made the main page content a block which can be moved and ordered
+      with other blocks in the same region.
+    * Blocks can now return structured arrays for later rendering just 
+      like page callbacks.
+- Translation system
+    * The translation system now supports message context (msgctxt).
 - Upgraded the core JavaScript library to jQuery version 1.3.2.
 - Upgraded the jQuery Forms library to 2.21.
 

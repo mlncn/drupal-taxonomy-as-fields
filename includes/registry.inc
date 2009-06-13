@@ -1,5 +1,5 @@
 <?php
-// $Id: registry.inc,v 1.15 2009/05/10 16:46:23 dries Exp $
+// $Id: registry.inc,v 1.18 2009/06/10 16:14:49 dries Exp $
 
 /**
  * @file
@@ -13,10 +13,7 @@
  *
  * Drupal maintains an internal registry of all functions or classes in the
  * system, allowing it to lazy-load code files as needed (reducing the amount
- * of code that must be parsed on each request). The list of included files is
- * cached per menu callback for subsequent loading by the menu router. This way,
- * a given page request will have all the code it needs but little else, minimizing
- * time spent parsing unneeded code.
+ * of code that must be parsed on each request). 
  */
 
 /**
@@ -45,11 +42,19 @@ function _registry_rebuild() {
   system_get_files_database($modules, 'module');
   // Get the list of files we are going to parse.
   $files = array();
-  foreach ($modules as $module) {
+  foreach ($modules as &$module) {
+    $dir = dirname($module->filepath);
+
+    // Store the module directory for use in hook_registry_files_alter().
+    $module->dir = $dir;
+
+    // Parse the .info file for all modules, reguardless of their status so the
+    // list of files can then be used in hook_registry_files_alter()
+    // implementations.
+    $module->info = drupal_parse_info_file($dir . '/' . $module->name . '.info');
+
     if ($module->status) {
-      // Parse .info file only for enabled modules.
-      $module->info = drupal_parse_info_file(dirname($module->filepath) . '/' . $module->name . '.info');
-      $dir = dirname($module->filepath);
+      // Add files for enabled modules to the registry.
       foreach ($module->info['files'] as $file) {
         $files["$dir/$file"] = array('module' => $module->name, 'weight' => $module->weight);
       }
@@ -59,6 +64,12 @@ function _registry_rebuild() {
     $files["$filename"] = array('module' => '', 'weight' => 0);
   }
 
+  // Allow modules to manually modify the list of files before the registry
+  // parses them. The $modules array provides the .info file information, which
+  // includes the list of files registered to each module. Any files in the
+  // list can then be added to the list of files that the registry will parse,
+  // or modify attributes of a file.
+  drupal_alter('registry_files', $files, $modules);
   foreach (registry_get_parsed_files() as $filename => $file) {
     // Add the md5 to those files we've already parsed.
     if (isset($files[$filename])) {
@@ -66,7 +77,7 @@ function _registry_rebuild() {
     }
     else {
       // Flush the registry of resources in files that are no longer on disc
-      // or don't belong to installed modules.
+      // or are in files that no installed modules require to be parsed.
       db_delete('registry')
         ->condition('filename', $filename)
         ->execute();
@@ -261,6 +272,12 @@ function _registry_skip_body(&$tokens) {
     }
     elseif ($token == '}') {
       --$num_braces;
+    }
+    // Consume strings manually as workaround for a bug in PHP < 5.2.3 (see
+    // http://drupal.org/node/368116).
+    elseif ($token == '"' || $token == '`' || (is_array($token) && $token[0] == T_START_HEREDOC)) {
+      $stop = is_array($token) ? T_END_HEREDOC : $token;
+      while (($token = next($tokens)) && (is_array($token) ? $token[0] : $token) != $stop);
     }
   }
 }

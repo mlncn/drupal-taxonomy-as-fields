@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.api.php,v 1.6 2009/04/26 09:40:25 dries Exp $
+// $Id: filter.api.php,v 1.8 2009/05/24 17:39:32 dries Exp $
 
 /**
  * @file
@@ -114,7 +114,7 @@ function hook_filter($op, $delta = 0, $format = -1, $text = '', $langcode = '', 
       return t('Allows users to post code verbatim using &lt;code&gt; and &lt;?php ?&gt; tags.');
 
     case 'prepare':
-      // Note: we use [ and ] to replace < > during the filtering process. 
+      // Note: we use [ and ] to replace < > during the filtering process.
       // For more information, see "Temporary placeholders and
       // delimiters" at http://drupal.org/node/209715.
       $text = preg_replace('@<code>(.+?)</code>@se', "'[codefilter-code]' . codefilter_escape('\\1') . '[/codefilter-code]'", $text);
@@ -149,7 +149,7 @@ function hook_filter($op, $delta = 0, $format = -1, $text = '', $langcode = '', 
  *
  *
  */
-function hook_filter_tips($delta, $format, $long = false) {
+function hook_filter_tips($delta, $format, $long = FALSE) {
   if ($long) {
     return t('To post pieces of code, surround them with &lt;code&gt;...&lt;/code&gt; tags. For PHP code, you can use &lt;?php ... ?&gt;, which will also colour it based on syntax.');
   }

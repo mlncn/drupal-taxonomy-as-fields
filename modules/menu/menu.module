@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.module,v 1.186 2009/05/09 18:28:12 dries Exp $
+// $Id: menu.module,v 1.192 2009/05/27 18:33:58 dries Exp $
 
 /**
  * @file
@@ -13,7 +13,7 @@
 define('MENU_MAX_MENU_NAME_LENGTH_UI', 27);
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function menu_help($path, $arg) {
   switch ($path) {
@@ -22,8 +22,6 @@ function menu_help($path, $arg) {
       $output .= '<p>' . t('The <a href="@menu">menus page</a> displays all menus currently available on your site. Select a menu from this list to add or edit a menu link, or to rearrange links within the menu. Create new menus using the <a href="@add-menu">add menu page</a> (the block containing a new menu must also be enabled on the <a href="@blocks">blocks administration page</a>).', array('@menu' => url('admin/build/menu'), '@add-menu' => url('admin/build/menu/add'), '@blocks' => url('admin/build/block'))) . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@menu">Menu module</a>.', array('@menu' => 'http://drupal.org/handbook/modules/menu/')) . '</p>';
       return $output;
-    case 'admin/build/menu':
-      return '<p>' . t('Menus are a collection of links used to navigate a website. If the Block module is enabled, each menu has a corresponding block that is managed on the <a href="@blocks">blocks administration page</a>. Select an existing menu from this list to manage its menu links.', array('@blocks' => url('admin/build/block'))) . '</p>';
     case 'admin/build/menu/add':
       return '<p>' . t('Enter the name for your new menu. Remember to enable the newly created block in the <a href="@blocks">blocks administration page</a>.', array('@blocks' => url('admin/build/block'))) . '</p>';
     case 'admin/build/menu-customize/%':
@@ -31,10 +29,13 @@ function menu_help($path, $arg) {
     case 'admin/build/menu/item/add':
       return '<p>' . t('Enter the title and path for your new menu link.') . '</p>';
   }
+  if ($path == 'admin/build/menu' && module_exists('block')) {
+    return '<p>' . t('Each menu has a corresponding block that is managed on the <a href="@blocks">blocks administration page</a>.', array('@blocks' => url('admin/build/block'))) . '</p>';
+  }
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function menu_perm() {
   return array(
@@ -46,7 +47,7 @@ function menu_perm() {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function menu_menu() {
   $items['admin/build/menu'] = array(
@@ -136,7 +137,7 @@ function menu_menu() {
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function menu_theme() {
   return array(
@@ -152,9 +153,9 @@ function menu_theme() {
 }
 
 /**
- * Implementation of hook_enable().
+ * Implement hook_enable().
  *
- *  Add a link for each custom menu.
+ * Add a link for each custom menu.
  */
 function menu_enable() {
   menu_rebuild();
@@ -265,7 +266,7 @@ function menu_reset_item($item) {
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function menu_block_list() {
   $menus = menu_get_menus(FALSE);
@@ -282,7 +283,7 @@ function menu_block_list() {
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  */
 function menu_block_view($delta = '') {
   $menus = menu_get_menus(FALSE);
@@ -292,7 +293,7 @@ function menu_block_view($delta = '') {
 }
 
 /**
- * Implementation of hook_node_insert().
+ * Implement hook_node_insert().
  */
 function menu_node_insert($node) {
   if (isset($node->menu)) {
@@ -314,7 +315,7 @@ function menu_node_insert($node) {
 }
 
 /**
- * Implementation of hook_node_update().
+ * Implement hook_node_update().
  */
 function menu_node_update($node) {
   if (isset($node->menu)) {
@@ -336,18 +337,18 @@ function menu_node_update($node) {
 }
 
 /**
- * Implementation of hook_node_delete().
+ * Implement hook_node_delete().
  */
 function menu_node_delete($node) {
   // Delete all menu module links that point to this node.
-  $result = db_query("SELECT mlid FROM {menu_links} WHERE link_path = :path AND module = 'menu'", array(':path' => 'node/'. $node->nid), array('fetch' => PDO::FETCH_ASSOC));
+  $result = db_query("SELECT mlid FROM {menu_links} WHERE link_path = :path AND module = 'menu'", array(':path' => 'node/' . $node->nid), array('fetch' => PDO::FETCH_ASSOC));
   foreach ($result as $m) {
     menu_link_delete($m['mlid']);
   }
 }
 
 /**
- * Implementation of hook_node_prepare().
+ * Implement hook_node_prepare().
  */
 function menu_node_prepare($node) {
   if (empty($node->menu)) {
@@ -357,14 +358,14 @@ function menu_node_prepare($node) {
     if (isset($node->nid)) {
       // Give priority to the default menu
       $mlid = db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = :path AND menu_name = :menu_name AND module = 'menu' ORDER BY mlid ASC", array(
-        ':path' => 'node/'. $node->nid,
+        ':path' => 'node/' . $node->nid,
         ':menu_name' => $menu_name,
       ), 0, 1)
       ->fetchField();
       // Check all menus if a link does not exist in the default menu.
       if (!$mlid) {
         $mlid = db_query_range("SELECT mlid FROM {menu_links} WHERE link_path = :path AND module = 'menu' ORDER BY mlid ASC", array(
-          ':path' => 'node/'. $node->nid,
+          ':path' => 'node/' . $node->nid,
         ), 0, 1)
         ->fetchField();
       }
@@ -389,7 +390,7 @@ function _menu_parent_depth_limit($item) {
 }
 
 /**
- * Implementation of hook_form_alter(). Adds menu item fields to the node form.
+ * Implement hook_form_alter(). Adds menu item fields to the node form.
  */
 function menu_form_alter(&$form, $form_state, $form_id) {
   if (!empty($form['#node_edit_form'])) {

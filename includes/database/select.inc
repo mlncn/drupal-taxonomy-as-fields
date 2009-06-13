@@ -1,5 +1,5 @@
 <?php
-// $Id: select.inc,v 1.16 2009/05/11 20:13:43 webchick Exp $
+// $Id: select.inc,v 1.19 2009/06/06 16:57:52 webchick Exp $
 
 /**
  * @ingroup database
@@ -423,7 +423,7 @@ class SelectQueryExtender implements SelectQueryInterface {
 
   /* Implementations of QueryConditionInterface for the WHERE clause. */
 
-  public function condition($field, $value = NULL, $operator = '=') {
+  public function condition($field, $value = NULL, $operator = NULL) {
     $this->query->condition($field, $value, $operator);
     return $this;
   }
@@ -461,7 +461,7 @@ class SelectQueryExtender implements SelectQueryInterface {
   }
 
   public function having($snippet, $args = array()) {
-    $this->query->where($snippet, $args);
+    $this->query->having($snippet, $args);
     return $this;
   }
 
@@ -570,7 +570,8 @@ class SelectQueryExtender implements SelectQueryInterface {
 
     // Also remove 'all_fields' statements, which are expanded into tablename.*
     // when the query is executed.
-    foreach ($count->tables as $alias => &$table) {
+    $tables = &$count->getTables();
+    foreach ($tables as $alias => &$table) {
       unset($table['all_fields']);
     }
 
@@ -866,7 +867,7 @@ class SelectQuery extends Query implements SelectQueryInterface {
         $args += $table['arguments'];
       }
       // If this table is a subquery, grab its arguments recursively.
-      if ($table['table'] instanceof SelectQuery) {
+      if ($table['table'] instanceof SelectQueryInterface) {
         $args += $table['table']->getArguments();
       }
     }
@@ -985,7 +986,7 @@ class SelectQuery extends Query implements SelectQueryInterface {
   public function addJoin($type, $table, $alias = NULL, $condition = NULL, $arguments = array()) {
 
     if (empty($alias)) {
-      if ($table instanceof SelectQuery) {
+      if ($table instanceof SelectQueryInterface) {
         $alias = 'subquery';
       }
       else {
@@ -1089,8 +1090,8 @@ class SelectQuery extends Query implements SelectQueryInterface {
       }
 
       // If the table is a subquery, compile it and integrate it into this query.
-      if ($table['table'] instanceof SelectQuery) {
-        $table_string = '(' . (string)$table['table'] .')';
+      if ($table['table'] instanceof SelectQueryInterface) {
+        $table_string = '(' . (string)$table['table'] . ')';
       }
       else {
         $table_string = '{' . $this->connection->escapeTable($table['table']) . '}';

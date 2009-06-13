@@ -1,5 +1,5 @@
 <?php
-// $Id: aggregator.admin.inc,v 1.26 2009/04/29 07:18:04 dries Exp $
+// $Id: aggregator.admin.inc,v 1.31 2009/05/28 09:30:58 dries Exp $
 
 /**
  * @file
@@ -27,7 +27,7 @@ function aggregator_view() {
   $header = array(t('Title'), t('Items'), t('Last update'), t('Next update'), array('data' => t('Operations'), 'colspan' => '3'));
   $rows = array();
   foreach ($result as $feed) {
-    $rows[] = array(l($feed->title, "aggregator/sources/$feed->fid"), format_plural($feed->items, '1 item', '@count items'), ($feed->checked ? t('@time ago', array('@time' => format_interval(REQUEST_TIME - $feed->checked))) : t('never')), ($feed->checked ? t('%time left', array('%time' => format_interval($feed->checked + $feed->refresh - REQUEST_TIME))) : t('never')), l(t('edit'), "admin/content/aggregator/edit/feed/$feed->fid"), l(t('remove items'), "admin/content/aggregator/remove/$feed->fid"), l(t('update items'), "admin/content/aggregator/update/$feed->fid"));
+    $rows[] = array(l($feed->title, "aggregator/sources/$feed->fid"), format_plural($feed->items, '1 item', '@count items'), ($feed->checked ? t('@time ago', array('@time' => format_interval(REQUEST_TIME - $feed->checked))) : t('never')), ($feed->checked && $feed->refresh ? t('%time left', array('%time' => format_interval($feed->checked + $feed->refresh - REQUEST_TIME))) : t('never')), l(t('edit'), "admin/content/aggregator/edit/feed/$feed->fid"), l(t('remove items'), "admin/content/aggregator/remove/$feed->fid"), l(t('update items'), "admin/content/aggregator/update/$feed->fid"));
   }
   $output .= theme('table', $header, $rows);
 
@@ -54,14 +54,7 @@ function aggregator_view() {
  */
 function aggregator_form_feed(&$form_state, stdClass $feed = NULL) {
   $period = drupal_map_assoc(array(900, 1800, 3600, 7200, 10800, 21600, 32400, 43200, 64800, 86400, 172800, 259200, 604800, 1209600, 2419200), 'format_interval');
-
-  if (!isset($feed)) {
-    $feed = new stdClass();
-  }
-
-  if (empty($feed->refresh)) {
-    $feed->refresh = 3600;
-  }
+  $period[AGGREGATOR_CLEAR_NEVER] = t('Never');
 
   $form['title'] = array('#type' => 'textfield',
     '#title' => t('Title'),
@@ -79,7 +72,7 @@ function aggregator_form_feed(&$form_state, stdClass $feed = NULL) {
   );
   $form['refresh'] = array('#type' => 'select',
     '#title' => t('Update interval'),
-    '#default_value' => isset($feed->refresh) ? $feed->refresh : 900,
+    '#default_value' => isset($feed->refresh) ? $feed->refresh : 3600,
     '#options' => $period,
     '#description' => t('The length of time between feed updates. Requires a correctly configured <a href="@cron">cron maintenance task</a>.', array('@cron' => url('admin/reports/status'))),
   );
@@ -233,8 +226,6 @@ function aggregator_admin_remove_feed_submit($form, &$form_state) {
  */
 function aggregator_form_opml(&$form_state) {
   $period = drupal_map_assoc(array(900, 1800, 3600, 7200, 10800, 21600, 32400, 43200, 64800, 86400, 172800, 259200, 604800, 1209600, 2419200), 'format_interval');
-
-  $form['#attributes'] = array('enctype' => "multipart/form-data");
 
   $form['upload'] = array(
     '#type' => 'file',
@@ -465,7 +456,7 @@ function aggregator_admin_form($form_state) {
       '#default_value' => variable_get('aggregator_processors', array('aggregator')),
     );
   }
- if (count($basic_conf)) {
+  if (count($basic_conf)) {
     $form['basic_conf'] = array(
       '#type' => 'fieldset',
       '#title' => t('Basic configuration'),

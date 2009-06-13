@@ -1,13 +1,13 @@
 <?php
-// $Id: poll.install,v 1.21 2009/04/26 16:31:23 dries Exp $
+// $Id: poll.install,v 1.24 2009/06/01 22:07:09 dries Exp $
 
 /**
  * @file
- * Install file for poll module.
+ * Install, update and uninstall functions for the poll module.
  */
 
 /**
- * Implementation of hook_install().
+ * Implement hook_install().
  */
 function poll_install() {
   // Create tables.
@@ -15,7 +15,7 @@ function poll_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function poll_uninstall() {
   // Remove tables.
@@ -23,7 +23,7 @@ function poll_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function poll_schema() {
   $schema['poll'] = array(
@@ -51,6 +51,9 @@ function poll_schema() {
       ),
     ),
     'primary key' => array('nid'),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+    ),
   );
 
   $schema['poll_choice'] = array(
@@ -94,6 +97,9 @@ function poll_schema() {
       'nid' => array('nid'),
     ),
     'primary key' => array('chid'),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+    ),
   );
 
   $schema['poll_vote'] = array(
@@ -133,6 +139,10 @@ function poll_schema() {
       ),
     ),
     'primary key' => array('nid', 'uid', 'hostname'),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+      'uid' => array('users' => 'uid'),
+    ),
     'indexes' => array(
       'chid'     => array('chid'),
       'hostname' => array('hostname'),

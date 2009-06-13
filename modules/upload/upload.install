@@ -1,8 +1,18 @@
 <?php
-// $Id: upload.install,v 1.8 2008/11/15 13:01:11 dries Exp $
+// $Id: upload.install,v 1.12 2009/06/01 22:07:10 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the upload module.
+ */
+
+/**
+ * @file
+ * This is the install file for the upload module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function upload_install() {
   // Create table. The upload table might have been created in the Drupal 5
@@ -14,7 +24,7 @@ function upload_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function upload_uninstall() {
   // Remove tables.
@@ -22,7 +32,7 @@ function upload_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function upload_schema() {
   $schema['upload'] = array(
@@ -73,6 +83,11 @@ function upload_schema() {
       ),
     ),
     'primary key' => array('vid', 'fid'),
+    'foreign keys' => array(
+      'fid' => array('files' => 'fid'),
+      'nid' => array('node' => 'nid'),
+      'vid' => array('node' => 'vid'),
+    ),
     'indexes' => array(
       'fid' => array('fid'),
       'nid' => array('nid'),

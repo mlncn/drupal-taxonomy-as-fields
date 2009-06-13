@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.9 2009/05/09 19:02:11 dries Exp $
+// $Id: field.api.php,v 1.14 2009/06/06 16:17:30 webchick Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -47,7 +47,7 @@ function hook_fieldable_info() {
       'cacheable' => FALSE,
       // Bundles must provide human readable name so
       // we can create help and error messages about them.
-      'bundles' => node_get_types('names'),
+      'bundles' => node_type_get_names(),
     ),
   );
   return $return;
@@ -120,15 +120,25 @@ function hook_field_info() {
  * @param $field
  *   A field structure.
  * @return
- *   A Field API schema is an array of Schema API column
- *   specifications, keyed by field-independent column name. For
- *   example, a field may declare a column named 'value'. The SQL
- *   storage engine may create a table with a column named
- *   <fieldname>_value_0, but the Field API schema column name is
- *   still 'value'.
+ *   An associative array with the following keys:
+ *   - 'columns': an array of Schema API column specifications, keyed by
+ *     column name. This specifies what comprises a value for a given field.
+ *     For example, a value for a number field is simply 'value', while a
+ *     value for a formatted text field is the combination of 'value' and
+ *     'format'.
+ *     It is recommended to avoid having the columns definitions depend on
+ *     field settings when possible.
+ *     No assumptions should be made on how storage engines internally use the
+ *     original column name to structure their storage.
+ *   - 'indexes': an array of Schema API indexes definitions. Only columns that
+ *     appear in the 'columns' array are allowed.
+ *     Those indexes will be used as default indexes. Callers of
+ *     field_create_field() can specify additional indexes, or, at their own
+ *     risk, modify the default indexes specified by the field-type module.
+ *     Some storage engines might not support indexes.
  */
-function hook_field_columns($field) {
-  if ($field['type'] == 'textarea') {
+function hook_field_schema($field) {
+  if ($field['type'] == 'text_long') {
     $columns = array(
       'value' => array(
         'type' => 'text',
@@ -153,7 +163,12 @@ function hook_field_columns($field) {
       'not null' => FALSE,
     ),
   );
-  return $columns;
+  return array(
+    'columns' => $columns,
+    'indexes' => array(
+      'format' => array('format'),
+    ),
+  );
 }
 
 /**
@@ -188,18 +203,32 @@ function hook_field_formatter_info() {
 /**
  * Define custom load behavior for this module's field types.
  *
+ * Unlike other field hooks, this hook operates on multiple objects. The
+ * $objects, $instances and $items parameters are arrays keyed by object id.
+ * For performance reasons, information for all available objects should be
+ * loaded in a single query where possible.
+ *
+ * Note that the changes made to the field values get cached by the
+ * field cache for subsequent loads.
+ *
  * @param $obj_type
  *   The type of $object.
- * @param $object
- *   The object for the operation.
+ * @param $objects
+ *   Array of objects being loaded, keyed by object id.
  * @param $field
  *   The field structure for the operation.
- * @param $instance
- *   The instance structure for $field on $object's bundle.
+ * @param $instances
+ *   Array of instance structures for $field for each object, keyed by object id.
  * @param $items
- *   $object->{$field['field_name']}, or an empty array if unset.
+ *   Array of field values already loaded for the objects, keyed by object id.
+ * @param $age
+ *   FIELD_LOAD_CURRENT to load the most recent revision for all fields, or
+ *   FIELD_LOAD_REVISION to load the version indicated by each object.
+ * @return
+ *   Changes or additions to field values are done by altering the $items
+ *   parameter by reference.
  */
-function hook_field_load($obj_type, $object, $field, $instance, $items) {
+function hook_field_load($obj_type, $objects, $field, $instances, &$items, $age) {
 }
 
 /**
@@ -209,6 +238,10 @@ function hook_field_load($obj_type, $object, $field, $instance, $items) {
  *   The type of $object.
  * @param $object
  *   The object for the operation.
+ *   Note that this might not be a full-fledged 'object'. When invoked through
+ *   field_attach_query(), the $object will only include properties that the
+ *   Field API knows about: bundle, id, revision id, and field values (no node
+ *   title, user name...).
  * @param $field
  *   The field structure for the operation.
  * @param $instance
@@ -452,23 +485,20 @@ function hook_field_attach_form($obj_type, $object, &$form, &$form_state) {
  * @param $obj_type
  *   The type of objects for which to load fields; e.g. 'node' or 'user'.
  * @param $objects
- *   An array of objects for which to load fields. The keys for primary id and
- *   bundle name to load are identified by hook_fieldable_info for $obj_type.
+ *   An array of objects for which to load fields, keyed by object id.
  * @param $age
  *   FIELD_LOAD_CURRENT to load the most recent revision for all fields, or
  *   FIELD_LOAD_REVISION to load the version indicated by each object.
- * @param $additions
- *   An array of field data for the objects being loaded, keyed by entity id,
- *   field name, and item delta number.
  * @param $skip_fields
  *   An array keyed by names of fields whose data has already been loaded and
  *   therefore should not be loaded again. The values associated to these keys
  *   are not specified.
  * @return
- *   Loaded field values are added to $additions and loaded field names are set
- *   as keys in $skip_fields.
+ *   - Loaded field values are added to $objects. Fields with no values should be
+ *   set as an empty array.
+ *   - Loaded field names are set as keys in $skip_fields.
  */
-function hook_field_attach_pre_load($obj_type, $objects, $age, &$additions, &$skip_fields) {
+function hook_field_attach_pre_load($obj_type, $objects, $age, &$skip_fields) {
 }
 
 /**
@@ -476,10 +506,22 @@ function hook_field_attach_pre_load($obj_type, $objects, $age, &$additions, &$sk
  *
  * This hook is invoked after the field module has performed the operation.
  *
+ * Unlike other field_attach hooks, this hook accounts for 'multiple loads'.
+ * Instead of the usual $object parameter, it accepts an array of objects,
+ * indexed by object id. For performance reasons, information for all available
+ * objects should be loaded in a single query where possible.
+ *
+ * Note that $objects might not be full-fledged 'objects'. When invoked through
+ * field_attach_query(), each object only includes properties that the Field
+ * API knows about: bundle, id, revision id, and field values (no node title,
+ * user name...)
+
+ * The changes made to the objects' field values get cached by the field cache
+ * for subsequent loads.
+ *
  * See field_attach_load() for details and arguments.
- * TODO: Currently, this hook only accepts a single object a time.
  */
-function hook_field_attach_load($obj_type, $object) {
+function hook_field_attach_load($obj_type, $objects, $age) {
 }
 
 /**
@@ -550,6 +592,38 @@ function hook_field_attach_pre_insert($obj_type, $object, &$skip_fields) {
  *   Saved field names are set set as keys in $skip_fields.
  */
 function hook_field_attach_pre_update($obj_type, $object, &$skip_fields) {
+}
+
+/**
+ * Act on field_attach_pre_query.
+ *
+ * This hook should be implemented by modules that use
+ * hook_field_attach_pre_load(), hook_field_attach_pre_insert() and
+ * hook_field_attach_pre_update() to bypass the regular storage engine, to
+ * handle field queries.
+ *
+ * @param $field_name
+ *   The name of the field to query.
+ * @param $conditions
+ *   See field_attach_query().
+ *   A storage module that doesn't support querying a given column should raise
+ *   a FieldQueryException. Incompatibilities should be mentioned on the module
+ *   project page.
+ * @param $result_format
+ *   See field_attach_query().
+ * @param $age
+ *   - FIELD_LOAD_CURRENT: query the most recent revisions for all
+ *     objects. The results will be keyed by object type and object id.
+ *   - FIELD_LOAD_REVISION: query all revisions. The results will be keyed by
+ *     object type and object revision id.
+ * @param $skip_field
+ *   Boolean, always coming as FALSE.
+ * @return
+ *   See field_attach_query().
+ *   The $skip_field parameter should be set to TRUE if the query has been
+ *   handled.
+ */
+function hook_field_attach_pre_query($field_name, $conditions, $result_format, $age, &$skip_field) {
 }
 
 /**
@@ -640,10 +714,9 @@ function hook_field_attach_delete_bundle($bundle, $instances) {
  * Load field data for a set of objects.
  *
  * @param $obj_type
- *   The entity type of objects being loaded, such as 'node' or
- *   'user'.
+ *   The entity type of object, such as 'node' or 'user'.
  * @param $objects
- *   The array of objects for which to load data.
+ *   The array of objects for which to load data, keyed by object id.
  * @param $age
  *   FIELD_LOAD_CURRENT to load the most recent revision for all
  *   fields, or FIELD_LOAD_REVISION to load the version indicated by
@@ -653,10 +726,10 @@ function hook_field_attach_delete_bundle($bundle, $instances) {
  *   therefore should not be loaded again. The values associated to these keys
  *   are not specified.
  * @return
- *   An array of field data for the objects, keyed by entity id, field
- *   name, and item delta number.
+ *   Loaded field values are added to $objects. Fields with no values should be
+ *   set as an empty array.
  */
-function hook_field_storage_load($obj_type, $queried_objs, $age, $skip_fields) {
+function hook_field_storage_load($obj_type, $objects, $age, $skip_fields) {
 }
 
 /**
@@ -702,6 +775,26 @@ function hook_field_storage_delete($obj_type, $object) {
  *   hook_fieldable_info() for $obj_type.
  */
 function hook_field_storage_delete_revision($obj_type, $object) {
+}
+
+/**
+ * Handle a field query.
+ *
+ * @param $field_name
+ *   The name of the field to query.
+ * @param $conditions
+ *   See field_attach_query().
+ *   A storage module that doesn't support querying a given column should raise
+ *   a FieldQueryException. Incompatibilities should be mentioned on the module
+ *   project page.
+ * @param $result_format
+ *   See field_attach_query().
+ * @param $age
+ *   See field_attach_query().
+ * @return
+ *   See field_attach_query().
+ */
+function hook_field_storage_query($field_name, $conditions, $result_format, $age) {
 }
 
 /**

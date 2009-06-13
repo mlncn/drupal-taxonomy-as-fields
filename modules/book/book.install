@@ -1,8 +1,13 @@
 <?php
-// $Id: book.install,v 1.27 2009/01/19 10:46:50 dries Exp $
+// $Id: book.install,v 1.30 2009/06/02 06:58:15 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the book module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function book_install() {
   // Create tables.
@@ -12,7 +17,7 @@ function book_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function book_uninstall() {
   // Delete menu links.
@@ -129,8 +134,8 @@ function book_update_6000() {
 
       db_create_table($ret, 'book', $schema['book']);
 
-      drupal_set_session('book_update_6000_orphans', array('from' => 0));
-      drupal_set_session('book_update_6000', array());
+      $_SESSION['book_update_6000_orphans'] = array('from' => 0);
+      $_SESSION['book_update_6000'] = array();
       $result = db_query("SELECT * from {book_temp} WHERE parent = 0");
 
       // Collect all books - top-level nodes.
@@ -147,7 +152,7 @@ function book_update_6000() {
       return $ret;
     }
   }
-  elseif ($_SESSION['book_update_6000_orphans']) {
+  elseif (isset($_SESSION['book_update_6000_orphans'])) {
     // Do the first batched part of the update - collect orphans.
     $update_count = 400; // Update this many at a time.
 
@@ -247,7 +252,7 @@ function book_update_6000() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function book_schema() {
   $schema['book'] = array(

@@ -1,5 +1,5 @@
 <?php
-// $Id: query.inc,v 1.10 2009/04/20 20:02:30 dries Exp $
+// $Id: query.inc,v 1.13 2009/06/05 16:55:45 dries Exp $
 
 /**
  * @ingroup database
@@ -14,11 +14,6 @@
 
 class InsertQuery_pgsql extends InsertQuery {
 
-  public function __construct($connection, $table, array $options = array()) {
-    parent::__construct($connection, $table, $options);
-    $this->queryOptions['return'] = Database::RETURN_NULL;
-  }
-
   public function execute() {
 
     // Confirm that the user did not try to specify an identical
@@ -27,12 +22,12 @@ class InsertQuery_pgsql extends InsertQuery {
       throw new PDOException('You may not specify the same field to have a value and a schema-default value.');
     }
 
-    if (count($this->insertFields) + count($this->defaultFields) == 0) {
+    if (count($this->insertFields) + count($this->defaultFields) == 0 && empty($this->fromQuery)) {
       return NULL;
     }
-    
+
     // Don't execute query without values.
-    if (!isset($this->insertValues[0]) && count($this->insertFields) > 0) {
+    if (!isset($this->insertValues[0]) && count($this->insertFields) > 0 && empty($this->fromQuery)) {
       return NULL;
     }
 
@@ -69,7 +64,10 @@ class InsertQuery_pgsql extends InsertQuery {
 
     if (!empty($table_information->sequences)) {
       $options['sequence_name'] = $table_information->sequences[0];
-      $options['return'] = Database::RETURN_INSERT_ID;
+    }
+    // If there are no sequences then we can't get a last insert id.
+    elseif ($options['return'] == Database::RETURN_INSERT_ID) {
+      $options['return'] = Database::RETURN_NULL;
     }
     $last_insert_id = $this->connection->query($stmt, array(), $options);
 
@@ -83,6 +81,10 @@ class InsertQuery_pgsql extends InsertQuery {
 
     // Default fields are always placed first for consistency.
     $insert_fields = array_merge($this->defaultFields, $this->insertFields);
+
+    if (!empty($this->fromQuery)) {
+      return "INSERT INTO {" . $this->table . '} (' . implode(', ', $insert_fields) . ') ' . $this->fromQuery;
+    }
 
     $query = "INSERT INTO {" . $this->table . '} (' . implode(', ', $insert_fields) . ') VALUES ';
 

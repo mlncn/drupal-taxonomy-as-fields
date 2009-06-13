@@ -1,8 +1,13 @@
 <?php
-// $Id: statistics.install,v 1.18 2009/04/24 08:23:02 dries Exp $
+// $Id: statistics.install,v 1.21 2009/06/01 22:07:10 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the statistics module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function statistics_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function statistics_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function statistics_uninstall() {
   // Remove tables.
@@ -27,7 +32,7 @@ function statistics_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function statistics_schema() {
   $schema['accesslog'] = array(
@@ -95,6 +100,9 @@ function statistics_schema() {
       'uid' => array('uid'),
     ),
     'primary key' => array('aid'),
+    'foreign keys' => array(
+      'uid' => array('users' => 'uid'),
+    ),
   );
 
   $schema['node_counter'] = array(

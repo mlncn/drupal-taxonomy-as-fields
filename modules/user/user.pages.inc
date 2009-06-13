@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.35 2009/05/06 11:31:44 dries Exp $
+// $Id: user.pages.inc,v 1.39 2009/06/05 09:26:06 dries Exp $
 
 /**
  * @file
@@ -12,7 +12,7 @@
 function user_autocomplete($string = '') {
   $matches = array();
   if ($string) {
-    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", array(':name' => $string .'%'), 0, 10);
+    $result = db_query_range("SELECT name FROM {users} WHERE LOWER(name) LIKE LOWER(:name)", array(':name' => $string . '%'), 0, 10);
     foreach ($result as $user) {
       $matches[$user->name] = check_plain($user->name);
     }
@@ -89,13 +89,13 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
     $current = REQUEST_TIME;
     // Some redundant checks for extra security ?
     $users = user_load_multiple(array($uid), array('status' => '1'));
-    if ($timestamp < $current && $account = reset($users)) {
+    if ($timestamp <= $current && $account = reset($users)) {
       // No time out for first time login.
       if ($account->login && $current - $timestamp > $timeout) {
         drupal_set_message(t('You have tried to use a one-time login link that has expired. Please request a new one using the form below.'));
         drupal_goto('user/password');
       }
-      elseif ($account->uid && $timestamp > $account->login && $timestamp < $current && $hashed_pass == user_pass_rehash($account->pass, $timestamp, $account->login)) {
+      elseif ($account->uid && $timestamp >= $account->login && $timestamp <= $current && $hashed_pass == user_pass_rehash($account->pass, $timestamp, $account->login)) {
         // First stage is a confirmation form, then login
         if ($action == 'login') {
           watchdog('user', 'User %name used one-time login link at time %timestamp.', array('%name' => $account->name, '%timestamp' => $timestamp));
@@ -161,7 +161,7 @@ function user_logout() {
  *   Contains the default "History" profile data for a user.
  * - $page['content']['#account']:
  *   The user account of the profile being viewed.
- * 
+ *
  * To theme user profiles, copy modules/user/user-profile.tpl.php
  * to your theme directory, and edit it as instructed in that file's comments.
  */
@@ -169,14 +169,14 @@ function user_view($account) {
   drupal_set_title($account->name);
   // Retrieve all profile fields and attach to $account->content.
   user_build_content($account);
-  
+
   $build = $account->content;
   $build += array(
     '#theme' => 'user_profile',
     '#account' => $account,
   );
 
-  return drupal_get_page($build);
+  return $build;
 }
 
 /**
@@ -189,7 +189,7 @@ function user_view($account) {
  */
 function template_preprocess_user_profile(&$variables) {
   $account = $variables['elements']['#account'];
-  
+
   $variables['profile'] = array();
   // Sort sections by weight
   uasort($account->content, 'element_sort');
@@ -279,7 +279,6 @@ function user_profile_form($form_state, $account, $category = 'account') {
       '#submit' => array('user_edit_cancel_submit'),
     );
   }
-  $form['#attributes']['enctype'] = 'multipart/form-data';
 
   return $form;
 }

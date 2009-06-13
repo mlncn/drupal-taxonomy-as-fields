@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.test,v 1.17 2009/04/02 20:39:44 dries Exp $
+// $Id: forum.test,v 1.21 2009/06/12 13:59:56 dries Exp $
 
 class ForumTestCase extends DrupalWebTestCase {
   protected $big_user;
@@ -126,6 +126,7 @@ class ForumTestCase extends DrupalWebTestCase {
     $edit = array(
       'name' => $title,
       'description' => $description,
+      'machine_name' => drupal_strtolower($this->randomName()),
       'help' => '',
     );
 
@@ -193,11 +194,11 @@ class ForumTestCase extends DrupalWebTestCase {
    */
   function deleteForum($tid) {
     // Delete the forum id.
-    $this->drupalPost('admin/build/forum/edit/forum/'. $tid, array(), t('Delete'));
+    $this->drupalPost('admin/build/forum/edit/forum/' . $tid, array(), t('Delete'));
     $this->drupalPost(NULL, NULL, t('Delete'));
-    
+
     // Assert that the forum no longer exists.
-    $this->drupalGet('forum/'. $tid);
+    $this->drupalGet('forum/' . $tid);
     $this->assertRaw(t('No forums defined'), 'The forum was not found');
   }
 
@@ -233,7 +234,7 @@ class ForumTestCase extends DrupalWebTestCase {
 
     $edit = array(
       'title' => $title,
-      'body' => $body,
+      'body[0][value]' => $body,
       'taxonomy[1]' => $tid
     );
 
@@ -257,7 +258,7 @@ class ForumTestCase extends DrupalWebTestCase {
 
     // Retrieve node object.
     $node = $this->drupalGetNodeByTitle($title);
-    $this->assertTrue($node != null, t('Node @title was loaded', array('@title' => $title)));
+    $this->assertTrue($node != NULL, t('Node @title was loaded', array('@title' => $title)));
 
     // View forum topic.
     $this->drupalGet('node/' . $node->nid);
@@ -322,7 +323,7 @@ class ForumTestCase extends DrupalWebTestCase {
       // Edit forum node (including moving it to another forum).
       $edit = array();
       $edit['title'] = 'node/' . $node->nid;
-      $edit['body'] = $this->randomName(256);
+      $edit['body[0][value]'] = $this->randomName(256);
       $edit['taxonomy[1]'] = $this->root_forum['tid']; // Assumes the topic is initially associated with $forum.
       $edit['shadow'] = TRUE;
       $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));

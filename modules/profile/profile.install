@@ -1,8 +1,13 @@
 <?php
-// $Id: profile.install,v 1.17 2009/02/26 07:30:27 webchick Exp $
+// $Id: profile.install,v 1.20 2009/06/01 22:07:09 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the profile module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function profile_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function profile_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function profile_uninstall() {
   // Remove tables
@@ -20,7 +25,7 @@ function profile_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function profile_schema() {
   $schema['profile_field'] = array(
@@ -143,6 +148,10 @@ function profile_schema() {
     'primary key' => array('uid', 'fid'),
     'indexes' => array(
       'fid' => array('fid'),
+    ),
+    'foreign keys' => array(
+      'fid' => array('profile_field' => 'fid'),
+      'uid' => array('users' => 'uid'),
     ),
   );
 

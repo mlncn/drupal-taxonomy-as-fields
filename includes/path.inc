@@ -1,5 +1,5 @@
 <?php
-// $Id: path.inc,v 1.35 2009/05/07 15:49:57 webchick Exp $
+// $Id: path.inc,v 1.40 2009/06/08 04:44:58 dries Exp $
 
 /**
  * @file
@@ -48,32 +48,72 @@ function drupal_lookup_path($action, $path = '', $path_language = '') {
   // $map is an array with language keys, holding arrays of Drupal paths to alias relations
   $map = &drupal_static(__FUNCTION__, array());
   $no_src = &drupal_static(__FUNCTION__ . ':no_src', array());
-  $count = &drupal_static(__FUNCTION__ . ':count');
+  $whitelist = &drupal_static(__FUNCTION__ . ':whitelist');
+  $system_paths = &drupal_static(__FUNCTION__ . ':system_paths');
+  $no_aliases = &drupal_static(__FUNCTION__ . ':no_alias', array());
+  $first_call = &drupal_static(__FUNCTION__ . ':first_call', TRUE);
+
+  // Retrieve the path alias whitelist.
+  if (!isset($whitelist)) {
+    $whitelist = variable_get('path_alias_whitelist', NULL);
+    if (!isset($whitelist)) {
+      $whitelist = drupal_path_alias_whitelist_rebuild();
+    }
+  }
 
   $path_language = $path_language ? $path_language : $language->language;
-
-  // Use $count to avoid looking up paths in subsequent calls if there simply are no aliases
-  if (!isset($count)) {
-    $count = db_query('SELECT COUNT(pid) FROM {url_alias}')->fetchField();
-  }
 
   if ($action == 'wipe') {
     $map = array();
     $no_src = array();
-    $count = NULL;
+    $system_paths = array();
+    $no_aliases = array();
+
+    $whitelist = drupal_path_alias_whitelist_rebuild();
   }
-  elseif ($count > 0 && $path != '') {
+  elseif ($whitelist && $path != '') {
     if ($action == 'alias') {
+      // During the first call to drupal_lookup_path() per language, load the
+      // expected system paths for the page from cache.
+      if ($first_call) {
+        $first_call = FALSE;
+
+        $map[$path_language] = array();
+        // Load system paths from cache.
+        $cid = current_path();
+        if ($cache = cache_get($cid, 'cache_path')) {
+          $system_paths = $cache->data;
+          // Now fetch the aliases corresponding to these system paths.
+          // We order by ASC and overwrite array keys to ensure the correct
+          // alias is used when there are multiple aliases per path.
+          $map[$path_language] = db_query("SELECT src, dst FROM {url_alias} WHERE src IN(:system) AND language IN(:language, '') ORDER BY language ASC, pid ASC", array(
+            ':system' => $system_paths,
+            ':language' => $path_language
+          ))->fetchAllKeyed();
+          // Keep a record of paths with no alias to avoid querying twice.
+          $no_aliases[$path_language] = array_flip(array_diff_key($system_paths, array_keys($map[$path_language])));
+        }
+      }
+      // If the alias has already been loaded, return it.
       if (isset($map[$path_language][$path])) {
         return $map[$path_language][$path];
       }
-      // Get the most fitting result falling back with alias without language
-      $alias = db_query("SELECT dst FROM {url_alias} WHERE src = :src AND language IN(:language, '') ORDER BY language DESC", array(
-        ':src' => $path,
-        ':language' => $path_language))
-        ->fetchField();
-      $map[$path_language][$path] = $alias;
-      return $alias;
+      // Check the path whitelist, if the top_level part before the first /
+      // is not in the list, then there is no need to do anything further,
+      // it is not in the database.
+      elseif (!isset($whitelist[strtok($path, '/')])) {
+        return FALSE;
+      }
+      // For system paths which were not cached, query aliases individually.
+      else if (!isset($no_aliases[$path_language][$path])) {
+        // Get the most fitting result falling back with alias without language
+        $alias = db_query("SELECT dst FROM {url_alias} WHERE src = :src AND language IN(:language, '') ORDER BY language DESC, pid DESC", array(
+          ':src' => $path,
+          ':language' => $path_language
+        ))->fetchField();
+        $map[$path_language][$path] = $alias;
+        return $alias;
+      }
     }
     // Check $no_src for this $path in case we've already determined that there
     // isn't a path that has this alias
@@ -82,7 +122,7 @@ function drupal_lookup_path($action, $path = '', $path_language = '') {
       $src = '';
       if (!isset($map[$path_language]) || !($src = array_search($path, $map[$path_language]))) {
         // Get the most fitting result falling back with alias without language
-        if ($src = db_query("SELECT src FROM {url_alias} WHERE dst = :dst AND language IN(:language, '') ORDER BY language DESC", array(
+        if ($src = db_query("SELECT src FROM {url_alias} WHERE dst = :dst AND language IN(:language, '') ORDER BY language DESC, pid DESC", array(
                      ':dst' => $path,
                      ':language' => $path_language))
             ->fetchField()) {
@@ -100,6 +140,33 @@ function drupal_lookup_path($action, $path = '', $path_language = '') {
   }
 
   return FALSE;
+}
+
+/**
+ * Cache system paths for a page.
+ *
+ * Cache an array of the system paths available on each page. We assume
+ * that aiases will be needed for the majority of these paths during
+ * subsequent requests, and load them in a single query during
+ * drupal_lookup_path().
+ */
+function drupal_cache_system_paths() {
+  // Check if the system paths for this page were loaded from cache in this
+  // request to avoid writing to cache on every request.
+  $system_paths = &drupal_static('drupal_lookup_path:system_paths', array());
+  if (!$system_paths) {
+    // The static $map array used by drupal_lookup_path() includes all
+    // system paths for the page request.
+    $map = &drupal_static('drupal_lookup_path', array());
+
+    // Generate a cache ID (cid) specifically for this page.
+    $cid = current_path();
+    if ($paths = current($map)) {
+      $data = array_keys($paths);
+      $expire = REQUEST_TIME + (60 * 60 * 24);
+      cache_set($cid, $data, 'cache_path', $expire);
+    }
+  }
 }
 
 /**
@@ -199,7 +266,7 @@ function arg($index = NULL, $path = NULL) {
 function drupal_get_title() {
   $title = drupal_set_title();
 
-  // during a bootstrap, menu.inc is not included and thus we cannot provide a title
+  // During a bootstrap, menu.inc is not included and thus we cannot provide a title.
   if (!isset($title) && function_exists('menu_get_active_title')) {
     $title = check_plain(menu_get_active_title());
   }
@@ -290,4 +357,23 @@ function drupal_match_path($path, $patterns) {
  */
 function current_path() {
   return $_GET['q'];
+}
+
+/**
+ * Rebuild the path alias white list.
+ *
+ * @return
+ *   An array containing a white list of path aliases.
+ */
+function drupal_path_alias_whitelist_rebuild() {
+  // For each alias in the database, get the top level component of the system
+  // path it corresponds to. This is the portion of the path before the first /
+  // if present, otherwise the whole path itself.
+  $whitelist = array();
+  $result = db_query("SELECT SUBSTRING_INDEX(src, '/', 1) AS path FROM {url_alias} GROUP BY path");
+  foreach ($result as $row) {
+    $whitelist[$row->path] = TRUE;
+  }
+  variable_set('path_alias_whitelist', $whitelist);
+  return $whitelist;
 }

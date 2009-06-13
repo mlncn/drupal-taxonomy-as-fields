@@ -1,8 +1,13 @@
 <?php
-// $Id: field_test.install,v 1.2 2009/02/05 03:42:58 webchick Exp $
+// $Id: field_test.install,v 1.4 2009/05/27 18:34:00 dries Exp $
 
 /**
- * Implementation of hook_schema().
+ * @file
+ * Install, update and uninstall functions for the field_test module.
+ */
+
+/**
+ * Implement hook_schema().
  */
 function field_test_schema() {
   $schema['test_entity'] = array(
@@ -61,14 +66,14 @@ function field_test_schema() {
 }
 
 /**
- * Implementation of hook_install().
+ * Implement hook_install().
  */
 function field_test_install() {
   drupal_install_schema('field_test');
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function field_test_uninstall() {
   drupal_uninstall_schema('field_test');

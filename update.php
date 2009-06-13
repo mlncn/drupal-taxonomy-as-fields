@@ -1,5 +1,5 @@
 <?php
-// $Id: update.php,v 1.282 2009/05/12 08:37:44 dries Exp $
+// $Id: update.php,v 1.289 2009/06/09 11:20:16 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -237,7 +237,7 @@ function update_script_selection_form() {
       foreach (array_keys($updates) as $update) {
         if ($update > $schema_version) {
           // The description for an update comes from its Doxygen.
-          $func = new ReflectionFunction($module. '_update_'. $update);
+          $func = new ReflectionFunction($module . '_update_' . $update);
           $description = str_replace(array("\n", '*', '/'), '', $func->getDocComment());
           $pending[] = "$update - $description";
           if (!isset($default)) {
@@ -253,7 +253,7 @@ function update_script_selection_form() {
           '#type' => 'hidden',
           '#value' => $default,
         );
-        $form['start'][$module. '_updates'] = array(
+        $form['start'][$module . '_updates'] = array(
           '#markup' => theme('item_list', $pending, $module . ' module'),
         );
       }
@@ -292,7 +292,7 @@ function update_batch() {
 
   // During the update, bring the site offline so that schema changes do not
   // affect visiting users.
-  drupal_set_session('site_offline', variable_get('site_offline', FALSE));
+  $_SESSION['site_offline'] = variable_get('site_offline', FALSE);
   if ($_SESSION['site_offline'] == FALSE) {
     variable_set('site_offline', TRUE);
   }
@@ -326,9 +326,9 @@ function update_finished($success, $results, $operations) {
   // clear the caches in case the data has been updated.
   drupal_flush_all_caches();
 
-  drupal_set_session('update_results', $results);
-  drupal_set_session('update_success', $success);
-  drupal_set_session('updates_remaining', $operations);
+  $_SESSION['update_results'] = $results;
+  $_SESSION['update_success'] = $success;
+  $_SESSION['updates_remaining'] = $operations;
 
   // Now that the update is done, we can put the site back online if it was
   // previously turned off.
@@ -499,8 +499,8 @@ function update_check_incompatibility($name, $type = 'module') {
 
   // Store values of expensive functions for future use.
   if (empty($themes) || empty($modules)) {
-    $themes = _system_theme_data();
-    $modules = module_rebuild_cache();
+    $themes = _system_get_theme_data();
+    $modules = system_get_module_data();
   }
 
   if ($type == 'module' && isset($modules[$name])) {
@@ -635,6 +635,8 @@ function update_prepare_d7_bootstrap() {
  * made which make it impossible to continue using the prior version.
  */
 function update_fix_d7_requirements() {
+  $ret = array();
+
   // Rewrite the settings.php file if necessary.
   // @see update_prepare_d7_bootstrap().
   global $update_rewrite_settings, $db_url;
@@ -642,6 +644,21 @@ function update_fix_d7_requirements() {
     $databases = update_parse_db_url($db_url);
     file_put_contents(conf_path() . '/settings.php', "\n" . '$databases = ' . var_export($databases, TRUE) . ';', FILE_APPEND);
   }
+  if (drupal_get_installed_schema_version('system') < 7000 && !variable_get('update_d7_requirements', FALSE)) {
+
+    // Add the cache_path table.
+    $schema['cache_path'] = drupal_get_schema_unprocessed('system', 'cache');
+    $schema['cache_path']['description'] = 'Cache table used for path alias lookups.';
+    db_create_table($ret, 'cache_path', $schema['cache_path']);
+    variable_set('update_d7_requirements', TRUE);
+
+    // Add column for locale context.
+    if (db_table_exists('locales_source')) {
+      db_add_field($ret, 'locales_source', 'context', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => '', 'description' => 'The context this string applies to.'));
+    }
+  }
+
+  return $ret;
 }
 
 /**
@@ -682,7 +699,7 @@ function update_task_list($active = NULL) {
     'finished' => 'Review log',
   );
 
-  drupal_set_content('left', theme('task_list', $tasks, $active));
+  drupal_add_region_content('left', theme('task_list', $tasks, $active));
 }
 
 /**

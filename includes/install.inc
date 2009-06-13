@@ -1,5 +1,5 @@
 <?php
-// $Id: install.inc,v 1.90 2009/05/12 18:08:42 dries Exp $
+// $Id: install.inc,v 1.93 2009/06/08 04:33:35 dries Exp $
 
 /**
  * Indicates that a module has not been installed yet.
@@ -287,7 +287,7 @@ abstract class DatabaseInstaller {
       return FALSE;
     }
     foreach ($this->tests as $test) {
-      $return = $this->runTestQuery($test['query'], $test['success'], $test['message'], !empty($tests['fatal']));
+      $return = $this->runTestQuery($test['query'], $test['success'], $test['message'], !empty($test['fatal']));
       if ($return === FALSE) {
         return FALSE;
       }
@@ -303,11 +303,14 @@ abstract class DatabaseInstaller {
    */
   protected function testConnect() {
     try {
+      // This doesn't actually test the connection.
       db_set_active();
+      // Now actually do a check.
+      Database::getConnection();
       $this->success[] = 'CONNECT';
     }
     catch (Exception $e) {
-      drupal_set_message(st('Failed to connect to your %name database server. %name reports the following message: %error.<ul><li>Are you sure you have the correct username and password?</li><li>Are you sure that you have typed the correct database hostname?</li><li>Are you sure that the database server is running?</li></ul>For more help, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.', array('%error' => $e->getMessage(), 'name' => $this->name())), 'error');
+      drupal_set_message(st('Failed to connect to your %name database server. %name reports the following message: <strong>%error</strong>.<ul><li>Are you sure that you have typed the correct database hostname?</li><li>Are you sure that the database server is running?</li><li>Are you sure you have the correct database name?</li><li>Are you sure you have the correct username and password?</li></ul>For more help, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.', array('%error' => $e->getMessage(), '%name' => $this->name())), 'error');
       return FALSE;
     }
   }
@@ -414,7 +417,7 @@ function drupal_rewrite_settings($settings = array(), $prefix = '') {
 function drupal_get_install_files($module_list = array()) {
   $installs = array();
   foreach ($module_list as $module) {
-    $installs = array_merge($installs, drupal_system_listing('/'. $module . '.install$/', 'modules'));
+    $installs = array_merge($installs, drupal_system_listing('/' . $module . '.install$/', 'modules'));
   }
   return $installs;
 }
@@ -495,7 +498,7 @@ function drupal_verify_profile($profile, $locale) {
  *   Normally just testing wants to set this to TRUE.
  */
 function drupal_install_modules($module_list = array(), $disable_modules_installed_hook = FALSE) {
-  $files = module_rebuild_cache();
+  $files = system_get_module_data();
   $module_list = array_flip(array_values($module_list));
   do {
     $moved = FALSE;
@@ -592,7 +595,7 @@ function drupal_install_system() {
     ->execute();
   // Now that we've installed things properly, bootstrap the full Drupal environment
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
-  module_rebuild_cache();
+  system_get_module_data();
 }
 
 /**
@@ -628,11 +631,11 @@ function drupal_uninstall_modules($module_list = array()) {
       $placeholders = implode(', ', array_fill(0, count($paths), "'%s'"));
 
       $result = db_select('menu_links')
-         ->fields('menu_links')
-         ->condition('router_path', $paths, 'IN')
-         ->condition('external', 0)
-         ->orderBy('depth')
-         ->execute();
+        ->fields('menu_links')
+        ->condition('router_path', $paths, 'IN')
+        ->condition('external', 0)
+        ->orderBy('depth')
+        ->execute();
       // Remove all such items. Starting from those with the greatest depth will
       // minimize the amount of re-parenting done by menu_link_delete().
       foreach ($result as $item) {
@@ -938,7 +941,7 @@ function drupal_check_profile($profile) {
   $requirements = array();
   foreach ($installs as $install) {
     require_once DRUPAL_ROOT . '/' . $install->filepath;
-    $function = $install->name. '_requirements';
+    $function = $install->name . '_requirements';
     if (function_exists($function)) {
       $requirements = array_merge($requirements, $function('install'));
     }

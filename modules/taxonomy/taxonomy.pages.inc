@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.pages.inc,v 1.26 2009/04/26 19:44:40 dries Exp $
+// $Id: taxonomy.pages.inc,v 1.29 2009/06/12 13:59:56 dries Exp $
 
 /**
  * @file
@@ -50,9 +50,11 @@ function taxonomy_term_page($terms, $depth = 0, $op = 'page') {
           drupal_add_css(drupal_get_path('module', 'taxonomy') . '/taxonomy.css');
 
           $build = array();
-          // Only display the description if we have a single term, to avoid clutter and confusion.
+          // Only display fields if we have a single term, to avoid clutter and
+          // confusion.
           if (count($tids) == 1) {
             $term = taxonomy_term_load($tids[0]);
+            $build += field_attach_view('taxonomy_term', $term);
             if (!empty($term->description)) {
               $build['term_description'] = array(
                 '#markup' => filter_xss_admin($term->description),
@@ -79,7 +81,7 @@ function taxonomy_term_page($terms, $depth = 0, $op = 'page') {
             );
           }
 
-          return drupal_get_page($build);
+          return $build;
 
         case 'feed':
           $channel['link'] = url('taxonomy/term/' . $str_tids . '/' . $depth, array('absolute' => TRUE));
@@ -134,11 +136,11 @@ function taxonomy_autocomplete($vid, $string = '') {
     $tags = $query
       ->fields('t', array('tid', 'name'))
       ->condition('t.vid', $vid)
-      ->where("LOWER(t.name) LIKE LOWER(:last_string)", array(':last_string' => '%'. $last_string .'%'))
+      ->where("LOWER(t.name) LIKE LOWER(:last_string)", array(':last_string' => '%' . $last_string . '%'))
       ->range(0, 10)
       ->execute()
       ->fetchAllKeyed();
-      
+
     $prefix = count($array) ? implode(', ', $array) . ', ' : '';
 
     foreach ($tags as $tid => $name) {

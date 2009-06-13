@@ -1,5 +1,5 @@
 <?php
-// $Id: statistics.admin.inc,v 1.23 2009/04/27 18:58:41 webchick Exp $
+// $Id: statistics.admin.inc,v 1.25 2009/05/24 17:39:34 dries Exp $
 
 /**
  * @file
@@ -23,7 +23,7 @@ function statistics_recent_hits() {
     ->fields('a', array('aid', 'timestamp', 'path', 'title', 'uid'))
     ->fields('u', array('name'))
     ->limit(30)
-    ->setHeader($header);
+    ->orderByHeader($header);
 
   $result = $query->execute();
   $rows = array();
@@ -61,12 +61,12 @@ function statistics_top_pages() {
   $query->addExpression('MAX(title)', 'title');
   $query->addExpression('AVG(timer)', 'average_time');
   $query->addExpression('SUM(timer)', 'total_time');
-  
+
   $query
     ->fields('accesslog', array('path'))
     ->groupBy('path')
     ->limit(30)
-    ->setHeader($header);
+    ->orderByHeader($header);
 
   $count_query = db_select('accesslog');
   $count_query->addExpression('COUNT(DISTINCT path)');
@@ -114,12 +114,12 @@ function statistics_top_visitors() {
     ->groupBy('u.name')
     ->groupBy('bl.iid')
     ->limit(30)
-    ->setHeader($header);
+    ->orderByHeader($header);
 
   $count_query = db_select('accesslog');
   $count_query->addExpression('COUNT(DISTINCT CONCAT(CAST(uid AS char), hostname))');
   $query->setCountQuery($count_query);
-  
+
   $result = $query->execute();
   $rows = array();
   foreach ($result as $account) {
@@ -155,16 +155,16 @@ function statistics_top_referrers() {
   $query->addExpression('MAX(timestamp)', 'last');
   $query
     ->fields('a', array('url'))
-    ->where('LOWER(url) NOT LIKE :host', array(':host' => '%'. $_SERVER['HTTP_HOST'] .'%'))
+    ->where('LOWER(url) NOT LIKE :host', array(':host' => '%' . $_SERVER['HTTP_HOST'] . '%'))
     ->condition('url', '', '<>')
     ->groupBy('url')
     ->limit(30)
-    ->setHeader($header);
+    ->orderByHeader($header);
 
   $count_query = db_select('accesslog');
   $count_query->addExpression('COUNT(DISTINCT url)');
   $count_query
-    ->where('LOWER(url) NOT LIKE :host', array(':host' => '%'. $_SERVER['HTTP_HOST'] .'%'))
+    ->where('LOWER(url) NOT LIKE :host', array(':host' => '%' . $_SERVER['HTTP_HOST'] . '%'))
     ->condition('url', '', '<>');
   $query->setCountQuery($count_query);
 

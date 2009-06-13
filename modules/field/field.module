@@ -1,9 +1,18 @@
 <?php
-// $Id: field.module,v 1.7 2009/03/26 13:31:24 webchick Exp $
+// $Id: field.module,v 1.13 2009/06/06 16:17:30 webchick Exp $
 /**
  * @file
  * Attach custom data fields to Drupal objects.
  */
+
+/*
+ * Load all public Field API functions. Drupal currently has no
+ * mechanism for auto-loading core APIs, so we have to load them on
+ * every page request.
+ */
+require(DRUPAL_ROOT . '/modules/field/field.crud.inc');
+require(DRUPAL_ROOT . '/modules/field/field.info.inc');
+require(DRUPAL_ROOT . '/modules/field/field.attach.inc');
 
 /**
  * @defgroup field Field API
@@ -78,6 +87,25 @@ define('FIELD_LOAD_CURRENT', 'FIELD_LOAD_CURRENT');
  */
 define('FIELD_LOAD_REVISION', 'FIELD_LOAD_REVISION');
 
+/**
+ * @name Field query flags
+ * @{
+ * Flags for use in the $result_format parameter in field_attach_query().
+ */
+
+/**
+ * Result format argument for field_attach_query().
+ */
+define('FIELD_QUERY_RETURN_VALUES', 'FIELD_QUERY_RETURN_VALUES');
+
+/**
+ * Result format argument for field_attach_query().
+ */
+define('FIELD_QUERY_RETURN_IDS', 'FIELD_QUERY_RETURN_IDS');
+
+/**
+ * @} End of "Field query flags".
+ */
 
 /**
  * Base class for all exceptions thrown by Field API functions.
@@ -88,39 +116,33 @@ define('FIELD_LOAD_REVISION', 'FIELD_LOAD_REVISION');
 class FieldException extends Exception {}
 
 /**
- * Implementation of hook_flush_caches.
+ * Implement hook_flush_caches.
  */
 function field_flush_caches() {
   return array('cache_field');
 }
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function field_help($path, $arg) {
   switch ($path) {
     case 'admin/help#field':
-      $output = '<p>' . t('The Field API allows custom data fields to be attached to Drupal objects and takes care of storing, loading, editing, and rendering field data.  Any object type (node, user, etc.) can use the Field API to make itself "fieldable" and thus allow fields to be attached to it.') . '</p>';
-      $output .= '<p>' .t('The Field API provides no user interface on its own.  Use the Content Construction Kit (CCK) contrib module to manage custom fields via a web browser.') . '</p>';
+      $output = '<p>' . t('The Field API allows custom data fields to be attached to Drupal objects and takes care of storing, loading, editing, and rendering field data. Any object type (node, user, etc.) can use the Field API to make itself "fieldable" and thus allow fields to be attached to it.') . '</p>';
+      $output .= '<p>' . t('The Field API provides no user interface on its own. Use the Content Construction Kit (CCK) contrib module to manage custom fields via a web browser.') . '</p>';
       return $output;
   }
 }
 
 /**
- * Implementation of hook_init().
- *
- * TODO D7: Determine which functions need to always be "loaded", and
- * put autoloaders for them into field.autoload.inc. Also figure out
- * how to make this work during installation.
+ * Implement hook_init().
  */
 function field_init() {
-  module_load_include('inc', 'field', 'field.crud');
-  module_load_include('inc', 'field', 'field.autoload');
   drupal_add_css(drupal_get_path('module', 'field') . '/theme/field.css');
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function field_menu() {
   $items = array();
@@ -136,7 +158,7 @@ function field_menu() {
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function field_theme() {
   $path = drupal_get_path('module', 'field') . '/theme';
@@ -161,14 +183,14 @@ function field_theme() {
 }
 
 /**
- * Implementation of hook_modules_installed().
+ * Implement hook_modules_installed().
  */
 function field_modules_installed($modules) {
   field_cache_clear();
 }
 
 /**
- * Implementation of hook_modules_uninstalled().
+ * Implement hook_modules_uninstalled().
  */
 function field_modules_uninstalled($modules) {
   module_load_include('inc', 'field', 'field.crud');
@@ -179,7 +201,7 @@ function field_modules_uninstalled($modules) {
 }
 
 /**
- * Implementation of hook_modules_enabled().
+ * Implement hook_modules_enabled().
  */
 function field_modules_enabled($modules) {
   foreach ($modules as $module) {
@@ -189,7 +211,7 @@ function field_modules_enabled($modules) {
 }
 
 /**
- * Implementation of hook_modules_disabled().
+ * Implement hook_modules_disabled().
  */
 function field_modules_disabled($modules) {
   foreach ($modules as $module) {
@@ -453,7 +475,7 @@ function field_format($obj_type, $object, $field, $item, $formatter_name = NULL,
 }
 
 /**
- * Render a single field, fully themed with label and multiple values.
+ * Return a single field, fully themed with label and multiple values.
  *
  * To be used by third-party code (Views, Panels...) that needs to output
  * an isolated field. Do *not* use inside node templates, use the
@@ -494,8 +516,8 @@ function field_view_field($obj_type, $object, $field, $instance, $teaser = FALSE
     // TODO : what about hook_field_attach_view ?
 
     // field_default_view() adds a wrapper to handle variables and 'excluded'
-    // fields for node templates. We bypass it and render the actual field.
-    $output = drupal_render($view[$field['field_name']]['field']);
+    // fields for node templates. We bypass it and return the actual field.
+    $output = $view[$field['field_name']]['field'];
   }
   return $output;
 }

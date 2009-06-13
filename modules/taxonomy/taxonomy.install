@@ -1,8 +1,13 @@
 <?php
-// $Id: taxonomy.install,v 1.15 2009/01/31 16:22:50 webchick Exp $
+// $Id: taxonomy.install,v 1.19 2009/06/12 13:59:56 dries Exp $
+
+/**
+ * @file
+ * Install, update and uninstall functions for the taxonomy module.
+ */
 
  /**
- * Implementation of hook_install().
+ * Implement hook_install().
  */
 function taxonomy_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function taxonomy_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function taxonomy_uninstall() {
   // Remove tables.
@@ -22,7 +27,7 @@ function taxonomy_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function taxonomy_schema() {
   $schema['taxonomy_term_data'] = array(
@@ -63,6 +68,9 @@ function taxonomy_schema() {
       ),
     ),
     'primary key' => array('tid'),
+    'foreign keys' => array(
+      'vid' => array('taxonomy_vocabulary' => 'vid'),
+    ),
     'indexes' => array(
       'taxonomy_tree' => array('vid', 'weight', 'name'),
       'vid_name' => array('vid', 'name'),
@@ -89,6 +97,9 @@ function taxonomy_schema() {
     ),
     'indexes' => array(
       'parent' => array('parent'),
+    ),
+    'foreign keys' => array(
+      'tid' => array('taxonomy_term_data' => 'tid'),
     ),
     'primary key' => array('tid', 'parent'),
   );
@@ -122,6 +133,11 @@ function taxonomy_schema() {
       'vid' => array('vid'),
       'nid' => array('nid'),
     ),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+      'vid' => array('node' => 'vid'),
+      'tid' => array('taxonomy_term_data' => 'tid'),
+    ),
     'primary key' => array('tid', 'vid'),
   );
 
@@ -154,6 +170,10 @@ function taxonomy_schema() {
     'indexes' => array(
       'tid2' => array('tid2'),
     ),
+    'foreign keys' => array(
+      'tid1' => array('taxonomy_term_data' => 'tid'),
+      'tid2' => array('taxonomy_term_data' => 'tid'),
+    ),
     'primary key' => array('trid'),
   );
 
@@ -184,6 +204,9 @@ function taxonomy_schema() {
       'tid' => array('tid'),
       'name_tid' => array('name', 'tid'),
     ),
+    'foreign keys' => array(
+      'tid' => array('taxonomy_term_data' => 'tid'),
+    ),
     'primary key' => array('tsid'),
   );
 
@@ -202,6 +225,13 @@ function taxonomy_schema() {
         'not null' => TRUE,
         'default' => '',
         'description' => 'Name of the vocabulary.',
+      ),
+      'machine_name' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The vocabulary machine name.',
       ),
       'description' => array(
         'type' => 'text',
@@ -299,6 +329,9 @@ function taxonomy_schema() {
     'indexes' => array(
       'vid' => array('vid'),
     ),
+    'foreign keys' => array(
+      'vid' => array('taxonomy_vocabulary' => 'vid'),
+    ),
   );
 
   return $schema;
@@ -317,5 +350,31 @@ function taxonomy_update_7001() {
   db_rename_table($ret, 'vocabulary', 'taxonomy_vocabulary');
   db_rename_table($ret, 'vocabulary_node_types', 'taxonomy_vocabulary_node_type');
 
+  return $ret;
+}
+
+/**
+ * Add vocabulary machine_name column.
+ */
+function taxonomy_update_7002() {
+  $ret = array();
+  $field = array(
+    'type' => 'varchar',
+    'length' => 255,
+    'not null' => TRUE,
+    'default' => '',
+    'description' => 'The vocabulary machine name.',
+  );
+
+  db_add_field($ret, 'taxonomy_vocabulary', 'machine_name', $field);
+
+  foreach (taxonomy_get_vocabularies() as $vid => $vocabulary) {
+    $machine_name = 'vocabulary_' . $vid;
+    db_update('taxonomy_vocabulary')
+      ->fields(array('machine_name' => 'vocabulary_' . $vid))
+      ->condition('vid', $vid)
+      ->execute();
+    field_attach_create_bundle($machine_name);
+  }
   return $ret;
 }

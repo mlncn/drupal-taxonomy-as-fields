@@ -1,5 +1,5 @@
 <?php
-// $Id: openid.module,v 1.45 2009/04/29 07:29:59 dries Exp $
+// $Id: openid.module,v 1.50 2009/06/10 20:13:20 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function openid_menu() {
   $items['openid/authenticate'] = array(
@@ -36,13 +36,13 @@ function openid_menu() {
 }
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function openid_help($path, $arg) {
   switch ($path) {
     case 'user/%/openid':
-      $output = '<p>' . t('This site supports <a href="@openid-net">OpenID</a>, a secure way to log into many websites using a single username and password. OpenID can reduce the necessity of managing many usernames and passwords for many websites.', array('@openid-net' => url('http://openid.net'))) . '</p>';
-      $output .= '<p>' . t('To use OpenID you must first establish an identity on a public or private OpenID server. If you do not have an OpenID and would like one, look into one of the <a href="@openid-providers">free public providers</a>. You can find out more about OpenID at <a href="@openid-net">this website</a>.', array('@openid-providers' => url('http://openid.net/get/'), '@openid-net' => url('http://openid.net'))) . '</p>';
+      $output = '<p>' . t('This site supports <a href="@openid-net">OpenID</a>, a secure way to log into many websites using a single username and password. OpenID can reduce the necessity of managing many usernames and passwords for many websites.', array('@openid-net' => 'http://openid.net')) . '</p>';
+      $output .= '<p>' . t('To use OpenID you must first establish an identity on a public or private OpenID server. If you do not have an OpenID and would like one, look into one of the <a href="@openid-providers">free public providers</a>. You can find out more about OpenID at <a href="@openid-net">this website</a>.', array('@openid-providers' => 'http://openid.net/get/', '@openid-net' => 'http://openid.net')) . '</p>';
       $output .= '<p>' . t('If you already have an OpenID, enter the URL to your OpenID server below (e.g. myusername.openidprovider.com). Next time you login, you will be able to use this URL instead of a regular username and password. You can have multiple OpenID servers if you like; just keep adding them here.') . '</p>';
       return $output;
 
@@ -50,14 +50,14 @@ function openid_help($path, $arg) {
       $output = '<p>' . t('OpenID is a secure method for logging into many websites with a single username and password. It does not require special software, and it does not share passwords with any site to which it is associated; including your site.') . '</p>';
       $output .= '<p>' . t('Users can create accounts using their OpenID, assign one or more OpenIDs to an existing account, and log in using an OpenID. This lowers the barrier to registration, which is good for the site, and offers convenience and security to the users. OpenID is not a trust system, so email verification is still necessary. The benefit stems from the fact that users can have a single password that they can use on many websites. This means they can easily update their single password from a centralized location, rather than having to change dozens of passwords individually.') . '</p>';
       $output .= '<p>' . t('The basic concept is as follows: A user has an account on an OpenID server. This account provides them with a unique URL (such as myusername.openidprovider.com). When the user comes to your site, they are presented with the option of entering this URL. Your site then communicates with the OpenID server, asking it to verify the identity of the user. If the user is logged into their OpenID server, the server communicates back to your site, verifying the user. If they are not logged in, the OpenID server will ask the user for their password. At no point does your site record, or need to record the user\'s password.') . '</p>';
-      $output .= '<p>' . t('More information on OpenID is available at <a href="@openid-net">OpenID.net</a>.', array('@openid-net' => url('http://openid.net'))) . '</p>';
+      $output .= '<p>' . t('More information on OpenID is available at <a href="@openid-net">OpenID.net</a>.', array('@openid-net' => 'http://openid.net')) . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@handbook">OpenID module</a>.', array('@handbook' => 'http://drupal.org/handbook/modules/openid')) . '</p>';
       return $output;
   }
 }
 
 /**
- * Implementation of hook_user_insert().
+ * Implement hook_user_insert().
  */
 function openid_user_insert(&$edit, &$account, $category = NULL) {
   if (isset($_SESSION['openid']['values'])) {
@@ -70,14 +70,14 @@ function openid_user_insert(&$edit, &$account, $category = NULL) {
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function openid_form_user_login_block_alter(&$form, &$form_state) {
   _openid_user_login_form_alter($form, $form_state);
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function openid_form_user_login_alter(&$form, &$form_state) {
   _openid_user_login_form_alter($form, $form_state);
@@ -122,7 +122,7 @@ function _openid_user_login_form_alter(&$form, &$form_state) {
 }
 
 /**
- * Implementation of hook_form_alter(). Adds OpenID login to the login forms.
+ * Implement hook_form_alter(). Adds OpenID login to the login forms.
  */
 function openid_form_user_register_alter(&$form, &$form_state) {
   if (isset($_SESSION['openid']['values'])) {
@@ -174,9 +174,6 @@ function openid_begin($claimed_id, $return_to = '', $form_values = array()) {
   }
 
   // Store discovered information in the users' session so we don't have to rediscover.
-  if (!isset($_SESSION['openid'])) {
-    drupal_set_session('openid', array());
-  }
   $_SESSION['openid']['service'] = $services[0];
   // Store the claimed id
   $_SESSION['openid']['claimed_id'] = $claimed_id;
@@ -384,14 +381,14 @@ function openid_association($op_endpoint) {
       $assoc_response['mac_key'] = base64_encode(_openid_dh_xorsecret($shared, $enc_mac_key));
     }
     db_insert('openid_association')
-     ->fields(array(
-       'idp_endpoint_uri' => $op_endpoint,
-       'session_type' => $assoc_response['session_type'],
-       'assoc_handle' => $assoc_response['assoc_handle'],
-       'assoc_type' => $assoc_response['assoc_type'],
-       'expires_in' => $assoc_response['expires_in'],
-       'mac_key' => $assoc_response['mac_key'],
-       'created' => REQUEST_TIME,
+      ->fields(array(
+        'idp_endpoint_uri' => $op_endpoint,
+        'session_type' => $assoc_response['session_type'],
+        'assoc_handle' => $assoc_response['assoc_handle'],
+        'assoc_type' => $assoc_response['assoc_type'],
+        'expires_in' => $assoc_response['expires_in'],
+        'mac_key' => $assoc_response['mac_key'],
+        'created' => REQUEST_TIME,
       ))
       ->execute();
     $assoc_handle = $assoc_response['assoc_handle'];
@@ -434,9 +431,6 @@ function openid_authentication($response) {
       // We were unable to register a valid new user, redirect to standard
       // user/register and prefill with the values we received.
       drupal_set_message(t('OpenID registration failed for the reasons listed. You may register now, or if you already have an account you can <a href="@login">log in</a> now and add your OpenID under "My Account"', array('@login' => url('user/login'))), 'error');
-      if (!isset($_SESSION['openid'])) {
-        drupal_set_session('openid', array());
-      }
       $_SESSION['openid']['values'] = $form_state['values'];
       // We'll want to redirect back to the same place.
       $destination = drupal_get_destination();
@@ -483,17 +477,16 @@ function openid_association_request($public) {
 function openid_authentication_request($claimed_id, $identity, $return_to = '', $assoc_handle = '', $version = 2) {
   module_load_include('inc', 'openid');
 
-  $ns = ($version == 2) ? OPENID_NS_2_0 : OPENID_NS_1_0;
   $request =  array(
-    'openid.ns' => $ns,
     'openid.mode' => 'checkid_setup',
     'openid.identity' => $identity,
-    'openid.claimed_id' => $claimed_id,
     'openid.assoc_handle' => $assoc_handle,
     'openid.return_to' => $return_to,
   );
 
   if ($version == 2) {
+    $request['openid.ns'] = OPENID_NS_2_0;
+    $request['openid.claimed_id'] = $claimed_id;
     $request['openid.realm'] = url('', array('absolute' => TRUE));
   }
   else {

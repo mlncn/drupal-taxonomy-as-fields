@@ -1,5 +1,5 @@
 <?php
-// $Id: file.test,v 1.29 2009/04/22 09:45:03 dries Exp $
+// $Id: file.test,v 1.32 2009/06/02 13:42:40 dries Exp $
 
 /**
  *  @file
@@ -568,7 +568,7 @@ class FileSaveUploadTest extends FileHookTestCase {
    * Test the file_save_upload() function.
    */
   function testNormal() {
-    $max_fid_after = db_result(db_query('SELECT MAX(fid) AS fid FROM {files}'));
+    $max_fid_after = db_query('SELECT MAX(fid) AS fid FROM {files}')->fetchField();
     $this->assertTrue($max_fid_after > $this->maxFidBefore, t('A new file was created.'));
     $file1 = file_load($max_fid_after);
     $this->assertTrue($file1, t('Loaded the file.'));
@@ -705,13 +705,13 @@ class FileDirectoryTest extends FileTestCase {
     $this->assertDirectoryPermissions($directory, variable_get('file_chmod_directory', 0775));
 
     // Remove .htaccess file to then test that it gets re-created.
-    @unlink(file_directory_path() .'/.htaccess');
+    @unlink(file_directory_path() . '/.htaccess');
     $directory = file_directory_path();
     file_check_directory($directory);
     $this->assertTrue(is_file(file_directory_path() . '/.htaccess'), t('Successfully created the .htaccess file in the files directory.'), 'File');
 
     // Verify contents of .htaccess file.
-    $file = file_get_contents(file_directory_path() .'/.htaccess');
+    $file = file_get_contents(file_directory_path() . '/.htaccess');
     $this->assertEqual($file, "SetHandler Drupal_Security_Do_Not_Remove_See_SA_2006_006\nOptions None\nOptions +FollowSymLinks", t('The .htaccess file contains the proper content.'), 'File');
   }
 
@@ -773,14 +773,14 @@ class FileDirectoryTest extends FileTestCase {
     // directory.
     $basename = 'xyz.txt';
     $directory = 'misc';
-    $original = $directory .'/'. $basename;
+    $original = $directory . '/' . $basename;
     $path = file_create_filename($basename, $directory);
     $this->assertEqual($path, $original, t('New filepath %new equals %original.', array('%new' => $path, '%original' => $original)), 'File');
 
     // Then we test against a file that already exists within that directory.
     $basename = 'druplicon.png';
-    $original = $directory .'/'. $basename;
-    $expected = $directory .'/druplicon_0.png';
+    $original = $directory . '/' . $basename;
+    $expected = $directory . '/druplicon_0.png';
     $path = file_create_filename($basename, $directory);
     $this->assertEqual($path, $expected, t('Creating a new filepath from %original equals %new.', array('%new' => $path, '%original' => $original)), 'File');
 
@@ -1995,5 +1995,39 @@ class FileNameMungingTest extends FileTestCase {
     // @TODO uncomment when this tests passes reliably, see
     // http://drupal.org/node/368502
     // $this->assertIdentical($unmunged_name, $this->name, t('The unmunged (%unmunged) filename matches the original (%original)', array('%unmunged' => $unmunged_name, '%original' => $this->name)));
+  }
+}
+
+/**
+ * Tests for file_get_mimetype().
+ */
+class FileMimeTypeTest extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => t('File mimetypes'),
+      'description' => t('Test filename mimetype detection.'),
+      'group' => t('File'),
+    );
+  }
+
+  /**
+   * Test basic extraction of mimetypes from the filename.
+   */
+  public function testFileMimeTypeDetection() {
+    $test_case = array(
+      'test.jar' => 'application/java-archive',
+      'test.jpeg' => 'image/jpeg',
+      'test.jpg' => 'image/jpeg',
+      'test.jar.jpg' => 'image/jpeg',
+      'test.jpg.jar' => 'application/java-archive',
+      'test.pcf.Z' => 'application/x-font',
+      'pcf.Z' => 'application/octet-stream',
+      'jar' => 'application/octet-stream',
+    );
+
+    foreach ($test_case as $input => $expected) {
+      $output = file_get_mimetype($input);
+      $this->assertIdentical($output, $expected, t('Mimetype for %input is %output (expected: %expected).', array('%input' => $input, '%output' => $output, '%expected' => $expected)));
+    }
   }
 }

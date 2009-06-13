@@ -23,7 +23,7 @@ ErrorDocument 404 /index.php
 </Files>
 
 # Set the default handler.
-DirectoryIndex index.php
+DirectoryIndex index.php index.html index.htm
 
 # Override PHP settings that cannot be changed at runtime. See
 # sites/default/default.settings.php and drupal_initialize_variables() in
@@ -64,15 +64,15 @@ DirectoryIndex index.php
   #
   # To redirect all users to access the site WITH the 'www.' prefix,
   # (http://example.com/... will be redirected to http://www.example.com/...)
-  # adapt and uncomment the following:
-  # RewriteCond %{HTTP_HOST} ^example\.com$ [NC]
-  # RewriteRule ^(.*)$ http://www.example.com/$1 [L,R=301]
+  # uncomment the following:
+  # RewriteCond %{HTTP_HOST} !^www\. [NC]
+  # RewriteRule ^ http://www.%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
   #
   # To redirect all users to access the site WITHOUT the 'www.' prefix,
   # (http://www.example.com/... will be redirected to http://example.com/...)
-  # uncomment and adapt the following:
-  # RewriteCond %{HTTP_HOST} ^www\.example\.com$ [NC]
-  # RewriteRule ^(.*)$ http://example.com/$1 [L,R=301]
+  # uncomment the following:
+  # RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
+  # RewriteRule ^ http://%1%{REQUEST_URI} [L,R=301]
 
   # Modify the RewriteBase if you are using Drupal in a subdirectory or in a
   # VirtualDocumentRoot and the rewrite rules are not working properly.
@@ -91,4 +91,4 @@ DirectoryIndex index.php
   RewriteRule ^(.*)$ index.php?q=$1 [L,QSA]
 </IfModule>
 
-# $Id: .htaccess,v 1.100 2009/04/22 09:45:02 dries Exp $
+# $Id: .htaccess,v 1.102 2009/06/09 05:08:16 dries Exp $

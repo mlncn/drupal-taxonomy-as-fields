@@ -1,5 +1,5 @@
 <?php
-// $Id: translation.module,v 1.44 2009/05/09 18:28:13 dries Exp $
+// $Id: translation.module,v 1.48 2009/06/12 08:39:40 dries Exp $
 
 /**
  * @file
@@ -26,7 +26,7 @@
 define('TRANSLATION_ENABLED', 2);
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function translation_help($path, $arg) {
   switch ($path) {
@@ -35,7 +35,7 @@ function translation_help($path, $arg) {
       $output .= '<p>' . t('Configuring content translation and translation-enabled content types:') . '</p>';
       $output .= '<ul><li>' . t('Assign the <em>translate content</em> permission to the appropriate user roles at the <a href="@permissions">Permissions configuration page</a>.', array('@permissions' => url('admin/user/permissions'))) . '</li>';
       $output .= '<li>' . t('Add and enable desired languages at the <a href="@languages">Languages configuration page</a>.', array('@languages' => url('admin/settings/language'))) . '</li>';
-      $output .= '<li>' . t('Determine which <a href="@content-types">content types</a> should support translation features. To enable translation support for a content type, edit the type and at the <em>Multilingual support</em> drop down, select <em>Enabled, with translation</em>. (<em>Multilingual support</em> is located within <em>Workflow settings</em>.) Be sure to save each content type after enabling multilingual support.', array('@content-types' => url('admin/build/types'))) . '</li></ul>';
+      $output .= '<li>' . t('Determine which <a href="@content-types">content types</a> should support translation features. To enable translation support for a content type, edit the type and at the <em>Multilingual support</em> drop down, select <em>Enabled, with translation</em>. (<em>Multilingual support</em> is located within <em>Publishing options</em>.) Be sure to save each content type after enabling multilingual support.', array('@content-types' => url('admin/build/types'))) . '</li></ul>';
       $output .= '<p>' . t('Working with translation-enabled content types:') . '</p>';
       $output .= '<ul><li>' . t('Use the <em>Language</em> drop down to select the appropriate language when creating or editing posts.') . '</li>';
       $output .= '<li>' . t('Provide new or edit current translations for existing posts via the <em>Translation</em> tab. Only visible while viewing a post as a user with the <em>translate content</em> permission, this tab allows translations to be added or edited using a specialized editing form that also displays the content being translated.') . '</li>';
@@ -51,7 +51,7 @@ function translation_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function translation_menu() {
   $items = array();
@@ -82,7 +82,7 @@ function _translation_tab_access($node) {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function translation_perm() {
   return array(
@@ -94,7 +94,7 @@ function translation_perm() {
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function translation_form_node_type_form_alter(&$form, &$form_state) {
   // Add translation option to content type form.
@@ -104,7 +104,7 @@ function translation_form_node_type_form_alter(&$form, &$form_state) {
 }
 
 /**
- * Implementation of hook_form_alter().
+ * Implement hook_form_alter().
  *
  * - Add translation option to content type form.
  * - Alters language fields on node forms when a translation
@@ -162,7 +162,7 @@ function translation_form_alter(&$form, &$form_state, $form_id) {
 }
 
 /**
- * Implementation of hook_node_view().
+ * Implement hook_node_view().
  *
  * Display translation links with native language names, if this node
  * is part of a translation set.
@@ -190,7 +190,7 @@ function translation_node_view($node, $teaser = FALSE) {
 }
 
 /**
- * Implementation of hook_node_prepare().
+ * Implement hook_node_prepare().
  */
 function translation_node_prepare($node) {
   // Only act if we are dealing with a content type supporting translations.
@@ -213,7 +213,6 @@ function translation_node_prepare($node) {
       $node->language = $language;
       $node->translation_source = $source_node;
       $node->title = $node->translation_source->title;
-      $node->body = $node->translation_source->body;
       // Let every module add custom translated fields.
       module_invoke_all('node_prepare_translation', $node);
     }
@@ -221,7 +220,7 @@ function translation_node_prepare($node) {
 }
 
 /**
- * Implementation of hook_node_insert().
+ * Implement hook_node_insert().
  */
 function translation_node_insert($node) {
   // Only act if we are dealing with a content type supporting translations.
@@ -254,7 +253,7 @@ function translation_node_insert($node) {
 }
 
 /**
- * Implementation of hook_node_update().
+ * Implement hook_node_update().
  */
 function translation_node_update($node) {
   // Only act if we are dealing with a content type supporting translations.
@@ -281,7 +280,7 @@ function translation_node_update($node) {
 }
 
 /**
- * Implementation of hook_node_validate().
+ * Implement hook_node_validate().
  *
  * Ensure that duplicate translations can not be created for the same source.
  */
@@ -297,7 +296,7 @@ function translation_node_validate($node, $form) {
 }
 
 /**
- * Implementation of hook_node_delete().
+ * Implement hook_node_delete().
  */
 function translation_node_delete($node) {
   // Only act if we are dealing with a content type supporting translations.
@@ -355,9 +354,9 @@ function translation_remove_from_set($node) {
  *   need more properties. The array is indexed by language code.
  */
 function translation_node_get_translations($tnid) {
-  static $translations = array();
-
   if (is_numeric($tnid) && $tnid) {
+    $translations = &drupal_static(__FUNCTION__, array());
+
     if (!isset($translations[$tnid])) {
       $translations[$tnid] = array();
       $result = db_select('node', 'n')
@@ -406,7 +405,7 @@ function translation_path_get_translations($path) {
 }
 
 /**
- * Implementation of hook_translation_link_alter().
+ * Implement hook_translation_link_alter().
  *
  * Replaces links with pointers to translated versions of the content.
  */

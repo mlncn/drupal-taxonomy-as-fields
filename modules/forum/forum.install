@@ -1,8 +1,13 @@
 <?php
-// $Id: forum.install,v 1.26 2009/01/14 21:16:20 dries Exp $
+// $Id: forum.install,v 1.29 2009/06/01 22:07:09 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the forum module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function forum_install() {
   // Create tables.
@@ -40,7 +45,7 @@ function forum_enable() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function forum_uninstall() {
   // Load the dependent Taxonomy module, in case it has been disabled.
@@ -61,7 +66,7 @@ function forum_uninstall() {
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function forum_schema() {
   $schema['forum'] = array(
@@ -94,6 +99,10 @@ function forum_schema() {
       'tid' => array('tid'),
     ),
     'primary key' => array('vid'),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+      'vid' => array('node' => 'vid'),
+    ),
   );
 
   return $schema;

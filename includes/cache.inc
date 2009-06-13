@@ -1,5 +1,5 @@
 <?php
-// $Id: cache.inc,v 1.31 2009/05/04 10:40:10 dries Exp $
+// $Id: cache.inc,v 1.33 2009/05/21 10:17:37 dries Exp $
 
 /**
  * Return data from the persistent cache. Data may be stored as either plain
@@ -66,7 +66,7 @@ function cache_get($cid, $table = 'cache') {
  * users. This is the only table affected by the page cache setting on
  * the administrator panel.
  *
- * 'cache_menu': Stores the cachable part of the users' menus.
+ * 'cache_menu': Stores the cacheable part of the users' menus.
  *
  * 'cache_filter': Stores filtered pieces of content. This table is
  * periodically cleared of stale entries by cron.
@@ -79,7 +79,7 @@ function cache_get($cid, $table = 'cache') {
  * - we try to put fast changing cache items and rather static
  *   ones into different tables. The effect is that only the fast
  *   changing tables will need a lot of writes to disk. The more
- *   static tables will also be better cachable with MySQL's query cache
+ *   static tables will also be better cacheable with MySQL's query cache
  *
  * @param $cid
  *   The cache ID of the data to store.
@@ -168,7 +168,7 @@ function cache_clear_all($cid = NULL, $table = NULL, $wildcard = FALSE) {
         variable_set('cache_flush_' . $table, REQUEST_TIME);
       }
       elseif (REQUEST_TIME > ($cache_flush + variable_get('cache_lifetime', 0))) {
-        // Clear the cache for everyone, cache_flush_delay seconds have
+        // Clear the cache for everyone, cache_lifetime seconds have
         // passed since the first request to clear the cache.
         db_delete($table)
           ->condition('expire', CACHE_PERMANENT, '<>')

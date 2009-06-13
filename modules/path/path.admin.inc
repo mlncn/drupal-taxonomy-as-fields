@@ -1,5 +1,5 @@
 <?php
-// $Id: path.admin.inc,v 1.20 2009/05/10 16:50:19 dries Exp $
+// $Id: path.admin.inc,v 1.23 2009/06/11 04:59:26 dries Exp $
 
 /**
  * @file
@@ -15,8 +15,8 @@ function path_admin_overview($keys = NULL) {
   // Add the filter form above the overview table.
   $output = drupal_get_form('path_admin_filter_form', $keys);
   // Enable language column if locale is enabled or if we have any alias with language
-  $count = db_query("SELECT COUNT(*) FROM {url_alias} WHERE language <> ''")->fetchField();
-  $multilanguage = (module_exists('locale') || $count);
+  $alias_exists = (bool) db_query_range('SELECT 1 FROM {url_alias} WHERE language <> :language', array(':language' => ''), 0, 1)->fetchField();
+  $multilanguage = (module_exists('locale') || $alias_exists);
 
   $header = array(
     array('data' => t('Alias'), 'field' => 'dst', 'sort' => 'asc'),
@@ -34,7 +34,7 @@ function path_admin_overview($keys = NULL) {
   }
   $result = $query
     ->fields('url_alias')
-    ->setHeader($header)
+    ->orderByHeader($header)
     ->limit(50)
     ->execute();
 
@@ -100,7 +100,7 @@ function path_admin_form(&$form_state, $edit = array('src' => '', 'dst' => '', '
     '#type' => 'textfield',
     '#title' => t('Existing system path'),
     '#default_value' => $edit['src'],
-    '#maxlength' => 128,
+    '#maxlength' => 255,
     '#size' => 45,
     '#description' => t('Specify the existing path you wish to alias. For example: node/28, forum/1, taxonomy/term/1+2.'),
     '#field_prefix' => url(NULL, array('absolute' => TRUE)) . (variable_get('clean_url', 0) ? '' : '?q='),
@@ -110,7 +110,7 @@ function path_admin_form(&$form_state, $edit = array('src' => '', 'dst' => '', '
     '#type' => 'textfield',
     '#title' => t('Path alias'),
     '#default_value' => $edit['dst'],
-    '#maxlength' => 128,
+    '#maxlength' => 255,
     '#size' => 45,
     '#description' => t('Specify an alternative path by which this data can be accessed. For example, type "about" when writing an about page. Use a relative path and don\'t add a trailing slash or the URL alias won\'t work.'),
     '#field_prefix' => url(NULL, array('absolute' => TRUE)) . (variable_get('clean_url', 0) ? '' : '?q='),

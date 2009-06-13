@@ -1,5 +1,5 @@
 <?php
-// $Id: update.report.inc,v 1.16 2009/04/29 03:57:21 webchick Exp $
+// $Id: update.report.inc,v 1.18 2009/06/06 06:26:13 webchick Exp $
 
 /**
  * @file
@@ -48,6 +48,7 @@ function theme_update_report($data) {
         $icon = theme('image', 'misc/watchdog-ok.png', t('ok'), t('ok'));
         break;
       case UPDATE_UNKNOWN:
+      case UPDATE_NOT_FETCHED:
         $class = 'unknown';
         $icon = theme('image', 'misc/watchdog-warning.png', t('warning'), t('warning'));
         break;
@@ -127,11 +128,11 @@ function theme_update_report($data) {
           if ($project['recommended'] !== $project['latest_version']
               || !empty($project['also'])
               || ($project['install_type'] == 'dev'
-                 && isset($project['dev_version'])
-                 && $project['latest_version'] !== $project['dev_version']
-                 && $project['recommended'] !== $project['dev_version'])
+                && isset($project['dev_version'])
+                && $project['latest_version'] !== $project['dev_version']
+                && $project['recommended'] !== $project['dev_version'])
               || (isset($project['security updates'][0])
-                 && $project['recommended'] !== $project['security updates'][0])
+                && $project['recommended'] !== $project['security updates'][0])
               ) {
             $version_class .= ' version-recommended-strong';
           }

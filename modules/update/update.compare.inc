@@ -1,5 +1,5 @@
 <?php
-// $Id: update.compare.inc,v 1.17 2009/04/29 18:39:50 webchick Exp $
+// $Id: update.compare.inc,v 1.22 2009/06/06 16:05:28 dries Exp $
 
 /**
  * @file
@@ -30,14 +30,16 @@
  * @see update_project_cache()
  */
 function update_get_projects() {
-  static $projects = array();
+  $projects = &drupal_static(__FUNCTION__, array());
   if (empty($projects)) {
     // Retrieve the projects from cache, if present.
     $projects = update_project_cache('update_project_projects');
     if (empty($projects)) {
       // Still empty, so we have to rebuild the cache.
-      _update_process_info_list($projects, module_rebuild_cache(), 'module');
-      _update_process_info_list($projects, system_theme_data(), 'theme');
+      _update_process_info_list($projects, system_get_module_data(), 'module');
+      _update_process_info_list($projects, system_get_theme_data(), 'theme');
+      // Allow other modules to alter projects before fetching and comparing.
+      drupal_alter('update_projects', $projects);
       // Cache the site's project data for at most 1 hour.
       _update_cache_set('update_project_projects', $projects, REQUEST_TIME + 3600);
     }
@@ -301,6 +303,11 @@ function update_calculate_project_data($available) {
               'data' => t('This project is no longer supported, and is no longer available for download. Disabling everything included by this project is strongly recommended!'),
             );
             break;
+          case 'not-fetched':
+            $projects[$project]['status'] = UPDATE_NOT_FETCHED;
+            $projects[$project]['reason'] = t('Failed to fetch available update data');
+            break;
+
           default:
             // Assume anything else (e.g. 'published') is valid and we should
             // perform the rest of the logic in this function.
@@ -402,8 +409,8 @@ function update_calculate_project_data($available) {
         // Otherwise, ignore unpublished, insecure, or unsupported releases.
         if ($release['status'] == 'unpublished' ||
             (isset($release['terms']['Release type']) &&
-             (in_array('Insecure', $release['terms']['Release type']) ||
-              in_array('Unsupported', $release['terms']['Release type'])))) {
+              (in_array('Insecure', $release['terms']['Release type']) ||
+                in_array('Unsupported', $release['terms']['Release type'])))) {
           continue;
         }
 

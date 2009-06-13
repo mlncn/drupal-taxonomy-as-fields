@@ -1,5 +1,5 @@
 <?php
-// $Id: template.php,v 1.20 2009/01/20 03:18:41 webchick Exp $
+// $Id: template.php,v 1.22 2009/06/02 03:57:22 webchick Exp $
 
 /**
  * Return a themed breadcrumb trail.
@@ -45,7 +45,7 @@ function garland_preprocess_page(&$vars) {
   }
   $vars['site_title'] = implode(' ', $site_fields);
   if (!empty($site_fields)) {
-    $site_fields[0] = '<span>'. $site_fields[0] .'</span>';
+    $site_fields[0] = '<span>' . $site_fields[0] . '</span>';
   }
   $vars['site_html'] = implode(' ', $site_fields);
 
@@ -66,7 +66,7 @@ function garland_menu_local_tasks() {
 /**
  * Format the "Submitted by username on date/time" for each comment.
  */
-function phptemplate_comment_submitted($comment) {
+function garland_comment_submitted($comment) {
   return t('!datetime — !username',
     array(
       '!username' => theme('username', $comment),
@@ -91,9 +91,9 @@ function garland_node_submitted($node) {
 function garland_get_ie_styles() {
   global $language;
 
-  $ie_styles = '<link type="text/css" rel="stylesheet" media="all" href="' . base_path() . path_to_theme() . '/fix-ie.css" />'. "\n";
+  $ie_styles = '<link type="text/css" rel="stylesheet" media="all" href="' . base_path() . path_to_theme() . '/fix-ie.css" />' . "\n";
   if ($language->direction == LANGUAGE_RTL) {
-    $ie_styles .= '      <style type="text/css" media="all">@import "' . base_path() . path_to_theme() . '/fix-ie-rtl.css";</style>'. "\n";
+    $ie_styles .= '      <style type="text/css" media="all">@import "' . base_path() . path_to_theme() . '/fix-ie-rtl.css";</style>' . "\n";
   }
 
   return $ie_styles;

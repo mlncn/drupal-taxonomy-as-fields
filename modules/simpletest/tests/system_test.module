@@ -1,10 +1,16 @@
 <?php
-// $Id: system_test.module,v 1.9 2009/04/22 09:45:03 dries Exp $
+// $Id: system_test.module,v 1.12 2009/06/06 15:43:05 dries Exp $
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function system_test_menu() {
+  $items['system-test/sleep/%'] = array(
+    'page callback' => 'system_test_sleep',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
   $items['system-test/auth'] = array(
     'page callback' => 'system_test_basic_auth_page',
     'access callback' => TRUE,
@@ -53,36 +59,11 @@ function system_test_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  $items['system-test/generate-warnings'] = array(
-    'title' => 'Generate warnings',
-    'page callback' => 'system_test_generate_warnings',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
-  $items['system-test/generate-warnings-with-report'] = array(
-    'title' => 'Generate warnings with Simpletest reporting',
-    'page callback' => 'system_test_generate_warnings',
-    'page arguments' => array(TRUE),
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
-  $items['system-test/trigger-exception'] = array(
-    'title' => 'Trigger an exception',
-    'page callback' => 'system_test_trigger_exception',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
-  $items['system-test/trigger-pdo-exception'] = array(
-    'title' => 'Trigger a PDO exception',
-    'page callback' => 'system_test_trigger_pdo_exception',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
   return $items;
+}
+
+function system_test_sleep($seconds) {
+  sleep($seconds);
 }
 
 function system_test_basic_auth_page() {
@@ -125,7 +106,7 @@ function system_test_destination() {
 }
 
 /**
- * Implementation of hook_modules_installed().
+ * Implement hook_modules_installed().
  */
 function system_test_modules_installed($modules) {
   if (in_array('aggregator', $modules)) {
@@ -134,7 +115,7 @@ function system_test_modules_installed($modules) {
 }
 
 /**
- * Implementation of hook_modules_enabled().
+ * Implement hook_modules_enabled().
  */
 function system_test_modules_enabled($modules) {
   if (in_array('aggregator', $modules)) {
@@ -143,7 +124,7 @@ function system_test_modules_enabled($modules) {
 }
 
 /**
- * Implementation of hook_modules_disabled().
+ * Implement hook_modules_disabled().
  */
 function system_test_modules_disabled($modules) {
   if (in_array('aggregator', $modules)) {
@@ -152,7 +133,7 @@ function system_test_modules_disabled($modules) {
 }
 
 /**
- * Implementation of hook_modules_uninstalled().
+ * Implement hook_modules_uninstalled().
  */
 function system_test_modules_uninstalled($modules) {
   if (in_array('aggregator', $modules)) {
@@ -161,14 +142,14 @@ function system_test_modules_uninstalled($modules) {
 }
 
 /**
- * Implementation of hook_boot().
+ * Implement hook_boot().
  */
 function system_test_boot() {
   watchdog('system_test', 'hook_boot');
 }
 
 /**
- * Implementation of hook_init().
+ * Implement hook_init().
  */
 function system_test_init() {
   // Used by FrontPageTestCase to get the results of drupal_is_front_page().
@@ -178,39 +159,9 @@ function system_test_init() {
 }
 
 /**
- * Implementation of hook_exit().
+ * Implement hook_exit().
  */
 function system_test_exit() {
   watchdog('system_test', 'hook_exit');
 }
 
-/**
- * Menu callback; generate warnings to test the error handler.
- */
-function system_test_generate_warnings($collect_errors = FALSE) {
-  // Tell Drupal error reporter to send errors to Simpletest or not.
-  define('SIMPLETEST_COLLECT_ERRORS', $collect_errors);
-  // This will generate a notice.
-  $monkey_love = $bananas;
-  // This will generate a warning.
-  $awesomely_big = 1/0;
-  // This will generate a user error.
-  trigger_error("Drupal is awesome", E_USER_NOTICE);
-  return "";
-}
-
-/**
- * Menu callback; trigger an exception to test the exception handler.
- */
-function system_test_trigger_exception() {
-  define('SIMPLETEST_COLLECT_ERRORS', FALSE);
-  throw new Exception("Drupal is awesome");
-}
-
-/**
- * Menu callback; trigger an exception to test the exception handler.
- */
-function system_test_trigger_pdo_exception() {
-  define('SIMPLETEST_COLLECT_ERRORS', FALSE);
-  db_query("SELECT * FROM bananas_are_awesome");
-}

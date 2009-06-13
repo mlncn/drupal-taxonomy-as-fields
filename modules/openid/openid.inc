@@ -1,5 +1,5 @@
 <?php
-// $Id: openid.inc,v 1.15 2009/05/12 08:37:44 dries Exp $
+// $Id: openid.inc,v 1.18 2009/06/03 19:27:21 dries Exp $
 
 /**
  * @file
@@ -61,6 +61,10 @@ function openid_redirect_http($url, $message) {
 
   $sep = (strpos($url, '?') === FALSE) ? '?' : '&';
   header('Location: ' . $url . $sep . implode('&', $query), TRUE, 302);
+
+  // Commit session data before redirecting.
+  drupal_session_commit();
+
   exit;
 }
 
@@ -73,6 +77,10 @@ function openid_redirect($url, $message) {
   $output .= '<script type="text/javascript">document.getElementById("openid-redirect-form").submit();</script>';
   $output .= "</body></html>\n";
   print $output;
+
+  // Commit session data before redirecting.
+  drupal_session_commit();
+
   exit;
 }
 
@@ -154,7 +162,7 @@ function _openid_create_message($data) {
 
   foreach ($data as $key => $value) {
     if ((strpos($key, ':') !== FALSE) || (strpos($key, "\n") !== FALSE) || (strpos($value, "\n") !== FALSE)) {
-      return null;
+      return NULL;
     }
     $serialized .= "$key:$value\n";
   }
@@ -342,7 +350,7 @@ function _openid_dh_xorsecret($shared, $secret) {
 }
 
 function _openid_dh_rand($stop) {
-  static $duplicate_cache = array();
+  $duplicate_cache = &drupal_static(__FUNCTION__, array());
 
   // Used as the key for the duplicate cache
   $rbytes = _openid_dh_long_to_binary($stop);
@@ -381,7 +389,7 @@ function _openid_dh_rand($stop) {
 }
 
 function _openid_get_bytes($num_bytes) {
-  static $f = null;
+  $f = &drupal_static(__FUNCTION__);
   $bytes = '';
   if (!isset($f)) {
     $f = @fopen(OPENID_RAND_SOURCE, "r");

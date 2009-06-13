@@ -1,5 +1,5 @@
 <?php
-// $Id: number.module,v 1.7 2009/04/29 22:36:42 webchick Exp $
+// $Id: number.module,v 1.10 2009/05/28 16:44:06 webchick Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function number_theme() {
   return array(
@@ -19,7 +19,7 @@ function number_theme() {
 }
 
 /**
- * Implementation of hook_field_info().
+ * Implement hook_field_info().
  */
 function number_field_info() {
   return array(
@@ -48,7 +48,10 @@ function number_field_info() {
   );
 }
 
-function number_field_columns($field) {
+/**
+ * Implement hook_field_schema().
+ */
+function number_field_schema($field) {
   switch ($field['type']) {
     case 'number_integer' :
       $columns = array(
@@ -79,11 +82,13 @@ function number_field_columns($field) {
       );
       break;
   }
-  return $columns;
+  return array(
+    'columns' => $columns,
+  );
 }
 
 /**
- * Implementation of hook_field_validate().
+ * Implement hook_field_validate().
  *
  * Possible error codes:
  * - 'number_min': The value is smaller than the allowed minimum value.
@@ -109,7 +114,7 @@ function number_field_validate($obj_type, $node, $field, $instance, $items, &$er
 }
 
 /**
- * Implementation of hook_content_is_empty().
+ * Implement hook_content_is_empty().
  */
 function number_field_is_empty($item, $field) {
   if (empty($item['value']) && (string)$item['value'] !== '0') {
@@ -119,7 +124,7 @@ function number_field_is_empty($item, $field) {
 }
 
 /**
- * Implementation of hook_field_formatter_info().
+ * Implement hook_field_formatter_info().
  */
 function number_field_formatter_info() {
   return array(
@@ -194,7 +199,7 @@ function theme_field_formatter_number($element) {
 }
 
 /**
- * Implementation of hook_field_widget_info().
+ * Implement hook_field_widget_info().
  *
  * Here we indicate that the Field module will handle
  * multiple values for these widgets.
@@ -218,7 +223,7 @@ function number_field_widget_info() {
 }
 
 /**
- * Implementation of FAPI hook_elements().
+ * Implement FAPI hook_elements().
  *
  * Any FAPI callbacks needed for individual widgets can be declared here,
  * and the element will be passed to those callbacks for processing.
@@ -234,13 +239,13 @@ function number_elements() {
     'number' => array(
       '#input' => TRUE,
       '#columns' => array('value'), '#delta' => 0,
-      '#process' => array('number_process'),
+      '#process' => array('number_elements_process'),
     ),
   );
 }
 
 /**
- * Implementation of hook_field_widget().
+ * Implement hook_field_widget().
  *
  * Attach a single form element to the form. It will be built out and
  * validated in the callback(s) listed in hook_elements. We build it
@@ -277,7 +282,7 @@ function number_field_widget(&$form, &$form_state, $field, $instance, $items, $d
 }
 
 /**
- * Implementation of hook_field_widget_error().
+ * Implement hook_field_widget_error().
  */
 function number_field_widget_error($element, $error) {
   form_error($element['value'], $error['message']);
@@ -291,7 +296,7 @@ function number_field_widget_error($element, $error) {
  *
  * The $field and $instance arrays are in $form['#fields'][$element['#field_name']].
  */
-function number_process($element, $form_state, $form) {
+function number_elements_process($element, $form_state, $form) {
   $field_name = $element['#field_name'];
   $field = field_info_field($element['#field_name']);
   $instance = field_info_instance($element['#field_name'], $element['#bundle']);

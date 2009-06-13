@@ -1,4 +1,4 @@
-// $Id: system.js,v 1.24 2009/04/27 20:19:38 webchick Exp $
+// $Id: system.js,v 1.26 2009/05/29 19:51:43 dries Exp $
 (function ($) {
 
 /**
@@ -17,21 +17,12 @@ Drupal.behaviors.cleanURLsSettingsCheck = {
       return;
     }
     var url = settings.basePath + 'admin/settings/clean-urls/check';
-    $('#clean-url .description span').html('<div id="testing">' + Drupal.t('Testing clean URLs...') + '</div>');
-    $('#clean-url p').hide();
     $.ajax({
       url: location.protocol + '//' + location.host + url,
       dataType: 'json',
       success: function () {
-        // Check was successful.
-        $('#clean-url input.form-radio').attr('disabled', false);
-        $('#clean-url .description span').append('<div class="ok">' + Drupal.t('Your server has been successfully tested to support this feature.') + '</div>');
-        $('#testing').hide();
-      },
-      error: function () {
-        // Check failed.
-        $('#clean-url .description span').append('<div class="warning">' + Drupal.t('Your system configuration does not currently support this feature. The <a href="http://drupal.org/node/15365">handbook page on Clean URLs</a> has additional troubleshooting information.') + '</div>');
-        $('#testing').hide();
+        // Check was successful. Redirect using a "clean URL". This will force the form that allows enabling clean URLs.
+        location = settings.basePath +"admin/settings/clean-urls";
       }
     });
     $('#clean-url').addClass('clean-url-processed');
@@ -110,6 +101,19 @@ Drupal.behaviors.dateTime = {
     // Trigger the event handler to show the form input if necessary.
     $('select.date-format', context).trigger('change');
   }
+};
+
+/**
+ * Show/hide settings for user configurable time zones depending on whether
+ * users are able to set their own time zones or not.
+ */
+Drupal.behaviors.userTimeZones = {
+  attach: function (context, settings) {
+    $('#empty-timezone-message-wrapper .description').hide();
+    $('#edit-configurable-timezones', context).change(function () {
+      $('#empty-timezone-message-wrapper').toggle();
+    });
+  },
 };
 
 /**

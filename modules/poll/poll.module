@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.module,v 1.294 2009/05/12 08:37:45 dries Exp $
+// $Id: poll.module,v 1.299 2009/06/04 03:33:28 webchick Exp $
 
 /**
  * @file
@@ -8,7 +8,7 @@
  */
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function poll_help($path, $arg) {
   switch ($path) {
@@ -21,14 +21,14 @@ function poll_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_init().
+ * Implement hook_init().
  */
 function poll_init() {
   drupal_add_css(drupal_get_path('module', 'poll') . '/poll.css');
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function poll_theme() {
   return array(
@@ -51,7 +51,7 @@ function poll_theme() {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function poll_perm() {
   $perms = node_list_permissions('poll');
@@ -74,7 +74,7 @@ function poll_perm() {
 }
 
 /**
- * Implementation of hook_access().
+ * Implement hook_access().
  */
 function poll_access($op, $node, $account) {
   switch ($op) {
@@ -88,7 +88,7 @@ function poll_access($op, $node, $account) {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function poll_menu() {
   $items['poll'] = array(
@@ -129,7 +129,7 @@ function _poll_menu_access($node, $perm, $inspect_allowvotes) {
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function poll_block_list() {
   if (user_access('access content')) {
@@ -139,7 +139,7 @@ function poll_block_list() {
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  *
  * Generates a block containing the latest poll.
  */
@@ -159,9 +159,9 @@ function poll_block_view($delta = '') {
     if ($record) {
       $poll = node_load($record->nid);
       if ($poll->nid) {
-        $poll = poll_view($poll, TRUE, FALSE, TRUE);
+        $poll = poll_block_latest_poll_view($poll);
         $block['subject'] = t('Poll');
-        $block['content'] = drupal_render($poll->content);
+        $block['content'] = $poll->content;
         return $block;
       }
     }
@@ -169,7 +169,7 @@ function poll_block_view($delta = '') {
 }
 
 /**
- * Implementation of hook_cron().
+ * Implement hook_cron().
  *
  * Closes polls that have exceeded their allowed runtime.
  */
@@ -184,7 +184,7 @@ function poll_cron() {
 }
 
 /**
- * Implementation of hook_node_info().
+ * Implement hook_node_info().
  */
 function poll_node_info() {
   return array(
@@ -199,14 +199,14 @@ function poll_node_info() {
 }
 
 /**
- * Implementation of hook_form().
+ * Implement hook_form().
  */
 function poll_form($node, $form_state) {
   global $user;
 
   $admin = user_access('administer nodes') || user_access('edit any poll content') || (user_access('edit own poll content') && $user->uid == $node->uid);
 
-  $type = node_get_types('type', $node);
+  $type = node_type_get_type($node);
 
   $form = array(
     '#cache' => TRUE,
@@ -379,7 +379,7 @@ function poll_choice_js($form, $form_state) {
 }
 
 /**
- * Implementation of hook_submit().
+ * Implement hook_submit().
  */
 function poll_node_form_submit(&$form, &$form_state) {
   // Renumber fields
@@ -388,7 +388,7 @@ function poll_node_form_submit(&$form, &$form_state) {
 }
 
 /**
- * Implementation of hook_validate().
+ * Implement hook_validate().
  */
 function poll_validate($node, $form) {
   if (isset($node->title)) {
@@ -412,7 +412,7 @@ function poll_validate($node, $form) {
 }
 
 /**
- * Implementation of hook_node_prepare_translation().
+ * Implement hook_node_prepare_translation().
  */
 function poll_node_prepare_translation($node) {
   if ($node->type == 'poll') {
@@ -421,7 +421,7 @@ function poll_node_prepare_translation($node) {
 }
 
 /**
- * Implementation of hook_load().
+ * Implement hook_load().
  */
 function poll_load($nodes) {
   global $user;
@@ -455,7 +455,7 @@ function poll_load($nodes) {
 }
 
 /**
- * Implementation of hook_insert().
+ * Implement hook_insert().
  */
 function poll_insert($node) {
   if (!user_access('administer nodes')) {
@@ -489,7 +489,7 @@ function poll_insert($node) {
 }
 
 /**
- * Implementation of hook_update().
+ * Implement hook_update().
  */
 function poll_update($node) {
   // Update poll settings.
@@ -526,7 +526,7 @@ function poll_update($node) {
 }
 
 /**
- * Implementation of hook_delete().
+ * Implement hook_delete().
  */
 function poll_delete($node) {
   db_delete('poll')
@@ -541,36 +541,58 @@ function poll_delete($node) {
 }
 
 /**
- * Implementation of hook_view().
+ * Return content for 'latest poll' block.
  *
- * @param $block
- *   An extra parameter that adapts the hook to display a block-ready
- *   rendering of the poll.
+ * @param $node
+ *   The node object to load.
  */
-function poll_view($node, $teaser = FALSE, $block = FALSE) {
+function poll_block_latest_poll_view($node) {
   global $user;
   $output = '';
 
-  // Special display for side-block
-  if ($block) {
-    // No 'read more' link
-    $node->readmore = FALSE;
-    $node->teaser = '';
+  // This is necessary for shared objects because PHP doesn't copy objects, but
+  // passes them by reference.  So when the objects are cached it can result in
+  // the wrong output being displayed on subsequent calls.  The cloning and
+  // unsetting of $node->content prevents the block output from being the same
+  // as the node output.
+  $node = clone $node;
+  unset($node->content);
 
-    $links = module_invoke_all('link', 'node', $node, 1);
-    $links[] = array('title' => t('Older polls'), 'href' => 'poll', 'attributes' => array('title' => t('View the list of polls on this site.')));
-    if ($node->allowvotes && $block) {
-      $links[] = array('title' => t('Results'), 'href' => 'node/' . $node->nid . '/results', 'attributes' => array('title' => t('View the current poll results.')));
-    }
+  // No 'read more' link.
+  $node->readmore = FALSE;
+  $node->teaser = '';
 
-    $node->links = $links;
+  $links = module_invoke_all('link', 'node', $node, 1);
+  $links[] = array('title' => t('Older polls'), 'href' => 'poll', 'attributes' => array('title' => t('View the list of polls on this site.')));
+  if ($node->allowvotes) {
+    $links[] = array('title' => t('Results'), 'href' => 'node/' . $node->nid . '/results', 'attributes' => array('title' => t('View the current poll results.')));
   }
 
-  if (!empty($node->allowvotes) && ($block || empty($node->show_results))) {
-    $node->content['poll_view_voting'] = drupal_get_form('poll_view_voting', $node, $block);
+  $node->links = $links;
+
+  if (!empty($node->allowvotes)) {
+    $node->content['poll_view_voting'] = drupal_get_form('poll_view_voting', $node, TRUE);
   }
   else {
-    $node->content['poll_view_results'] = array('#markup' => poll_view_results($node, $teaser, $block));
+    $node->content['poll_view_results'] = array('#markup' => poll_view_results($node, TRUE, TRUE));
+  }
+
+  return $node;
+}
+
+
+/**
+ * Implement hook_view().
+ */
+function poll_view($node, $teaser = FALSE) {
+  global $user;
+  $output = '';
+
+  if (!empty($node->allowvotes) && empty($node->show_results)) {
+    $node->content['poll_view_voting'] = drupal_get_form('poll_view_voting', $node);
+  }
+  else {
+    $node->content['poll_view_results'] = array('#markup' => poll_view_results($node, $teaser));
   }
   return $node;
 }
@@ -599,7 +621,7 @@ function poll_teaser($node) {
  * @see poll_vote()
  * @see phptemplate_preprocess_poll_vote()
  */
-function poll_view_voting(&$form_state, $node, $block) {
+function poll_view_voting(&$form_state, $node, $block = FALSE) {
   if ($node->choice) {
     $list = array();
     foreach ($node->choice as $i => $choice) {
@@ -641,7 +663,7 @@ function poll_view_voting_validate($form, &$form_state) {
 }
 
 /**
- * Submit handler for processing a vote
+ * Submit handler for processing a vote.
  */
 function poll_vote($form, &$form_state) {
   $node = $form['#node'];
@@ -690,7 +712,7 @@ function template_preprocess_poll_vote(&$variables) {
 /**
  * Generates a graphical representation of the results of a poll.
  */
-function poll_view_results($node, $teaser, $block) {
+function poll_view_results($node, $teaser, $block = FALSE) {
   // Count the votes and find the maximum
   $total_votes = 0;
   $max_votes = 0;
@@ -773,7 +795,7 @@ function theme_poll_choices($form) {
 function template_preprocess_poll_results(&$variables) {
   $variables['links'] = theme('links', $variables['raw_links']);
   if (isset($variables['vote']) && $variables['vote'] > -1 && user_access('cancel own vote')) {
-    $variables['cancel_form'] = drupal_get_form('poll_cancel_form', $variables['nid']);
+    $variables['cancel_form'] = drupal_render(drupal_get_form('poll_cancel_form', $variables['nid']));
   }
   $variables['title'] = check_plain($variables['raw_title']);
 
@@ -822,7 +844,7 @@ function poll_cancel_form(&$form_state, $nid) {
 }
 
 /**
- * Submit callback for poll_cancel_form
+ * Submit callback for poll_cancel_form().
  */
 function poll_cancel($form, &$form_state) {
   global $user;
@@ -838,10 +860,12 @@ function poll_cancel($form, &$form_state) {
     ->expression('chvotes', 'chvotes - 1')
     ->condition('chid', $node->vote)
     ->execute();
+
+  drupal_set_message(t('Your vote was cancelled.'));
 }
 
 /**
- * Implementation of hook_user_cancel().
+ * Implement hook_user_cancel().
  */
 function poll_user_cancel($edit, $account, $method) {
   switch ($method) {

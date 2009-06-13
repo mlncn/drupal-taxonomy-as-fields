@@ -1,7 +1,9 @@
-; $Id: text.info,v 1.3 2009/05/10 18:56:57 dries Exp $
+; $Id: text.info,v 1.5 2009/06/12 08:39:37 dries Exp $
 name = Text
 description = Defines simple text field types.
 package = Core - fields
 version = VERSION
 core = 7.x
-files[]=text.module
+files[] = text.module
+files[] = text.test
+required = TRUE

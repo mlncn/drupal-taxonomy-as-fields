@@ -1,5 +1,5 @@
 <?php
-// $Id: block.module,v 1.330 2009/05/07 15:29:08 webchick Exp $
+// $Id: block.module,v 1.345 2009/06/12 09:02:55 dries Exp $
 
 /**
  * @file
@@ -61,7 +61,7 @@ define('BLOCK_CACHE_PER_PAGE', 0x0004);
 define('BLOCK_CACHE_GLOBAL', 0x0008);
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function block_help($path, $arg) {
   switch ($path) {
@@ -88,14 +88,14 @@ function block_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function block_theme() {
   return array(
     'block' => array(
-      'arguments' => array('block' => NULL),
+      'arguments' => array('elements' => NULL),
       'template' => 'block',
-    ),  
+    ),
     'block_admin_display_form' => array(
       'template' => 'block-admin-display-form',
       'file' => 'block.admin.inc',
@@ -105,7 +105,7 @@ function block_theme() {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function block_perm() {
   return array(
@@ -117,7 +117,7 @@ function block_perm() {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function block_menu() {
   $items['admin/build/block'] = array(
@@ -176,17 +176,18 @@ function block_menu() {
  * Menu item access callback - only admin or enabled themes can be accessed.
  */
 function _block_themes_access($theme) {
-  return user_access('administer blocks') && ($theme->status || $theme->name == variable_get('admin_theme', 0));
+  $admin_theme = variable_get('admin_theme');
+  return user_access('administer blocks') && ($theme->status || ($admin_theme && ($theme->name == $admin_theme)));
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function block_block_list() {
   $blocks = array();
 
   $result = db_query('SELECT bid, info FROM {box} ORDER BY info');
-  while ($block = db_fetch_object($result)) {
+  foreach ($result as $block) {
     $blocks[$block->bid]['info'] = $block->info;
     // Not worth caching.
     $blocks[$block->bid]['cache'] = BLOCK_NO_CACHE;
@@ -195,38 +196,36 @@ function block_block_list() {
 }
 
 /**
- * Implementation of hook_block_configure().
+ * Implement hook_block_configure().
  */
 function block_block_configure($delta = 0, $edit = array()) {
   $box = array('format' => FILTER_FORMAT_DEFAULT);
   if ($delta) {
     $box = block_box_get($delta);
   }
-  if (filter_access($box['format'])) {
-    return block_box_form($box);
-  }
+  return block_box_form($box);
 }
 
 /**
- * Implementation of hook_block_save().
+ * Implement hook_block_save().
  */
 function block_block_save($delta = 0, $edit = array()) {
   block_box_save($edit, $delta);
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  *
  * Generates the administrator-defined blocks for display.
  */
 function block_block_view($delta = 0, $edit = array()) {
-  $block = db_fetch_object(db_query('SELECT body, format FROM {box} WHERE bid = %d', $delta));
+  $block = db_query('SELECT body, format FROM {box} WHERE bid = :bid', array(':bid' => $delta))->fetchObject();
   $data['content'] = check_markup($block->body, $block->format, '', FALSE);
   return $data;
 }
 
 /**
- * Implementation of hook_page_alter().
+ * Implement hook_page_alter().
  *
  * Render blocks into their regions.
  */
@@ -242,17 +241,20 @@ function block_page_alter($page) {
   // Load all region content assigned via blocks.
   foreach (array_keys($regions) as $region) {
     // Prevent left and right regions from rendering blocks when 'show_blocks' == FALSE.
-    if ($page['#show_blocks'] || ($region != 'left' && $region != 'right')) {
+    if (!empty($page['#show_blocks']) || ($region != 'left' && $region != 'right')) {
       // Assign blocks to region.
       if ($blocks = block_get_blocks_by_region($region)) {
-        $page[$region]['blocks'] = $blocks;
+        $page[$region] = $blocks;
       }
 
       // Append region description if we are rendering the block admin page.
       $item = menu_get_item();
       if ($item['path'] == 'admin/build/block') {
         $description = '<div class="block-region">' . $regions[$region] . '</div>';
-        $page[$region]['blocks']['block_description'] = array('#markup' => $description);
+        $page[$region]['block_description'] = array(
+          '#markup' => $description,
+          '#weight' => 15,
+        );
       }
     }
   }
@@ -269,8 +271,10 @@ function block_get_blocks_by_region($region) {
   $build = array();
   if ($list = block_list($region)) {
     foreach ($list as $key => $block) {
-      $build[$key] = array(
-        '#theme' => 'block',
+      $build[$key] = $block->content;
+      unset($block->content);
+      $build[$key] += array(
+        '#theme_wrapper' => 'block',
         '#block' => $block,
         '#weight' => ++$weight,
       );
@@ -291,9 +295,10 @@ function _block_rehash() {
 
   init_theme();
 
-  $result = db_query("SELECT * FROM {block} WHERE theme = '%s'", $theme_key);
   $old_blocks = array();
-  while ($old_block = db_fetch_array($result)) {
+  $result = db_query("SELECT * FROM {block} WHERE theme = :theme", array(':theme' => $theme_key));
+  foreach ($result as $old_block) {
+    $old_block = is_object($old_block) ? get_object_vars($old_block) : $old_block;
     $old_blocks[$old_block['module']][$old_block['delta']] = $old_block;
   }
 
@@ -351,14 +356,18 @@ function _block_rehash() {
   // Remove blocks that are no longer defined by the code from the database.
   foreach ($old_blocks as $module => $old_module_blocks) {
     foreach ($old_module_blocks as $delta => $block) {
-      db_query("DELETE FROM {block} WHERE module = '%s' AND delta = '%s' AND theme = '%s'", $module, $delta, $theme_key);
+      db_delete('block')
+        ->condition('module', $module)
+        ->condition('delta', $delta)
+        ->condition('theme', $theme_key)
+        ->execute();
     }
   }
   return $blocks;
 }
 
 function block_box_get($bid) {
-  return db_fetch_array(db_query("SELECT * FROM {box} WHERE bid = %d", $bid));
+  return db_query("SELECT * FROM {box} WHERE bid = :bid", array(':bid' => $bid))->fetchAssoc();
 }
 
 /**
@@ -388,34 +397,48 @@ function block_box_form($edit = array()) {
     '#description' => t('The content of the block as shown to the user.'),
     '#required' => TRUE,
     '#weight' => -17,
+    '#access' => filter_access($edit['format']),
   );
 
   return $form;
 }
 
 function block_box_save($edit, $delta) {
-  if (!filter_access($edit['body_format'])) {
-    $edit['body_format'] = FILTER_FORMAT_DEFAULT;
-  }
-
-  db_query("UPDATE {box} SET body = '%s', info = '%s', format = %d WHERE bid = %d", $edit['body'], $edit['info'], $edit['body_format'], $delta);
-
+  db_update('box')
+    ->fields(array(
+      'body' => $edit['body'],
+      'info' => $edit['info'],
+      'format' => $edit['body_format'],
+    ))
+    ->condition('bid', $delta)
+    ->execute();
   return TRUE;
 }
 
 /**
- * Implementation of hook_user_form().
+ * Implement hook_user_form().
  */
 function block_user_form(&$edit, &$account, $category = NULL) {
   if ($category == 'account') {
     $rids = array_keys($account->roles);
     $result = db_query("SELECT DISTINCT b.* FROM {block} b LEFT JOIN {block_role} r ON b.module = r.module AND b.delta = r.delta WHERE b.status = 1 AND b.custom <> 0 AND (r.rid IN (:rids) OR r.rid IS NULL) ORDER BY b.weight, b.module", array(':rids' => $rids));
-    $form['block'] = array('#type' => 'fieldset', '#title' => t('Block configuration'), '#weight' => 3, '#collapsible' => TRUE, '#tree' => TRUE);
-    while ($block = db_fetch_object($result)) {
+    $form['block'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Personalize blocks'),
+      '#description' => t('Blocks consist of content or information that complements the main content of the page. Enable or disable optional blocks using the checkboxes below.'),
+      '#weight' => 3,
+      '#collapsible' => TRUE,
+      '#tree' => TRUE
+    );
+    foreach ($result as $block) {
       $data = module_invoke($block->module, 'block_list');
       if ($data[$block->delta]['info']) {
         $return = TRUE;
-        $form['block'][$block->module][$block->delta] = array('#type' => 'checkbox', '#title' => check_plain($data[$block->delta]['info']), '#default_value' => isset($account->block[$block->module][$block->delta]) ? $account->block[$block->module][$block->delta] : ($block->custom == 1));
+        $form['block'][$block->module][$block->delta] = array(
+          '#type' => 'checkbox',
+          '#title' => check_plain($data[$block->delta]['info']),
+          '#default_value' => isset($account->block[$block->module][$block->delta]) ? $account->block[$block->module][$block->delta] : ($block->custom == 1),
+        );
       }
     }
 
@@ -426,7 +449,7 @@ function block_user_form(&$edit, &$account, $category = NULL) {
 }
 
 /**
- * Implementation of hook_user_validate().
+ * Implement hook_user_validate().
  */
 function block_user_validate(&$edit, &$account, $category = NULL) {
   if (empty($edit['block'])) {
@@ -436,7 +459,7 @@ function block_user_validate(&$edit, &$account, $category = NULL) {
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function block_form_system_performance_settings_alter(&$form, &$form_state) {
 
@@ -458,13 +481,7 @@ function block_form_system_performance_settings_alter(&$form, &$form_state) {
   );
 
   // Check if the "Who's online" block is enabled.
-  $online_block_enabled = db_select('block')
-    ->condition('module', 'user')
-    ->condition('delta', 'online')
-    ->condition('status', 1)
-    ->countQuery()
-    ->execute()
-    ->fetchField();
+  $online_block_enabled = db_query_range("SELECT 1 FROM {block} b WHERE module = 'user' AND delta = 'online' AND status = 1", array(), 0, 1)->fetchField();
 
   // If the "Who's online" block is enabled, append some descriptive text to
   // the end of the form description.
@@ -475,10 +492,13 @@ function block_form_system_performance_settings_alter(&$form, &$form_state) {
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  */
 function block_form_system_themes_form_alter(&$form, &$form_state) {
-  $form['#submit'][] = 'block_system_themes_form_submit';
+  // This function needs to fire before the theme changes are recorded in the
+  // database, otherwise it will populate the default list of blocks from the
+  // new theme, which is empty.
+  array_unshift($form['#submit'], 'block_system_themes_form_submit');
 }
 
 /**
@@ -495,8 +515,8 @@ function block_system_themes_form_submit(&$form, &$form_state) {
     }
     if ($form_state['values']['admin_theme'] && $form_state['values']['admin_theme'] != variable_get('admin_theme', 0)) {
       // If we're changing themes, make sure the theme has its blocks initialized.
-      $result = db_result(db_query("SELECT COUNT(*) FROM {block} WHERE theme = '%s'", $form_state['values']['admin_theme']));
-      if (!$result) {
+      $has_blocks = (bool) db_query_range('SELECT 1 FROM {block} WHERE theme = :theme', array(':theme' => $form_state['values']['admin_theme']), 0, 1)->fetchField();
+      if (!$has_blocks) {
         block_initialize_theme_blocks($form_state['values']['admin_theme']);
       }
     }
@@ -516,18 +536,21 @@ function block_system_themes_form_submit(&$form, &$form_state) {
  */
 function block_initialize_theme_blocks($theme) {
   // Initialize theme's blocks if none already registered.
-  if (!(db_result(db_query("SELECT COUNT(*) FROM {block} WHERE theme = '%s'", $theme)))) {
+  $has_blocks = (bool) db_query_range('SELECT 1 FROM {block} WHERE theme = :theme', array(':theme' => $theme), 0, 1)->fetchField();
+  if (!$has_blocks) {
     $default_theme = variable_get('theme_default', 'garland');
     $regions = system_region_list($theme);
-    $result = db_query("SELECT * FROM {block} WHERE theme = '%s'", $default_theme);
-    while ($block = db_fetch_array($result)) {
+    $result = db_query("SELECT * FROM {block} WHERE theme = :theme", array(':theme' => $default_theme), array('fetch' => PDO::FETCH_ASSOC));
+    $query = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'visibility', 'pages', 'custom', 'cache'));
+    foreach ($result as $block) {
       // If the region isn't supported by the theme, assign the block to the theme's default region.
       if (!array_key_exists($block['region'], $regions)) {
         $block['region'] = system_default_region($theme);
       }
-      db_query("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, custom, cache) VALUES ('%s', '%s', '%s', %d, %d, '%s', %d, '%s', %d, %d)",
-          $block['module'], $block['delta'], $theme, $block['status'], $block['weight'], $block['region'], $block['visibility'], $block['pages'], $block['custom'], $block['cache']);
+      $block['theme'] = $theme;
+      $query->values($block);
     }
+    $query->execute();
   }
 }
 
@@ -548,9 +571,9 @@ function block_initialize_theme_blocks($theme) {
  *   array key instead of <i>module</i>_<i>delta</i>.
  */
 function block_list($region) {
-  static $blocks = array();
+  $blocks = &drupal_static(__FUNCTION__, array());
 
-  if (!count($blocks)) {
+  if (empty($blocks)) {
     $blocks = _block_load_blocks();
   }
 
@@ -568,15 +591,64 @@ function block_list($region) {
  * Load blocks information from the database.
  */
 function _block_load_blocks() {
-  global $user, $theme_key;
+  global $theme_key;
+
+  $query = db_select('block', 'b');
+  $result = $query
+    ->fields('b')
+    ->condition('b.theme', $theme_key)
+    ->condition('b.status', 1)
+    ->orderBy('b.region')
+    ->orderBy('b.weight')
+    ->orderBy('b.module')
+    ->addTag('block_load')
+    ->execute();
+
+  $block_list = $result->fetchAllAssoc('bid');
+  // Allow modules to modify the block list.
+  drupal_alter('block_list', $block_list);
 
   $blocks = array();
-  $rids = array_keys($user->roles);
-  $result = db_query(db_rewrite_sql("SELECT DISTINCT b.* FROM {block} b LEFT JOIN {block_role} r ON b.module = r.module AND b.delta = r.delta WHERE b.theme = '%s' AND b.status = 1 AND (r.rid IN (" . db_placeholders($rids) . ") OR r.rid IS NULL) ORDER BY b.region, b.weight, b.module", 'b', 'bid'), array_merge(array($theme_key), $rids));
-  while ($block = db_fetch_object($result)) {
-    if (!isset($blocks[$block->region])) {
-      $blocks[$block->region] = array();
+  foreach ($block_list as $block) {
+    $blocks[$block->region]["{$block->module}_{$block->delta}"] = $block;
+  }
+  return $blocks;
+}
+
+/**
+ * Implement hook_block_list_alter().
+ *
+ * Check the page, role and user specific visibilty settings. Remove the block
+ * if the visibility conditions are not met.
+ */
+function block_block_list_alter(&$blocks) {
+  global $user, $theme_key;
+
+  // Build an array of roles for each block.
+  $block_roles = array();
+  $result = db_query('SELECT module, delta, rid FROM {block_role}');
+  foreach ($result as $record) {
+    $block_roles[$record->module][$record->delta][] = $record->rid;
+  }
+
+  foreach ($blocks as $key => $block) {
+    if ($block->theme != $theme_key || $block->status != 1) {
+      // This block was added by a contrib module, leave it in the list.
+      continue;
     }
+
+    // If a block has no roles associated, it is displayed for every role.
+    // For blocks with roles associated, if none of the user's roles matches
+    // the settings from this block, remove it from the block list.
+    if (!isset($block_roles[$block->module][$block->delta])) {
+      // No roles associated.
+    }
+    elseif (!array_intersect($block_roles[$block->module][$block->delta], array_keys($user->roles))) {
+      // No match.
+      unset($blocks[$key]);
+      continue;
+     }
+
     // Use the user's block visibility setting, if necessary.
     if ($block->custom != 0) {
       if ($user->uid && isset($user->block[$block->module][$block->delta])) {
@@ -588,6 +660,10 @@ function _block_load_blocks() {
     }
     else {
       $enabled = TRUE;
+    }
+    if (!$enabled) {
+      unset($blocks[$key]);
+      continue;
     }
 
     // Match path if necessary.
@@ -614,12 +690,10 @@ function _block_load_blocks() {
     else {
       $page_match = TRUE;
     }
-    $block->enabled = $enabled;
-    $block->page_match = $page_match;
-    $blocks[$block->region]["{$block->module}_{$block->delta}"] = $block;
+    if (!$page_match) {
+      unset($blocks[$key]);
+    }
   }
-
-  return $blocks;
 }
 
 /**
@@ -635,38 +709,41 @@ function _block_render_blocks($region_blocks) {
   foreach ($region_blocks as $key => $block) {
     // Render the block content if it has not been created already.
     if (!isset($block->content)) {
-      // Erase the block from the static array - we'll put it back if it has content.
+      // Erase the block from the static array - we'll put it back if it has
+      // content.
       unset($region_blocks[$key]);
-      if ($block->enabled && $block->page_match) {
-        // Try fetching the block from cache. Block caching is not compatible with
-        // node_access modules. We also preserve the submission of forms in blocks,
-        // by fetching from cache only if the request method is 'GET' (or 'HEAD').
-        if (!count(module_implements('node_grants')) && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD') && ($cid = _block_get_cache_id($block)) && ($cache = cache_get($cid, 'cache_block'))) {
-          $array = $cache->data;
+      // Try fetching the block from cache. Block caching is not compatible
+      // with node_access modules. We also preserve the submission of forms in
+      // blocks, by fetching from cache only if the request method is 'GET'
+      // (or 'HEAD').
+      if (!count(module_implements('node_grants')) && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD') && ($cid = _block_get_cache_id($block)) && ($cache = cache_get($cid, 'cache_block'))) {
+        $array = $cache->data;
+      }
+      else {
+        $array = module_invoke($block->module, 'block_view', $block->delta);
+        if (isset($cid)) {
+          cache_set($cid, $array, 'cache_block', CACHE_TEMPORARY);
         }
-        else {
-          $array = module_invoke($block->module, 'block_view', $block->delta);
-          if (isset($cid)) {
-            cache_set($cid, $array, 'cache_block', CACHE_TEMPORARY);
-          }
-        }
+      }
 
-        if (isset($array) && is_array($array)) {
-          foreach ($array as $k => $v) {
-            $block->$k = $v;
-          }
+      if (isset($array) && is_array($array)) {
+        foreach ($array as $k => $v) {
+          $block->$k = $v;
         }
-        if (isset($block->content) && $block->content) {
-          // Override default block title if a custom display title is present.
-          if ($block->title) {
-            // Check plain here to allow module generated titles to keep any markup.
-            $block->subject = $block->title == '<none>' ? '' : check_plain($block->title);
-          }
-          if (!isset($block->subject)) {
-            $block->subject = '';
-          }
-          $region_blocks["{$block->module}_{$block->delta}"] = $block;
+      }
+      if (isset($block->content) && $block->content) {
+        // Normalize to the drupal_render() structure.
+        $block->content = array('content' => is_string($block->content) ? array('#markup' => $block->content) : $block->content);
+        // Override default block title if a custom display title is present.
+        if ($block->title) {
+          // Check plain here to allow module generated titles to keep any
+          // markup.
+          $block->subject = $block->title == '<none>' ? '' : check_plain($block->title);
         }
+        if (!isset($block->subject)) {
+          $block->subject = '';
+        }
+        $region_blocks["{$block->module}_{$block->delta}"] = $block;
       }
     }
   }
@@ -726,7 +803,7 @@ function _block_get_cache_id($block) {
 }
 
 /**
- * Implementation of hook_flush_caches().
+ * Implement hook_flush_caches().
  */
 function block_flush_caches() {
   return array('cache_block');
@@ -750,8 +827,8 @@ function block_flush_caches() {
  * @see block.tpl.php
  */
 function template_preprocess_block(&$variables) {
-  static $block_counter = array();
-  $variables['block'] = $variables['block']['#block'];
+  $block_counter = &drupal_static(__FUNCTION__, array());
+  $variables['block'] = $variables['elements']['#block'];
   // All blocks get an independent counter for each region.
   if (!isset($block_counter[$variables['block']->region])) {
     $block_counter[$variables['block']->region] = 1;
@@ -759,6 +836,11 @@ function template_preprocess_block(&$variables) {
   // Same with zebra striping.
   $variables['block_zebra'] = ($block_counter[$variables['block']->region] % 2) ? 'odd' : 'even';
   $variables['block_id'] = $block_counter[$variables['block']->region]++;
+
+  // Create the $content variable that templates expect.
+  $variables['content'] = $variables['elements']['#children'];
+
+  $variables['classes_array'][] = 'block-' . $variables['block']->module;
 
   $variables['template_files'][] = 'block-' . $variables['block']->region;
   $variables['template_files'][] = 'block-' . $variables['block']->module;

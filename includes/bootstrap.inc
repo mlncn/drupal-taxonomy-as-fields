@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.280 2009/05/12 18:08:42 dries Exp $
+// $Id: bootstrap.inc,v 1.287 2009/06/10 20:00:10 dries Exp $
 
 /**
  * @file
@@ -431,6 +431,7 @@ function drupal_initialize_variables() {
   ini_set('magic_quotes_runtime', '0');
   // Use session cookies, not transparent sessions that puts the session id in
   // the query string.
+  ini_set('session.use_cookies', '1');
   ini_set('session.use_only_cookies', '1');
   ini_set('session.use_trans_sid', '0');
   // Don't send HTTP headers using PHP's session handler.
@@ -671,7 +672,6 @@ function variable_del($name) {
   unset($conf[$name]);
 }
 
-
 /**
  * Retrieve the current page from the cache.
  *
@@ -680,36 +680,33 @@ function variable_del($name) {
  * from a form submission, the contents of a shopping cart, or other user-
  * specific content that should not be cached and displayed to other users.
  *
- * @param $retrieve
- *   If TRUE, look up and return the current page in the cache, or start output
- *   buffering if the conditions for caching are satisfied. If FALSE, only
- *   return a boolean value indicating whether the current request may be
- *   cached.
  * @return
- *   The cache object, if the page was found in the cache; TRUE if the page was
- *   not found, but output buffering was started in order to possibly cache the
- *   current request; FALSE if the page was not found, and the current request
- *   may not be cached (e.g. because it belongs to an authenticated user). If
- *   $retrieve is TRUE, only return either TRUE or FALSE.
+ *   The cache object, if the page was found in the cache, NULL otherwise.
  */
-function page_get_cache($retrieve) {
-  global $user, $base_root;
-  static $ob_started = FALSE;
+function drupal_page_get_cache() {
+  global $base_root;
 
-  if ($user->uid || ($_SERVER['REQUEST_METHOD'] != 'GET' && $_SERVER['REQUEST_METHOD'] != 'HEAD') || count(drupal_get_messages(NULL, FALSE)) || $_SERVER['SERVER_SOFTWARE'] === 'PHP CLI') {
-    return FALSE;
+  if (drupal_page_is_cacheable()) {
+    return cache_get($base_root . request_uri(), 'cache_page');
   }
-  if ($retrieve) {
-    $cache = cache_get($base_root . request_uri(), 'cache_page');
-    if ($cache) {
-      return $cache;
-    }
-    else {
-      ob_start();
-      $ob_started = TRUE;
-    }
+}
+
+/**
+ * Determine the cacheability of the current page.
+ *
+ * @param $allow_caching
+ *  Set to FALSE if you want to prevent this page to get cached.
+ * @return
+ *  TRUE if the current page can be cached, FALSE otherwise.
+ */
+function drupal_page_is_cacheable($allow_caching = NULL) {
+  $allow_caching_static = &drupal_static(__FUNCTION__, TRUE);
+  if (isset($allow_caching)) {
+    $allow_caching_static = $allow_caching;
   }
-  return $ob_started;
+
+  return $allow_caching_static && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD')
+    && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI';
 }
 
 /**
@@ -800,7 +797,7 @@ function drupal_set_header($name = NULL, $value = NULL, $append = FALSE) {
  *   or NULL if the header has not been set.
  */
 function drupal_get_header($name = NULL) {
-  $headers = drupal_set_header(); 
+  $headers = drupal_set_header();
   if (isset($name)) {
     $name = strtolower($name);
     return isset($headers[$name]) ? $headers[$name] : NULL;
@@ -885,7 +882,7 @@ function drupal_send_headers($default_headers = array(), $only_default = FALSE) 
  * the client think that the anonymous and authenticated pageviews are
  * identical.
  *
- * @see page_set_cache()
+ * @see drupal_page_set_cache()
  */
 function drupal_page_header() {
   $headers_sent = &drupal_static(__FUNCTION__, FALSE);
@@ -914,7 +911,7 @@ function drupal_page_header() {
  * and the conditions match those currently in the cache, a 304 Not Modified
  * response is sent.
  */
-function drupal_page_cache_header(stdClass $cache) {
+function drupal_serve_page_from_cache(stdClass $cache) {
   // Negotiate whether to use compression.
   $page_compression = variable_get('page_compression', TRUE) && extension_loaded('zlib');
   $return_compressed = $page_compression && isset($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== FALSE;
@@ -1169,10 +1166,6 @@ function watchdog($type, $message, $variables = array(), $severity = WATCHDOG_NO
  */
 function drupal_set_message($message = NULL, $type = 'status', $repeat = TRUE) {
   if ($message) {
-    if (!isset($_SESSION['messages'])) {
-      drupal_set_session('messages', array());
-    }
-
     if (!isset($_SESSION['messages'][$type])) {
       $_SESSION['messages'][$type] = array();
     }
@@ -1180,9 +1173,12 @@ function drupal_set_message($message = NULL, $type = 'status', $repeat = TRUE) {
     if ($repeat || !in_array($message, $_SESSION['messages'][$type])) {
       $_SESSION['messages'][$type][] = $message;
     }
+
+    // Mark this page has being not cacheable.
+    drupal_page_is_cacheable(FALSE);
   }
 
-  // messages not set when DB connection fails
+  // Messages not set when DB connection fails.
   return isset($_SESSION['messages']) ? $_SESSION['messages'] : NULL;
 }
 
@@ -1364,17 +1360,7 @@ function _drupal_bootstrap($phase) {
 
     case DRUPAL_BOOTSTRAP_SESSION:
       require_once DRUPAL_ROOT . '/' . variable_get('session_inc', 'includes/session.inc');
-      session_set_save_handler('_sess_open', '_sess_close', '_sess_read', '_sess_write', '_sess_destroy_sid', '_sess_gc');
-      // If a session cookie exists, initialize the session. Otherwise the
-      // session is only started on demand in drupal_session_start(), making
-      // anonymous users not use a session cookie unless something is stored in
-      // $_SESSION. This allows HTTP proxies to cache anonymous pageviews.
-      if (isset($_COOKIE[session_name()])) {
-        drupal_session_start();
-      }
-      else {
-        $user = drupal_anonymous_user();
-      }
+      drupal_session_initialize();
       break;
 
     case DRUPAL_BOOTSTRAP_VARIABLES:
@@ -1384,22 +1370,26 @@ function _drupal_bootstrap($phase) {
 
     case DRUPAL_BOOTSTRAP_LATE_PAGE_CACHE:
       $cache_mode = variable_get('cache', CACHE_DISABLED);
+
       // Get the page from the cache.
-      $cache = $cache_mode == CACHE_DISABLED ? FALSE : page_get_cache(TRUE);
+      if ($cache_mode != CACHE_DISABLED) {
+        $cache = drupal_page_get_cache();
+      }
+      else {
+        $cache = FALSE;
+      }
+
       // If the skipping of the bootstrap hooks is not enforced, call hook_boot.
-      if (!is_object($cache) || $cache_mode != CACHE_AGGRESSIVE) {
+      if (!$cache || $cache_mode != CACHE_AGGRESSIVE) {
         // Load module handling.
         require_once DRUPAL_ROOT . '/includes/module.inc';
         module_invoke_all('boot');
       }
+
       // If there is a cached page, display it.
-      if (is_object($cache)) {
-        // Destroy empty anonymous sessions.
-        if (drupal_session_is_started() && empty($_SESSION)) {
-          session_destroy();
-        }
+      if ($cache) {
         header('X-Drupal-Cache: HIT');
-        drupal_page_cache_header($cache);
+        drupal_serve_page_from_cache($cache);
         // If the skipping of the bootstrap hooks is not enforced, call hook_exit.
         if ($cache_mode != CACHE_AGGRESSIVE) {
           module_invoke_all('exit');
@@ -1408,18 +1398,14 @@ function _drupal_bootstrap($phase) {
         exit;
       }
 
-      // Prepare for non-cached page workflow.
-
-      // If the session has not already been started and output buffering is
-      // not enabled, the HTTP headers must be sent now, including the session
-      // cookie. If output buffering is enabled, the session may be started
-      // at any time using drupal_session_start().
-      if ($cache === FALSE) {
-        drupal_page_header();
-        drupal_session_start();
-      }
-      else {
+      if (!$cache && drupal_page_is_cacheable()) {
         header('X-Drupal-Cache: MISS');
+      }
+
+      // Prepare for non-cached page workflow.
+      if ($_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
+        ob_start();
+        drupal_page_header();
       }
       break;
 
@@ -1824,7 +1810,7 @@ function registry_rebuild() {
  * @param $name
  *   Globally unique name for the variable. For a function with only one static,
  *   variable, the function name (e.g. via the PHP magic __FUNCTION__ constant)
- *   is recommended. For a function with multiple static variables add a 
+ *   is recommended. For a function with multiple static variables add a
  *   distinguishing suffix to the function name for each one.
  * @param $default_value
  *   Optional default value.

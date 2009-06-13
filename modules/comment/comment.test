@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.test,v 1.28 2009/03/31 01:49:50 webchick Exp $
+// $Id: comment.test,v 1.31 2009/06/03 06:52:29 dries Exp $
 
 class CommentHelperCase extends DrupalWebTestCase {
   protected $admin_user;
@@ -7,7 +7,7 @@ class CommentHelperCase extends DrupalWebTestCase {
   protected $node;
 
   function setUp() {
-    parent::setUp('comment');
+    parent::setUp('comment', 'search');
     // Create users.
     $this->admin_user = $this->drupalCreateUser(array('administer content types', 'administer comments', 'administer permissions', 'administer blocks'));
     $this->web_user = $this->drupalCreateUser(array('access comments', 'post comments', 'create article content'));
@@ -143,7 +143,7 @@ class CommentHelperCase extends DrupalWebTestCase {
    *   Comments per page value.
    */
   function setCommentsPerPage($number) {
-    $this->setCommentSettings('comment_default_per_page_article', $number, 'Number of comments per page set to ' . $number .'.');
+    $this->setCommentSettings('comment_default_per_page_article', $number, 'Number of comments per page set to ' . $number . '.');
   }
 
   /**
@@ -280,7 +280,7 @@ class CommentInterfaceTest extends CommentHelperCase {
     $reply_loaded = comment_load($reply->id);
     $this->assertTrue($this->commentExists($reply, TRUE), t('Reply found.'));
     $this->assertEqual($comment->id, $reply_loaded->pid, t('Pid of a reply to a comment is set correctly.'));
-    $this->assertEqual(rtrim($comment_loaded->thread,'/').'.00/', $reply_loaded->thread, t('Thread of reply grows correctly.'));
+    $this->assertEqual(rtrim($comment_loaded->thread, '/') . '.00/', $reply_loaded->thread, t('Thread of reply grows correctly.'));
 
     // Second reply to comment
     $this->drupalGet('comment/reply/' . $this->node->nid . '/' . $comment->id);
@@ -289,7 +289,7 @@ class CommentInterfaceTest extends CommentHelperCase {
     $reply = $this->postComment(NULL, $this->randomName(), $this->randomName());
     $reply_loaded = comment_load($reply->id);
     $this->assertTrue($this->commentExists($reply, TRUE), t('Second reply found.'));
-    $this->assertEqual(rtrim($comment_loaded->thread,'/').'.01/', $reply_loaded->thread, t('Thread of second reply grows correctly.'));
+    $this->assertEqual(rtrim($comment_loaded->thread, '/') . '.01/', $reply_loaded->thread, t('Thread of second reply grows correctly.'));
 
     // Edit reply.
     $this->drupalGet('comment/edit/' . $reply->id);
@@ -524,11 +524,11 @@ class CommentApprovalTest extends CommentHelperCase {
 
     // Approve comment.
     $this->drupalLogin($this->admin_user);
-    $this->drupalGet('node/'. $this->node->nid);
+    $this->drupalGet('node/' . $this->node->nid);
     $this->clickLink(t('approve'));
     $this->drupalLogout();
 
-    $this->drupalGet('node/'. $this->node->nid);
+    $this->drupalGet('node/' . $this->node->nid);
     $this->assertTrue($this->commentExists($anonymous_comment4), t('Anonymous comment visible.'));
   }
 }
@@ -618,10 +618,17 @@ class CommentRSSUnitTest extends CommentHelperCase {
    * Test comments as part of an RSS feed.
    */
   function testCommentRSS() {
+    // Find comment in RSS feed.
     $this->drupalLogin($this->web_user);
     $comment = $this->postComment($this->node, $this->randomName(), $this->randomName());
     $this->drupalGet('rss.xml');
     $raw = '<comments>' . url('node/' . $this->node->nid, array('fragment' => 'comments', 'absolute' => TRUE)) . '</comments>';
     $this->assertRaw($raw, t('Comments as part of RSS feed.'));
+
+    // Hide comments from RSS feed and check presence.
+    $this->node->comment = COMMENT_NODE_HIDDEN;
+    node_save($this->node);
+    $this->drupalGet('rss.xml');
+    $this->assertNoRaw($raw, t('Hidden comments is not a part of RSS feed.'));
   }
 }

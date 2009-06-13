@@ -1,5 +1,5 @@
 <?php
-// $Id: schema.inc,v 1.12 2009/03/14 20:34:17 dries Exp $
+// $Id: schema.inc,v 1.17 2009/06/06 18:23:21 webchick Exp $
 
 /**
  * @file
@@ -44,6 +44,8 @@
  *       just map to the according database engine specific
  *       datatypes. Use 'serial' for auto incrementing fields. This
  *       will expand to 'int auto_increment' on mysql.
+ *     - 'serialize': A boolean indicating whether the field will be stored
+         as a serialized string.
  *     - 'size': The data size: 'tiny', 'small', 'medium', 'normal',
  *       'big'. This is a hint about the largest value the field will
  *       store and determines which of the database engine specific
@@ -100,24 +102,44 @@
  *
  * @code
  * $schema['node'] = array(
+ *   'description' => 'The base table for nodes.',
  *   'fields' => array(
- *     'nid'      => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
- *     'uid'      => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE),
- *     'vid'      => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
- *     'type'     => array('type' => 'varchar', 'length' => 32, 'not null' => TRUE, 'default' => ''),
- *     'title'    => array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''),
+ *     'nid'       => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
+ *     'vid'       => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE,'default' => 0),
+ *     'type'      => array('type' => 'varchar','length' => 32,'not null' => TRUE, 'default' => ''),
+ *     'language'  => array('type' => 'varchar','length' => 12,'not null' => TRUE,'default' => ''),
+ *     'title'     => array('type' => 'varchar','length' => 255,'not null' => TRUE, 'default' => ''),
+ *     'uid'       => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'status'    => array('type' => 'int', 'not null' => TRUE, 'default' => 1),
+ *     'created'   => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'changed'   => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'comment'   => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'promote'   => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'moderate'  => array('type' => 'int', 'not null' => TRUE,'default' => 0),
+ *     'sticky'    => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
+ *     'tnid'      => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+ *     'translate' => array('type' => 'int', 'not null' => TRUE, 'default' => 0),
  *   ),
- *   'primary key' => array('nid'),
+ *   'indexes' => array(
+ *     'node_changed'        => array('changed'),
+ *     'node_created'        => array('created'),
+ *     'node_moderate'       => array('moderate'),
+ *     'node_frontpage'      => array('promote', 'status', 'sticky', 'created'),
+ *     'node_status_type'    => array('status', 'type', 'nid'),
+ *     'node_title_type'     => array('title', array('type', 4)),
+ *     'node_type'           => array(array('type', 4)),
+ *     'uid'                 => array('uid'),
+ *     'tnid'                => array('tnid'),
+ *     'translate'           => array('translate'),
+ *   ),
  *   'unique keys' => array(
- *     'vid'     => array('vid')
+ *     'vid' => array('vid'),
  *   ),
  *   'foreign keys' => array(
- *     'uid'  => array('users' => 'uid'),
- *   )
- *   'indexes' => array(
- *     'nid'                 => array('nid'),
- *     'node_title_type'     => array('title', array('type', 4)),
- *   ),
+ *      'vid' => array('node_revision' => 'vid'),
+ *      'uid' => array('users' => 'uid'),
+ *    ),
+ *   'primary key' => array('nid'),
  * );
  * @endcode
  *
@@ -187,6 +209,7 @@ abstract class DatabaseSchema {
     // concatination for conditionals like this however, we
     // couldn't use db_select() here because it would prefix
     // information_schema.tables and the query would fail.
+    // Don't use {} around information_schema.tables table.
     return db_query("SELECT table_name FROM information_schema.tables WHERE " . (string) $condition, $condition->arguments())->fetchField();
   }
 
@@ -206,6 +229,7 @@ abstract class DatabaseSchema {
     // concatination for conditionals like this however, we
     // couldn't use db_select() here because it would prefix
     // information_schema.tables and the query would fail.
+    // Don't use {} around information_schema.tables table.
     return db_query("SELECT table_name FROM information_schema.tables WHERE " . (string) $condition, $condition->arguments())->fetchAllKeyed(0, 0);
   }
 
@@ -220,6 +244,7 @@ abstract class DatabaseSchema {
     // concatination for conditionals like this however, we
     // couldn't use db_select() here because it would prefix
     // information_schema.tables and the query would fail.
+    // Don't use {} around information_schema.columns table.
     return db_query("SELECT column_name FROM information_schema.columns WHERE " . (string) $condition, $condition->arguments())->fetchAllKeyed(0, 0);
   }
 
@@ -496,7 +521,7 @@ abstract class DatabaseSchema {
 
   /**
    * Prepare a table or column comment for database query.
-   * 
+   *
    * @param $comment
    *   The comment string to prepare.
    * @param $length

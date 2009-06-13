@@ -1,5 +1,5 @@
 <?php
-// $Id: node.admin.inc,v 1.45 2009/04/26 19:44:38 dries Exp $
+// $Id: node.admin.inc,v 1.54 2009/06/05 05:28:28 dries Exp $
 
 /**
  * @file
@@ -10,25 +10,19 @@
  * Menu callback; presents general node configuration options.
  */
 function node_configure() {
-  // Only show rebuild button if there are either 0, or 2 or more, rows
-  // in the {node_access} table, or if there are modules that
-  // implement hook_node_grants().
-  if (db_query('SELECT COUNT(*) FROM {node_access}')->fetchField() != 1 || count(module_implements('node_grants')) > 0) {
-    $status = '<p>' . t('If the site is experiencing problems with permissions to content, you may have to rebuild the permissions cache. Possible causes for permission problems are disabling modules or configuration changes to permissions. Rebuilding will remove all privileges to posts, and replace them with permissions based on the current modules and settings.') . '</p>';
-    $status .= '<p>' . t('Rebuilding may take some time if there is a lot of content or complex permission settings. After rebuilding has completed posts will automatically use the new permissions.') . '</p>';
+  $status = '<p>' . t('If the site is experiencing problems with permissions to content, you may have to rebuild the permissions cache. Possible causes for permission problems are disabling modules or configuration changes to permissions. Rebuilding will remove all privileges to posts, and replace them with permissions based on the current modules and settings.') . '</p>';
+  $status .= '<p>' . t('Rebuilding may take some time if there is a lot of content or complex permission settings. After rebuilding has completed posts will automatically use the new permissions.') . '</p>';
 
-    $form['access'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Node access status'),
-    );
-    $form['access']['status'] = array('#markup' => $status);
-    $form['access']['rebuild'] = array(
-      '#type' => 'submit',
-      '#value' => t('Rebuild permissions'),
-      '#submit' => array('node_configure_access_submit'),
-    );
-  }
-
+  $form['access'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Node access status'),
+  );
+  $form['access']['status'] = array('#markup' => $status);
+  $form['access']['rebuild'] = array(
+    '#type' => 'submit',
+    '#value' => t('Rebuild permissions'),
+    '#submit' => array('node_configure_access_submit'),
+  );
   $form['default_nodes_main'] = array(
     '#type' => 'select', '#title' => t('Number of posts on main page'),
     '#default_value' => 10,
@@ -54,13 +48,6 @@ function node_configure() {
 }
 
 /**
- * Helper function for teaser length choices.
- */
-function _node_characters($length) {
-  return ($length == 0) ? t('Unlimited') : format_plural($length, '1 character', '@count characters');
-}
-
-/**
  * Form button submit callback.
  */
 function node_configure_access_submit($form, &$form_state) {
@@ -80,11 +67,11 @@ function node_configure_rebuild_confirm() {
  */
 function node_configure_rebuild_confirm_submit($form, &$form_state) {
   node_access_rebuild(TRUE);
-  $form_state['redirect'] = 'admin/content/node-settings';
+  $form_state['redirect'] = 'admin/reports/status';
 }
 
 /**
- * Implementation of hook_node_operations().
+ * Implement hook_node_operations().
  */
 function node_node_operations() {
   $operations = array(
@@ -150,7 +137,7 @@ function node_filters() {
     );
   }
 
-  $filters['type'] = array('title' => t('type'), 'options' => node_get_types('names'));
+  $filters['type'] = array('title' => t('type'), 'options' => node_type_get_names());
 
   // The taxonomy filter
   if ($taxonomy = module_invoke('taxonomy', 'form_all', 1)) {
@@ -171,7 +158,8 @@ function node_build_filter_query() {
   // Build query
   $where = $args = array();
   $join = '';
-  foreach ($_SESSION['node_overview_filter'] as $index => $filter) {
+  $filter_data = isset($_SESSION['node_overview_filter']) ? $_SESSION['node_overview_filter'] : array();
+  foreach ($filter_data as $index => $filter) {
     list($key, $value) = $filter;
     switch ($key) {
       case 'status':
@@ -202,10 +190,7 @@ function node_build_filter_query() {
  * Return form for node administration filters.
  */
 function node_filter_form() {
-  if (!isset($_SESSION['node_overview_filter'])) {
-    drupal_set_session('node_overview_filter', array());
-  }
-  $session = &$_SESSION['node_overview_filter'];
+  $session = isset($_SESSION['node_overview_filter']) ? $_SESSION['node_overview_filter'] : array();
   $filters = node_filters();
 
   $i = 0;
@@ -320,9 +305,6 @@ function node_filter_form_submit($form, &$form_state) {
         $flat_options = form_options_flatten($filters[$filter]['options']);
 
         if (isset($flat_options[$form_state['values'][$filter]])) {
-          if (!isset($_SESSION['node_overview_filter'])) {
-            drupal_set_session('node_overview_filter', array());
-          }
           $_SESSION['node_overview_filter'][] = array($filter, $form_state['values'][$filter]);
         }
       }
@@ -331,7 +313,7 @@ function node_filter_form_submit($form, &$form_state) {
       array_pop($_SESSION['node_overview_filter']);
       break;
     case t('Reset'):
-      drupal_set_session('node_overview_filter', array());
+      $_SESSION['node_overview_filter'] = array();
       break;
   }
 }
@@ -457,7 +439,7 @@ function node_admin_content($form_state) {
 function node_admin_nodes() {
   // Enable language column if translation module is enabled
   // or if we have any node with language.
-  $multilanguage = (module_exists('translation') || db_query("SELECT COUNT(*) FROM {node} WHERE language != ''")->fetchField());
+  $multilanguage = (module_exists('translation') || db_query("SELECT COUNT(*) FROM {node} WHERE language <> ''")->fetchField());
 
   // Build the sortable table header.
   $header = array();
@@ -481,7 +463,7 @@ function node_admin_nodes() {
   $filter = node_build_filter_query();
 
   $sort = tablesort_sql($header, '', 'n.changed DESC');
-  $result = pager_query(db_rewrite_sql('SELECT n.*, u.name FROM {node} n '. $filter['join'] .' INNER JOIN {users} u ON n.uid = u.uid '. $filter['where'] . $sort), 50, 0, NULL, $filter['args']);
+  $result = pager_query(db_rewrite_sql('SELECT n.*, u.name FROM {node} n ' . $filter['join'] . ' INNER JOIN {users} u ON n.uid = u.uid ' . $filter['where'] . $sort), 50, 0, NULL, $filter['args']);
 
   // Build the 'Update options' form.
   $form['options'] = array(
@@ -512,7 +494,7 @@ function node_admin_nodes() {
     $nodes[$node->nid] = '';
     $options = empty($node->language) ? array() : array('language' => $languages[$node->language]);
     $form['title'][$node->nid] = array('#markup' => l($node->title, 'node/' . $node->nid, $options) . ' ' . theme('mark', node_mark($node->nid, $node->changed)));
-    $form['name'][$node->nid] =  array('#markup' => check_plain(node_get_types('name', $node)));
+    $form['name'][$node->nid] =  array('#markup' => check_plain(node_type_get_name($node)));
     $form['username'][$node->nid] = array('#markup' => theme('username', $node));
     $form['status'][$node->nid] =  array('#markup' => ($node->status ? t('published') : t('not published')));
     $form['changed'][$node->nid] = array('#markup' => format_date($node->changed, 'small'));
@@ -620,7 +602,6 @@ function theme_node_admin_nodes($form) {
 }
 
 function node_multiple_delete_confirm(&$form_state, $nodes) {
-
   $form['nodes'] = array('#prefix' => '<ul>', '#suffix' => '</ul>', '#tree' => TRUE);
   // array_filter returns only elements with TRUE values
   foreach ($nodes as $nid => $value) {
@@ -634,18 +615,21 @@ function node_multiple_delete_confirm(&$form_state, $nodes) {
   }
   $form['operation'] = array('#type' => 'hidden', '#value' => 'delete');
   $form['#submit'][] = 'node_multiple_delete_confirm_submit';
+  $confirm_question = format_plural(count($nodes),
+                                  'Are you sure you want to delete this item?',
+                                  'Are you sure you want to delete these items?');
   return confirm_form($form,
-                      t('Are you sure you want to delete these items?'),
-                      'admin/content/node', t('This action cannot be undone.'),
-                      t('Delete all'), t('Cancel'));
+                    $confirm_question,
+                    'admin/content/node', t('This action cannot be undone.'),
+                    t('Delete'), t('Cancel'));
 }
 
 function node_multiple_delete_confirm_submit($form, &$form_state) {
   if ($form_state['values']['confirm']) {
-    foreach ($form_state['values']['nodes'] as $nid => $value) {
-      node_delete($nid);
-    }
-    drupal_set_message(t('The items have been deleted.'));
+    node_delete_multiple(array_keys($form_state['values']['nodes']));
+    $count = count($form_state['values']['nodes']);
+    watchdog('content', 'Deleted @count posts.', array('@count' => $count));
+    drupal_set_message(t('Deleted @count posts.', array('@count' => $count)));
   }
   $form_state['redirect'] = 'admin/content/node';
   return;

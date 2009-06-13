@@ -1,5 +1,5 @@
 <?php
-// $Id: run-tests.sh,v 1.26 2009/04/13 12:23:26 dries Exp $
+// $Id: run-tests.sh,v 1.28 2009/06/10 16:17:02 dries Exp $
 /**
  * @file
  * This script runs Drupal tests from command line.
@@ -12,15 +12,19 @@ define('SIMPLETEST_SCRIPT_COLOR_EXCEPTION', 33); // Brown.
 // Set defaults and get overrides.
 list($args, $count) = simpletest_script_parse_args();
 
-simpletest_script_init();
-
 if ($args['help'] || $count == 0) {
   simpletest_script_help();
   exit;
 }
 
 if ($args['execute-batch']) {
+  // Masquerade as Apache for running tests.
+  simpletest_script_init("Apache");
   simpletest_script_execute_batch();
+}
+else {
+  // Run administrative functions as CLI.
+  simpletest_script_init("PHP CLI");
 }
 
 // Bootstrap to perform initial validation or other operations.
@@ -44,8 +48,11 @@ if ($args['clean']) {
 }
 
 // Load SimpleTest files.
-$all_tests = simpletest_get_all_tests();
-$groups = simpletest_categorize_tests($all_tests);
+$groups = simpletest_test_get_all();
+$all_tests = array();
+foreach ($groups as $group => $tests) {
+  $all_tests = array_merge($all_tests, array_keys($tests));
+}
 $test_list = array();
 
 if ($args['list']) {
@@ -54,8 +61,8 @@ if ($args['list']) {
   echo   "-------------------------------\n\n";
   foreach ($groups as $group => $tests) {
     echo $group . "\n";
-    foreach ($tests as $class_name => $info) {
-      echo " - " . $info['name'] . ' (' . $class_name . ')' . "\n";
+    foreach ($tests as $class => $info) {
+      echo " - " . $info['name'] . ' (' . $class . ')' . "\n";
     }
   }
   exit;
@@ -223,7 +230,7 @@ function simpletest_script_parse_args() {
 /**
  * Initialize script variables and perform general setup requirements.
  */
-function simpletest_script_init() {
+function simpletest_script_init($server_software) {
   global $args, $php;
 
   $host = 'localhost';
@@ -257,7 +264,7 @@ function simpletest_script_init() {
   $_SERVER['HTTP_HOST'] = $host;
   $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
   $_SERVER['SERVER_ADDR'] = '127.0.0.1';
-  $_SERVER['SERVER_SOFTWARE'] = 'Apache';
+  $_SERVER['SERVER_SOFTWARE'] = $server_software;
   $_SERVER['SERVER_NAME'] = 'localhost';
   $_SERVER['REQUEST_URI'] = $path .'/';
   $_SERVER['REQUEST_METHOD'] = 'GET';
@@ -339,7 +346,6 @@ function simpletest_script_execute_batch() {
  * Run a single test (assume a Drupal bootstrapped environment).
  */
 function simpletest_script_run_one_test($test_id, $test_class) {
-  simpletest_get_all_tests();
   $test = new $test_class($test_id);
   $test->run();
   $info = $test->getInfo();

@@ -1,8 +1,13 @@
 <?php
-// $Id: locale.install,v 1.36 2009/04/20 02:23:16 webchick Exp $
+// $Id: locale.install,v 1.44 2009/06/08 05:00:11 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the locale module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function locale_install() {
   // locales_source.source and locales_target.target are not used as binary
@@ -12,7 +17,17 @@ function locale_install() {
   // Create tables.
   drupal_install_schema('locale');
 
-  db_query("INSERT INTO {languages} (language, name, native, direction, enabled, weight, javascript) VALUES ('en', 'English', 'English', '0', '1', '0', '')");
+  db_insert('languages')
+    ->fields(array(
+      'language' => 'en',
+      'name' => 'English',
+      'native' => 'English',
+      'direction' => 0,
+      'enabled' => 1,
+      'weight' => 0,
+      'javascript' => '',
+    ))
+    ->execute();
 }
 
 /**
@@ -170,7 +185,7 @@ function locale_update_6004() {
  * interfere with language variables.
  */
 function locale_update_6005() {
-  foreach (node_get_types() as $type => $content_type) {
+  foreach (node_type_get_types() as $type => $content_type) {
     // Default to NULL, so we can skip dealing with non-existent settings.
     $setting = variable_get('language_' . $type);
     if ($type == 'default' && is_numeric($setting)) {
@@ -202,24 +217,52 @@ function locale_update_6005() {
 }
 
 /**
+ * Allow longer location.
+ */
+function locale_update_6006() {
+  $ret = array();
+  db_change_field($ret, 'locales_source', 'location', 'location', array('type' => 'text', 'not null' => FALSE));
+  return $ret;
+}
+
+/**
  * @} End of "defgroup updates-5.x-to-6.x"
  */
 
 /**
- * Implementation of hook_uninstall().
+ * @defgroup updates-6.x-to-7.x Locale updates from 6.x to 7.x
+ * @{
+ */
+
+/**
+ * Allow longer location.
+ */
+function locale_update_7000() {
+  $ret = array();
+  db_drop_index($ret, 'locales_source', 'source');
+  db_add_index($ret, 'locales_source', 'source_context', array(array('source', 30), 'context'));
+  return $ret;
+}
+
+/**
+ * @} End of "defgroup updates-6.x-to-7.x"
+ */
+
+/**
+ * Implement hook_uninstall().
  */
 function locale_uninstall() {
   // Delete all JavaScript translation files.
   $locale_js_directory = file_create_path(variable_get('locale_js_directory', 'languages'));
   $files = db_query('SELECT language, javascript FROM {languages}');
-  while ($file = db_fetch_object($files)) {
+  foreach ($files as $file) {
     if (!empty($file->javascript)) {
       file_unmanaged_delete(file_create_path($locale_js_directory . '/' . $file->language . '_' . $file->javascript . '.js'));
     }
   }
   // Delete the JavaScript translations directory if empty.
   @rmdir($locale_js_directory);
-  
+
   // Clear variables.
   variable_del('language_default');
   variable_del('language_count');
@@ -229,22 +272,22 @@ function locale_uninstall() {
   variable_del('language_content_type_negotiation');
   variable_del('locale_cache_strings');
   variable_del('locale_js_directory');
-  
-  foreach (node_get_types() as $type => $content_type) {
+
+  foreach (node_type_get_types() as $type => $content_type) {
     $setting = variable_del('language_content_type_' . $type);
   }
-  
+
   // Switch back to English: with a $language->language value different from 'en'
-  // successive calls of t() might result in calling locale(), which in turn might 
+  // successive calls of t() might result in calling locale(), which in turn might
   // try to query the unexisting {locales_source} and {locales_target} tables.
   drupal_init_language();
-  
+
   // Remove tables.
   drupal_uninstall_schema('locale');
 }
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function locale_schema() {
   $schema['languages'] = array(
@@ -339,10 +382,9 @@ function locale_schema() {
         'description' => 'Unique identifier of this string.',
       ),
       'location' => array(
-        'type' => 'varchar',
-        'length' => 255,
-        'not null' => TRUE,
-        'default' => '',
+        'type' => 'text',
+        'not null' => FALSE,
+        'size' => 'big',
         'description' => 'Drupal path in case of online discovered translations or file path in case of imported strings.',
       ),
       'textgroup' => array(
@@ -358,6 +400,13 @@ function locale_schema() {
         'not null' => TRUE,
         'description' => 'The original string in English.',
       ),
+      'context' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The context this string applies to.',
+      ),
       'version' => array(
         'type' => 'varchar',
         'length' => 20,
@@ -368,7 +417,7 @@ function locale_schema() {
     ),
     'primary key' => array('lid'),
     'indexes' => array(
-      'source' => array(array('source', 30)),
+      'source_context' => array(array('source', 30), 'context'),
     ),
   );
 
@@ -408,6 +457,9 @@ function locale_schema() {
       ),
     ),
     'primary key' => array('language', 'lid', 'plural'),
+    'foreign keys' => array(
+      'lid' => array('locales_source' => 'lid'),
+    ),
     'indexes' => array(
       'lid'      => array('lid'),
       'plid'     => array('plid'),

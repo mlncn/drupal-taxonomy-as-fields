@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.module,v 1.114 2009/05/10 18:24:06 dries Exp $
+// $Id: contact.module,v 1.116 2009/06/08 05:00:11 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function contact_help($path, $arg) {
   switch ($path) {
@@ -33,7 +33,7 @@ function contact_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function contact_perm() {
   return array(
@@ -49,7 +49,7 @@ function contact_perm() {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function contact_menu() {
   $items['admin/build/contact'] = array(
@@ -137,7 +137,7 @@ function contact_load($cid) {
 }
 
 /**
- * Implementation of hook_user_form().
+ * Implement hook_user_form().
  */
 function contact_user_form(&$edit, &$user, $category = NULL) {
   if ($category == 'account') {
@@ -156,21 +156,21 @@ function contact_user_form(&$edit, &$user, $category = NULL) {
 }
 
 /**
- * Implementation of hook_user_insert().
+ * Implement hook_user_insert().
  */
 function contact_user_insert(&$edit, &$user, $category = NULL) {
   $edit['contact'] = variable_get('contact_default_status', 1);
 }
 
 /**
- * Implementation of hook_user_validate().
+ * Implement hook_user_validate().
  */
 function contact_user_validate(&$edit, &$user, $category = NULL) {
   return array('contact' => isset($edit['contact']) ? $edit['contact'] : FALSE);
 }
 
 /**
- * Implementation of hook_mail().
+ * Implement hook_mail().
  */
 function contact_mail($key, &$message, $params) {
   $language = $message['language'];
@@ -178,13 +178,13 @@ function contact_mail($key, &$message, $params) {
     case 'page_mail':
     case 'page_copy':
       $contact = $params['contact'];
-      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), $language->language);
-      $message['body'][] = t("!name sent a message using the contact form at !form.", array('!name' => $params['name'], '!form' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language))), $language->language);
+      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), array('langcode' => $language->language));
+      $message['body'][] = t("!name sent a message using the contact form at !form.", array('!name' => $params['name'], '!form' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language))), array('langcode' => $language->language));
       $message['body'][] = $params['message'];
       break;
     case 'page_autoreply':
       $contact = $params['contact'];
-      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), $language->language);
+      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), array('langcode' => $language->language));
       $message['body'][] = $contact['reply'];
       break;
     case 'user_mail':
@@ -193,9 +193,9 @@ function contact_mail($key, &$message, $params) {
       $account = $params['account'];
       $message['subject'] .= '[' . variable_get('site_name', 'Drupal') . '] ' . $params['subject'];
       $message['body'][] = "$account->name,";
-      $message['body'][] = t("!name (!name-url) has sent you a message via your contact form (!form-url) at !site.", array('!name' => $user->name, '!name-url' => url("user/$user->uid", array('absolute' => TRUE, 'language' => $language)), '!form-url' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language)), '!site' => variable_get('site_name', 'Drupal')), $language->language);
-      $message['body'][] = t("If you don't want to receive such e-mails, you can change your settings at !url.", array('!url' => url("user/$account->uid", array('absolute' => TRUE, 'language' => $language))), $language->language);
-      $message['body'][] = t('Message:', NULL, $language->language);
+      $message['body'][] = t("!name (!name-url) has sent you a message via your contact form (!form-url) at !site.", array('!name' => $user->name, '!name-url' => url("user/$user->uid", array('absolute' => TRUE, 'language' => $language)), '!form-url' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language)), '!site' => variable_get('site_name', 'Drupal')), array('langcode' => $language->language));
+      $message['body'][] = t("If you don't want to receive such e-mails, you can change your settings at !url.", array('!url' => url("user/$account->uid", array('absolute' => TRUE, 'language' => $language))), array('langcode' => $language->language));
+      $message['body'][] = t('Message:', array(), array('langcode' => $language->language));
       $message['body'][] = $params['message'];
       break;
   }

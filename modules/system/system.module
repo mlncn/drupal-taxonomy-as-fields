@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.692 2009/05/12 08:37:45 dries Exp $
+// $Id: system.module,v 1.711 2009/06/11 04:36:22 dries Exp $
 
 /**
  * @file
@@ -56,8 +56,23 @@ define('DRUPAL_USER_TIMEZONE_EMPTY', 1);
  */
 define('DRUPAL_USER_TIMEZONE_SELECT', 2);
 
+ /**
+ * Disabled option on forms and settings
+ */
+define('DRUPAL_DISABLED', 0);
+
 /**
- * Implementation of hook_help().
+ * Optional option on forms and settings
+ */
+define('DRUPAL_OPTIONAL', 1);
+
+/**
+ * Required option on forms and settings
+ */
+define('DRUPAL_REQUIRED', 2);
+
+/**
+ * Implement hook_help().
  */
 function system_help($path, $arg) {
   global $base_url;
@@ -91,7 +106,7 @@ function system_help($path, $arg) {
       $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. To help manage the update process, the <em>Update status</em> module, if enabled, provides <a href="@updates">information on new versions of modules (and themes)</a> as they are released. Regular review of the <a href="@updates">available updates page</a> is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php', '@updates' => url('admin/reports/updates'))) . '</p>';
       return $output;
     case 'admin/build/modules/uninstall':
-      return '<p>' . t('The uninstall process removes all data related to a module. To uninstall a module, you must first disable it. Not all modules support this feature.') . '</p>';
+      return '<p>' . t('The uninstall process removes all data related to a module. To uninstall a module, you must first disable it on the main <a href="@modules">modules page</a>. Not all modules support this feature.', array('@modules' => url('admin/build/modules'))) . '</p>';
     case 'admin/build/block/configure':
       if ($arg[4] == 'system' && $arg[5] == 'powered-by') {
         return '<p>' . t('The <em>Powered by Drupal</em> block is an optional link to the home page of the Drupal project. While there is absolutely no requirement that sites feature this link, it may be used to show support for Drupal.') . '</p>';
@@ -115,7 +130,7 @@ function system_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function system_theme() {
   return array_merge(drupal_common_theme(), array(
@@ -173,7 +188,7 @@ function system_theme() {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function system_perm() {
   return array(
@@ -209,7 +224,7 @@ function system_perm() {
 }
 
 /**
- * Implementation of hook_rdf_namespaces().
+ * Implement hook_rdf_namespaces().
  */
 function system_rdf_namespaces() {
   return array(
@@ -228,7 +243,7 @@ function system_rdf_namespaces() {
 }
 
 /**
- * Implementation of hook_elements().
+ * Implement hook_elements().
  */
 function system_elements() {
   // Top level form
@@ -440,7 +455,7 @@ function system_elements() {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function system_menu() {
   $items['system/files'] = array(
@@ -493,17 +508,19 @@ function system_menu() {
     'position' => 'left',
     'weight' => -10,
     'page callback' => 'system_admin_menu_block_page',
-    'access arguments' => array('access administration pages'),
+    'access callback' => 'system_admin_menu_block_access',
+    'access arguments' => array('admin/content', 'access administration pages'),
   );
 
-  // menu items that are basically just menu blocks
+  // Menu items that are basically just menu blocks.
   $items['admin/settings'] = array(
     'title' => 'Site configuration',
     'description' => 'Configure site settings.',
     'position' => 'right',
     'weight' => -5,
     'page callback' => 'system_settings_overview',
-    'access arguments' => array('access administration pages'),
+    'access callback' => 'system_admin_menu_block_access',
+    'access arguments' => array('admin/settings', 'access administration pages'),
   );
   $items['admin/build'] = array(
     'title' => 'Site building',
@@ -511,9 +528,10 @@ function system_menu() {
     'position' => 'right',
     'weight' => -10,
     'page callback' => 'system_admin_menu_block_page',
-    'access arguments' => array('access administration pages'),
+    'access callback' => 'system_admin_menu_block_access',
+    'access arguments' => array('admin/build', 'access administration pages'),
   );
-  // Themes:
+  // Themes.
   $items['admin/build/themes'] = array(
     'title' => 'Themes',
     'description' => 'Change which theme your site uses or allows users to set.',
@@ -533,7 +551,7 @@ function system_menu() {
     'access arguments' => array('administer site configuration'),
     'type' => MENU_LOCAL_TASK,
   );
-  // Theme configuration subtabs
+  // Theme configuration subtabs.
   $items['admin/build/themes/settings/global'] = array(
     'title' => 'Global settings',
     'type' => MENU_DEFAULT_LOCAL_TASK,
@@ -550,7 +568,7 @@ function system_menu() {
     );
   }
 
-  // Modules:
+  // Modules.
   $items['admin/build/modules'] = array(
     'title' => 'Modules',
     'description' => 'Enable or disable add-on modules for your site.',
@@ -579,7 +597,18 @@ function system_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  // Actions:
+  // Development menu category.
+  $items['admin/development'] = array(
+    'title' => 'Development',
+    'description' => 'Development tools.',
+    'position' => 'right',
+    'weight' => -7,
+    'page callback' => 'system_admin_menu_block_page',
+    'access callback' => 'system_admin_menu_block_access',
+    'access arguments' => array('admin/development', 'access administration pages'),
+  );
+
+  // Actions.
   $items['admin/settings/actions'] = array(
     'title' => 'Actions',
     'description' => 'Manage the actions defined for your site.',
@@ -637,7 +666,7 @@ function system_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  // Settings:
+  // Settings.
   $items['admin/settings/site-information'] = array(
     'title' => 'Site information',
     'description' => 'Change basic site information, such as the site name, slogan, e-mail address, mission, front page and more.',
@@ -721,12 +750,13 @@ function system_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  // Reports:
+  // Reports.
   $items['admin/reports'] = array(
     'title' => 'Reports',
     'description' => 'View reports from system logs and other status information.',
     'page callback' => 'system_admin_menu_block_page',
-    'access arguments' => array('access site reports'),
+    'access callback' => 'system_admin_menu_block_access',
+    'access arguments' => array('admin/reports', 'access site reports'),
     'weight' => 5,
     'position' => 'left',
   );
@@ -749,13 +779,7 @@ function system_menu() {
     'access arguments' => array('administer site configuration'),
     'type' => MENU_CALLBACK,
   );
-  $items['admin/reports/status/sql'] = array(
-    'title' => 'SQL',
-    'page callback' => 'system_sql',
-    'access arguments' => array('administer site configuration'),
-    'type' => MENU_CALLBACK,
-  );
-  // Default page for batch operations
+  // Default page for batch operations.
   $items['batch'] = array(
     'page callback' => 'system_batch_page',
     'access callback' => TRUE,
@@ -774,8 +798,7 @@ function system_menu() {
  *   The blocked IP address from the database as an array.
  */
 function blocked_ip_load($iid) {
-  $blocked_ip = db_fetch_array(db_query("SELECT * FROM {blocked_ips} WHERE iid = %d", $iid));
-  return $blocked_ip;
+  return db_query("SELECT * FROM {blocked_ips} WHERE iid = :iid", array(':iid' => $iid))->fetchAssoc();
 }
 
 /**
@@ -786,7 +809,26 @@ function _system_themes_access($theme) {
 }
 
 /**
- * Implementation of hook_init().
+ * Menu item access callback - hides empty system settings overview pages.
+ *
+ * @param $path
+ *   The path of the menu item to check for child menu entries.
+ * @param $string
+ *   The permission, such as "administer nodes", being checked for.
+ * @return
+ *   Boolean TRUE if the current user has the requested permission and the
+ *   current menu item has children.
+ */
+function system_admin_menu_block_access($path, $permission) {
+  if (!user_access($permission)) {
+    return FALSE;
+  }
+  $content = system_admin_menu_block(array('path' => $path));
+  return !empty($content);
+}
+
+/**
+ * Implement hook_init().
  */
 function system_init() {
   // Use the administrative theme if the user is looking at a page in the admin/* path.
@@ -803,7 +845,7 @@ function system_init() {
 }
 
 /**
- * Implementation of MODULE_preprocess_HOOK().
+ * Implement MODULE_preprocess_HOOK().
  */
 function system_preprocess_page(&$variables) {
   // Get the major version
@@ -819,7 +861,7 @@ function system_preprocess_page(&$variables) {
 }
 
 /**
- * Implementation of hook_user_form().
+ * Implement hook_user_form().
  */
 function system_user_form(&$edit, &$user, $category = NULL) {
   if ($category == 'account') {
@@ -832,7 +874,7 @@ function system_user_form(&$edit, &$user, $category = NULL) {
 }
 
 /**
- * Implementation of hook_user_register().
+ * Implement hook_user_register().
  */
 function system_user_register(&$edit, &$user, $category = NULL) {
   if (variable_get('configurable_timezones', 1)) {
@@ -851,7 +893,7 @@ function system_user_register(&$edit, &$user, $category = NULL) {
 }
 
 /**
- * Implementation of hook_user_login().
+ * Implement hook_user_login().
  */
 function system_user_login(&$edit, &$user, $category = NULL) {
   // If the user has a NULL time zone, notify them to set a time zone.
@@ -886,9 +928,14 @@ function system_user_timezone(&$edit, &$form) {
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function system_block_list() {
+  $blocks['main'] = array(
+    'info' => t('Main page content'),
+     // Cached elsewhere.
+    'cache' => BLOCK_NO_CACHE,
+  );
   $blocks['powered-by'] = array(
     'info' => t('Powered by Drupal'),
     'weight' => '10',
@@ -909,7 +956,7 @@ function system_block_list() {
 }
 
 /**
- * Implementation of hook_block_configure().
+ * Implement hook_block_configure().
  */
 function system_block_configure($delta = '') {
   if ($delta == 'powered-by') {
@@ -938,7 +985,7 @@ function system_block_configure($delta = '') {
 }
 
 /**
- * Implementation of hook_block_save().
+ * Implement hook_block_save().
  */
 function system_block_save($delta = '', $edit = NULL) {
   if ($delta == 'powered-by') {
@@ -949,7 +996,7 @@ function system_block_save($delta = '', $edit = NULL) {
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  *
  * Generate a block with a promotional link to Drupal.org and
  * all system menu blocks.
@@ -957,6 +1004,10 @@ function system_block_save($delta = '', $edit = NULL) {
 function system_block_view($delta = '') {
   $block = array();
   switch ($delta) {
+    case 'main':
+      $block['subject'] = NULL;
+      $block['content'] = drupal_set_page_content();
+      return $block;
     case 'powered-by':
       $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
       $block['subject'] = NULL;
@@ -985,16 +1036,20 @@ function system_block_view($delta = '') {
  *   The menu item to be displayed.
  */
 function system_admin_menu_block($item) {
-  $content = array();
+  $cache = &drupal_static(__FUNCTION__, array());
   if (!isset($item['mlid'])) {
-    $item += db_fetch_array(db_query("SELECT mlid, menu_name FROM {menu_links} ml WHERE ml.router_path = '%s' AND module = 'system'", $item['path']));
+    $item += db_query("SELECT mlid, menu_name FROM {menu_links} ml WHERE ml.router_path = :path AND module = 'system'", array(':path' => $item['path']))->fetchAssoc();
   }
+  else if (isset($cache[$item['mlid']])) {
+    return $cache[$item['mlid']];
+  }
+  $content = array();
   $result = db_query("
     SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
     FROM {menu_links} ml
     LEFT JOIN {menu_router} m ON ml.router_path = m.path
-    WHERE ml.plid = %d AND ml.menu_name = '%s' AND hidden = 0", $item['mlid'], $item['menu_name']);
-  while ($item = db_fetch_array($result)) {
+    WHERE ml.plid = :plid AND ml.menu_name = :name AND hidden = 0", array(':plid' => $item['mlid'], ':name' => $item['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
+  foreach ($result as $item) {
     _menu_link_translate($item);
     if (!$item['access']) {
       continue;
@@ -1009,6 +1064,7 @@ function system_admin_menu_block($item) {
     $content[(50000 + $item['weight']) . ' ' . $item['title'] . ' ' . $item['mlid']] = $item;
   }
   ksort($content);
+  $cache[$item['mlid']] = $content;
   return $content;
 }
 
@@ -1099,13 +1155,12 @@ function system_check_directory($form_element) {
  */
 function system_get_files_database(&$files, $type) {
   // Extract current files from database.
-  $result = db_query("SELECT filename, name, type, status, schema_version, weight FROM {system} WHERE type = '%s'", $type);
-  while ($file = db_fetch_object($result)) {
+  $result = db_query("SELECT filename, name, type, status, schema_version, weight FROM {system} WHERE type = :type", array(':type' => $type));
+  foreach ($result as $file) {
     if (isset($files[$file->name]) && is_object($files[$file->name])) {
       $file->filepath = $file->filename;
-      $file->old_filepath = $file->filepath;
       foreach ($file as $key => $value) {
-        if (!isset($files[$file->name]) || !isset($files[$file->name]->$key)) {
+        if (!isset($files[$file->name]->key)) {
           $files[$file->name]->$key = $value;
         }
       }
@@ -1114,68 +1169,141 @@ function system_get_files_database(&$files, $type) {
 }
 
 /**
- * Prepare defaults for themes.
- *
- * @return
- *   An array of default themes settings.
+ * Updates the records in the system table based on the files array.
+ * 
+ * @param $files
+ *   An array of files.
+ * @param $type
+ *   The type of the files.
  */
-function system_theme_default() {
-  return array(
-    'regions' => array(
-      'left' => 'Left sidebar',
-      'right' => 'Right sidebar',
-      'content' => 'Content',
-      'header' => 'Header',
-      'footer' => 'Footer',
-      'highlight' => 'Highlighted content',
-      'help' => 'Help',
-    ),
-    'description' => '',
-    'features' => array(
-      'comment_user_picture',
-      'comment_user_verification',
-      'favicon',
-      'logo',
-      'name',
-      'node_user_picture',
-      'search',
-      'slogan',
-      'main_menu',
-      'secondary_menu',
-    ),
-    'stylesheets' => array(
-      'all' => array('style.css')
-    ),
-    'scripts' => array('script.js'),
-    'screenshot' => 'screenshot.png',
-    'php' => DRUPAL_MINIMUM_PHP,
-  );
+function system_update_files_database(&$files, $type) {
+  $result = db_query("SELECT * FROM {system} WHERE type = :type", array(':type' => $type));
+
+  // Add all files that need to be deleted to a DatabaseCondition.
+  $delete = db_or();
+  foreach ($result as $file) {
+    if (isset($files[$file->name]) && is_object($files[$file->name])) {
+      // Keep the old filename from the database in case the file has moved.
+      $old_filename = $file->filename;
+
+      $updated_fields = array();
+
+      // Handle info specially, compare the serialized value.
+      $serialized_info = serialize($files[$file->name]->info);
+      if ($serialized_info != $file->info) {
+        $updated_fields['info'] = $serialized_info;
+      }
+      unset($file->info);
+
+      // Scan remaining fields to find only the updated values.
+      foreach ($file as $key => $value) {
+        if (isset($files[$file->name]->$key) && $files[$file->name]->$key != $value) {
+          $updated_fields[$key] = $files[$file->name]->$key;
+        }
+      }
+
+      // Update the record.
+      if (count($updated_fields)) {
+        db_update('system')
+          ->fields($updated_fields)
+          ->condition('filename', $old_filename)
+          ->execute();
+      }
+
+      // Indiciate that the file exists already.
+      $files[$file->name]->exists = TRUE;
+    }
+    else {
+      // File is not found in file system, so delete record from the system table.
+      $delete->condition('filename', $file->filename);
+    }
+  }
+
+  if (count($delete) > 0) {
+    // Delete all missing files from the system table
+    db_delete('system')
+      ->condition($delete)
+      ->execute();
+  }
+
+  // All remaining files are not in the system table, so we need to add them.
+  $query = db_insert('system')->fields(array('filename', 'name', 'type', 'owner', 'info'));
+  foreach($files as &$file) {
+    if (isset($file->exists)) {
+      unset($file->exists);
+    }
+    else {
+      $query->values(array(
+        'filename' => $file->filepath,
+        'name' => $file->name,
+        'type' => $type,
+        'owner' => isset($file->owner) ? $file->owner : '',
+        'info' => serialize($file->info),
+      ));
+      $file->type = $type;
+      $file->status = 0;
+      $file->schema_version = -1;
+    }
+  }
+  $query->execute();
 }
 
 /**
- * Collect data about all currently available themes.
+ * Helper function to scan and collect module .info data.
  *
  * @return
- *   Array of all available themes and their data.
+ *   An associative array of module information.
  */
-function system_theme_data() {
-  // Scan the installation theme .info files and their engines.
-  $themes = _system_theme_data();
+function _system_get_module_data() {
+  // Find modules
+  $modules = drupal_system_listing('/\.module$/', 'modules', 'name', 0);
 
-  // Extract current files from database.
-  system_get_files_database($themes, 'theme');
+  // Set defaults for module info.
+  $defaults = array(
+    'dependencies' => array(),
+    'dependents' => array(),
+    'description' => '',
+    'package' => 'Other',
+    'version' => NULL,
+    'php' => DRUPAL_MINIMUM_PHP,
+    'files' => array(),
+  );
 
-  db_query("DELETE FROM {system} WHERE type = 'theme'");
+  // Read info files for each module.
+  foreach ($modules as $key => $module) {
+    // Look for the info file.
+    $module->info = drupal_parse_info_file(dirname($module->filepath) . '/' . $module->name . '.info');
 
-  foreach ($themes as $theme) {
-    if (!isset($theme->owner)) {
-      $theme->owner = '';
+    // Skip modules that don't provide info.
+    if (empty($module->info)) {
+      unset($modules[$key]);
+      continue;
     }
 
-    db_query("INSERT INTO {system} (name, owner, info, type, filename, status) VALUES ('%s', '%s', '%s', '%s', '%s', %d)", $theme->name, $theme->owner, serialize($theme->info), 'theme', $theme->filename, isset($theme->status) ? $theme->status : 0);
+    // Merge in defaults and save.
+    $modules[$key]->info = $module->info + $defaults;
+
+    // Invoke hook_system_info_alter() to give installed modules a chance to
+    // modify the data in the .info files if necessary.
+    drupal_alter('system_info', $modules[$key]->info, $modules[$key]);
   }
 
-  return $themes;
+  return $modules;
+}
+
+/**
+ * Collect data about all currently available modules.
+ *
+ * @return
+ *   Array of all available modules and their data.
+ */
+function system_get_module_data() {
+  $modules = _system_get_module_data();
+  ksort($modules);
+  system_get_files_database($modules, 'module');
+  system_update_files_database($modules, 'module');
+  $modules = _module_build_dependencies($modules);
+  return $modules;
 }
 
 /**
@@ -1184,8 +1312,8 @@ function system_theme_data() {
  * @return
  *   An associative array of themes information.
  */
-function _system_theme_data() {
-  static $themes_info = array();
+function _system_get_theme_data() {
+  $themes_info = &drupal_static(__FUNCTION__, array());
 
   if (empty($themes_info)) {
     // Find themes
@@ -1193,7 +1321,37 @@ function _system_theme_data() {
     // Find theme engines
     $engines = drupal_system_listing('/\.engine$/', 'themes/engines');
 
-    $defaults = system_theme_default();
+    // Set defaults for theme info.
+    $defaults = array(
+      'regions' => array(
+        'left' => 'Left sidebar',
+        'right' => 'Right sidebar',
+        'content' => 'Content',
+        'header' => 'Header',
+        'footer' => 'Footer',
+        'highlight' => 'Highlighted content',
+        'help' => 'Help',
+      ),
+      'description' => '',
+      'features' => array(
+        'comment_user_picture',
+        'favicon',
+        'mission',
+        'logo',
+        'name',
+        'node_user_picture',
+        'search',
+        'slogan',
+        'main_menu',
+        'secondary_menu',
+      ),
+      'stylesheets' => array(
+        'all' => array('style.css')
+      ),
+      'scripts' => array('script.js'),
+      'screenshot' => 'screenshot.png',
+      'php' => DRUPAL_MINIMUM_PHP,
+    );
 
     $sub_themes = array();
     // Read info files for each theme
@@ -1226,17 +1384,21 @@ function _system_theme_data() {
 
       // Give the stylesheets proper path information.
       $pathed_stylesheets = array();
-      foreach ($themes[$key]->info['stylesheets'] as $media => $stylesheets) {
-        foreach ($stylesheets as $stylesheet) {
-          $pathed_stylesheets[$media][$stylesheet] = dirname($themes[$key]->filepath) . '/' . $stylesheet;
+      if (isset($themes[$key]->info['stylesheets'])) {
+        foreach ($themes[$key]->info['stylesheets'] as $media => $stylesheets) {
+          foreach ($stylesheets as $stylesheet) {
+            $pathed_stylesheets[$media][$stylesheet] = dirname($themes[$key]->filepath) . '/' . $stylesheet;
+          }
         }
       }
       $themes[$key]->info['stylesheets'] = $pathed_stylesheets;
 
       // Give the scripts proper path information.
       $scripts = array();
-      foreach ($themes[$key]->info['scripts'] as $script) {
-        $scripts[$script] = dirname($themes[$key]->filepath) . '/' . $script;
+      if (isset($themes[$key]->info['scripts'])) {
+        foreach ($themes[$key]->info['scripts'] as $script) {
+          $scripts[$script] = dirname($themes[$key]->filepath) . '/' . $script;
+        }
       }
       $themes[$key]->info['scripts'] = $scripts;
       // Give the screenshot proper path information.
@@ -1270,6 +1432,20 @@ function _system_theme_data() {
   }
 
   return $themes_info;
+}
+
+/**
+ * Collect data about all currently available themes.
+ *
+ * @return
+ *   Array of all available themes and their data.
+ */
+function system_get_theme_data() {
+  $themes = _system_get_theme_data();
+  ksort($themes);
+  system_get_files_database($themes, 'theme');
+  system_update_files_database($themes, 'theme');
+  return $themes;
 }
 
 /**
@@ -1314,10 +1490,10 @@ function system_find_base_theme($themes, $key, $used_keys = array()) {
  *   An array of regions in the form $region['name'] = 'description'.
  */
 function system_region_list($theme_key) {
-  static $list = array();
+  $list = &drupal_static(__FUNCTION__, array());
 
   if (!array_key_exists($theme_key, $list)) {
-    $info = unserialize(db_result(db_query("SELECT info FROM {system} WHERE type = :type AND name = :name", array(':type' => 'theme', ':name' => $theme_key))));
+    $info = unserialize(db_query("SELECT info FROM {system} WHERE type = :type AND name = :name", array(':type' => 'theme', ':name' => $theme_key))->fetchField());
     $list[$theme_key] = array_map('t', $info['regions']);
   }
 
@@ -1524,14 +1700,13 @@ function system_admin_compact_page($mode = 'off') {
  *   An array of task links.
  */
 function system_get_module_admin_tasks($module) {
-  static $items;
+  $items = &drupal_static(__FUNCTION__, array());
 
-  if (!isset($items)) {
+  if (empty($items)) {
     $result = db_query("
        SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, ml.*
-       FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND module = 'system' AND m.number_parts > 2");
-    $items = array();
-    while ($item = db_fetch_array($result)) {
+       FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND module = 'system' AND m.number_parts > 2", array(), array('fetch' => PDO::FETCH_ASSOC));
+    foreach ($result as $item) {
       _menu_link_translate($item);
       if ($item['access']) {
         $items[$item['router_path']] = $item;
@@ -1560,20 +1735,28 @@ function system_get_module_admin_tasks($module) {
 }
 
 /**
- * Implementation of hook_cron().
+ * Implement hook_cron().
  *
  * Remove older rows from flood and batch table. Remove old temporary files.
  */
 function system_cron() {
   // Cleanup the flood.
-  db_query('DELETE FROM {flood} WHERE timestamp < %d', REQUEST_TIME - 3600);
+  db_delete('flood')
+    ->condition('timestamp', REQUEST_TIME - 3600, '<')
+    ->execute();
   // Cleanup the batch table.
-  db_query('DELETE FROM {batch} WHERE timestamp < %d', REQUEST_TIME - 864000);
+  db_delete('batch')
+    ->condition('timestamp', REQUEST_TIME - 864000, '<')
+    ->execute();
 
   // Remove temporary files that are older than DRUPAL_MAXIMUM_TEMP_FILE_AGE.
   // Use separate placeholders for the status to avoid a bug in some versions
   // of PHP. See http://drupal.org/node/352956
-  $result = db_query('SELECT fid FROM {files} WHERE status & :permanent1 <> :permanent2 AND timestamp < :timestamp', array(':permanent1' => FILE_STATUS_PERMANENT, ':permanent2' => FILE_STATUS_PERMANENT, ':timestamp' => REQUEST_TIME - DRUPAL_MAXIMUM_TEMP_FILE_AGE));
+  $result = db_query('SELECT fid FROM {files} WHERE status & :permanent1 <> :permanent2 AND timestamp < :timestamp', array(
+    ':permanent1' => FILE_STATUS_PERMANENT,
+    ':permanent2' => FILE_STATUS_PERMANENT,
+    ':timestamp' => REQUEST_TIME - DRUPAL_MAXIMUM_TEMP_FILE_AGE
+  ));
   foreach ($result as $row) {
     if ($file = file_load($row->fid)) {
       if (!file_delete($file)) {
@@ -1600,7 +1783,7 @@ function system_cron() {
 }
 
 /**
- * Implementation of hook_hook_info().
+ * Implement hook_hook_info().
  */
 function system_hook_info() {
   return array(
@@ -1615,7 +1798,7 @@ function system_hook_info() {
 }
 
 /**
- * Implementation of hook_action_info().
+ * Implement hook_action_info().
  */
 function system_action_info() {
   return array(
@@ -1665,7 +1848,6 @@ function system_action_info() {
  * Menu callback. Display an overview of available and configured actions.
  */
 function system_actions_manage() {
-  $output = '';
   actions_synchronize();
   $actions = actions_list();
   $actions_map = actions_actions_map($actions);
@@ -1682,15 +1864,20 @@ function system_actions_manage() {
   }
 
   $row = array();
-  $instances_present = db_fetch_object(db_query("SELECT aid FROM {actions} WHERE parameters <> ''"));
+  $instances_present = db_query("SELECT aid FROM {actions} WHERE parameters <> ''")->fetchField();
   $header = array(
     array('data' => t('Action type'), 'field' => 'type'),
     array('data' => t('Description'), 'field' => 'description'),
     array('data' => $instances_present ? t('Operations') : '', 'colspan' => '2')
   );
-  $sql = 'SELECT * FROM {actions}';
-  $result = pager_query($sql . tablesort_sql($header), 50);
-  while ($action = db_fetch_object($result)) {
+  $query = db_select('actions')->extend('PagerDefault')->extend('TableSort');
+  $result = $query
+    ->fields('actions')
+    ->limit(50)
+    ->orderByHeader($header)
+    ->execute();
+
+  foreach ($result as $action) {
     $row[] = array(
       array('data' => $action->type),
       array('data' => $action->description),
@@ -1704,15 +1891,15 @@ function system_actions_manage() {
     if (!empty($pager)) {
       $row[] = array(array('data' => $pager, 'colspan' => '3'));
     }
-    $output .= '<h3>' . t('Actions available to Drupal:') . '</h3>';
-    $output .= theme('table', $header, $row);
+    $build['system_actions_header'] = array('#markup' => '<h3>' . t('Actions available to Drupal:') . '</h3>');
+    $build['system_actions_table'] = array('#markup' => theme('table', $header, $row));
   }
 
   if ($actions_map) {
-    $output .= drupal_render(drupal_get_form('system_actions_manage_form', $options));
+    $build['system_actions_manage_form'] = drupal_get_form('system_actions_manage_form', $options);
   }
 
-  return $output;
+  return $build;
 }
 
 /**
@@ -1786,7 +1973,7 @@ function system_actions_configure($form_state, $action = NULL) {
   if (is_numeric($action)) {
     $aid = $action;
     // Load stored parameter values from database.
-    $data = db_fetch_object(db_query("SELECT * FROM {actions} WHERE aid = '%s'", $aid));
+    $data = db_query("SELECT * FROM {actions} WHERE aid = :aid", array(':aid' => $aid))->fetch();
     $edit['actions_description'] = $data->description;
     $edit['actions_type'] = $data->type;
     $function = $data->callback;
@@ -1967,7 +2154,7 @@ function system_send_email_action_form($context) {
     '#default_value' => $context['message'],
     '#cols' => '80',
     '#rows' => '20',
-    '#description' => t('The message that should be sent. You may include the following variables: %site_name, %username, %node_url, %node_type, %title, %teaser, %body. Not all variables will be available in all contexts.'),
+    '#description' => t('The message that should be sent. You may include the following variables: %site_name, %username, %node_url, %node_type, %title, %teaser, %body, %term_name, %term_description, %term_id, %vocabulary_name, %vocabulary_description, %vocabulary_id. Not all variables will be available in all contexts.'),
   );
   return $form;
 }
@@ -2000,7 +2187,7 @@ function system_send_email_action_submit($form, $form_state) {
 }
 
 /**
- * Implementation of a configurable Drupal action. Sends an email.
+ * Implement a configurable Drupal action. Sends an email.
  */
 function system_send_email_action($object, $context) {
   global $user;
@@ -2066,7 +2253,7 @@ function system_send_email_action($object, $context) {
 }
 
 /**
- * Implementation of hook_mail().
+ * Implement hook_mail().
  */
 function system_mail($key, &$message, $params) {
   $account = $params['account'];
@@ -2094,7 +2281,7 @@ function system_mail($key, &$message, $params) {
     $variables += array(
       '%uid' => $node->uid,
       '%node_url' => url('node/' . $node->nid, array('absolute' => TRUE)),
-      '%node_type' => node_get_types('name', $node),
+      '%node_type' => node_type_get_name($node),
       '%title' => $node->title,
       '%teaser' => $node->teaser,
       '%body' => $node->body,
@@ -2168,7 +2355,7 @@ function system_message_action(&$object, $context = array()) {
     $variables = array_merge($variables, array(
       '%uid' => $node->uid,
       '%node_url' => url('node/' . $node->nid, array('absolute' => TRUE)),
-      '%node_type' => check_plain(node_get_types('name', $node)),
+      '%node_type' => check_plain(node_type_get_name($node)),
       '%title' => filter_xss($node->title),
       '%teaser' => filter_xss($node->teaser),
       '%body' => filter_xss($node->body),
@@ -2180,7 +2367,7 @@ function system_message_action(&$object, $context = array()) {
 }
 
 /**
- * Implementation of a configurable Drupal action. Redirect user to a URL.
+ * Implement a configurable Drupal action. Redirect user to a URL.
  */
 function system_goto_action_form($context) {
   $form['url'] = array(
@@ -2204,12 +2391,14 @@ function system_goto_action($object, $context) {
 }
 
 /**
- * Implementation of a Drupal action.
+ * Implement a Drupal action.
  * Blocks the user's IP address.
  */
 function system_block_ip_action() {
   $ip = ip_address();
-  db_query("INSERT INTO {blocked_ips} (ip) VALUES ('%s')", $ip);
+  db_insert('blocked_ips')
+    ->fields(array('ip' => $ip))
+    ->execute();
   watchdog('action', 'Banned IP address %ip', array('%ip' => $ip));
 }
 
@@ -2314,7 +2503,7 @@ function theme_meta_generator_header($version = VERSION) {
 }
 
 /**
- * Implementation of hook_image_toolkits().
+ * Implement hook_image_toolkits().
  */
 function system_image_toolkits() {
   return array(

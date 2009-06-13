@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.pages.inc,v 1.16 2009/04/26 19:44:39 dries Exp $
+// $Id: poll.pages.inc,v 1.19 2009/06/06 10:27:42 dries Exp $
 
 /**
  * @file
@@ -42,7 +42,7 @@ function poll_page() {
     $output .= '<li>' . l($node->title, "node/$node->nid") . ' - ' . format_plural($node->votes, '1 vote', '@count votes') . ' - ' . ($node->active ? t('open') : t('closed')) . '</li>';
   }
   $output .= '</ul>';
-  $output .= theme("pager", NULL, $polls_per_page);
+  $output .= theme("pager", NULL);
   return $output;
 }
 
@@ -58,19 +58,17 @@ function poll_votes($node) {
   $header[] = array('data' => t('Vote'), 'field' => 'pc.chtext');
   $header[] = array('data' => t('Timestamp'), 'field' => 'pv.timestamp', 'sort' => 'desc');
 
-  $select = db_select('poll_vote', 'pv');
+  $select = db_select('poll_vote', 'pv')->extend('PagerDefault')->extend('TableSort');
   $select->join('poll_choice', 'pc', 'pv.chid = pc.chid');
   $select->join('users', 'u', 'pv.uid = u.uid');
-  $queried_votes = $select->fields('pv', array('chid', 'uid', 'hostname', 'timestamp', 'nid'))
+  $queried_votes = $select
+    ->fields('pv', array('chid', 'uid', 'hostname', 'timestamp', 'nid'))
     ->fields('pc', array('chtext'))
     ->fields('u', array('name'))
     ->condition('pv.nid', $node->nid)
-    ->extend('PagerDefault')
     ->limit($votes_per_page)
-    ->extend('TableSort')
-    ->setHeader($header)
-    ->execute()
-    ->fetchAllAssoc('hostname');
+    ->orderByHeader($header)
+    ->execute();
 
   $rows = array();
   foreach ($queried_votes as $vote) {

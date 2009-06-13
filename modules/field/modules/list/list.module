@@ -1,5 +1,5 @@
 <?php
-// $Id: list.module,v 1.4 2009/04/13 05:18:18 webchick Exp $
+// $Id: list.module,v 1.6 2009/05/27 18:33:56 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function list_theme() {
   return array(
@@ -21,7 +21,7 @@ function list_theme() {
 }
 
 /**
- * Implementation of hook_field_info().
+ * Implement hook_field_info().
  */
 function list_field_info() {
   return array(
@@ -57,9 +57,9 @@ function list_field_info() {
 }
 
 /**
- * Implementation of hook_field_schema().
+ * Implement hook_field_schema().
  */
-function list_field_columns($field) {
+function list_field_schema($field) {
   switch ($field['type']) {
     case 'list_text':
       $columns = array(
@@ -89,11 +89,16 @@ function list_field_columns($field) {
       );
       break;
   }
-  return $columns;
+  return array(
+    'columns' => $columns,
+    'indexes' => array(
+      'value' => array('value'),
+    ),
+  );
 }
 
 /**
- * Implementation of hook_field_validate().
+ * Implement hook_field_validate().
  *
  * Possible error codes:
  * - 'list_illegal_value': The value is not part of the list of allowed values.
@@ -113,7 +118,7 @@ function list_field_validate($obj_type, $object, $field, $instance, $items, &$er
 }
 
 /**
- * Implementation of hook_field_is_empty().
+ * Implement hook_field_is_empty().
  */
 function list_field_is_empty($item, $field) {
   if (empty($item['value']) && (string)$item['value'] !== '0') {
@@ -123,7 +128,7 @@ function list_field_is_empty($item, $field) {
 }
 
 /**
- * Implementation of hook_field_formatter_info().
+ * Implement hook_field_formatter_info().
  */
 function list_field_formatter_info() {
   return array(

@@ -1,5 +1,5 @@
 <?php
-// $Id: simpletest.pages.inc,v 1.1 2009/05/01 13:40:56 webchick Exp $
+// $Id: simpletest.pages.inc,v 1.4 2009/06/08 09:23:53 dries Exp $
 
 /**
  * @file
@@ -12,10 +12,6 @@
 function simpletest_test_form() {
   $form = array();
 
-  // Categorize the tests for display.
-  $uncategorized_tests = simpletest_get_all_tests();
-  $tests = simpletest_categorize_tests($uncategorized_tests);
-
   $form['tests'] = array(
     '#type' => 'fieldset',
     '#title' => t('Tests'),
@@ -27,13 +23,14 @@ function simpletest_test_form() {
   );
 
   // Generate the list of tests arranged by group.
-  foreach ($tests as $group_name => $test_group) {
-    $form['tests']['table'][$group_name] = array(
+  $groups = simpletest_test_get_all();
+  foreach ($groups as $group => $tests) {
+    $form['tests']['table'][$group] = array(
       '#collapsed' => TRUE,
     );
 
-    foreach ($test_group as $class => $info) {
-      $form['tests']['table'][$group_name][$class] = array(
+    foreach ($tests as $class => $info) {
+      $form['tests']['table'][$group][$class] = array(
         '#type' => 'checkbox',
         '#title' => $info['name'],
         '#description' => $info['description'],
@@ -166,9 +163,6 @@ function theme_simpletest_test_table($table) {
  * Run selected tests.
  */
 function simpletest_test_form_submit($form, &$form_state) {
-  // Ensure that all classes are loaded before we create instances to get test information and run.
-  simpletest_get_all_tests();
-
   // Get list of tests.
   $tests_list = array();
   foreach ($form_state['values'] as $class_name => $value) {
@@ -187,12 +181,12 @@ function simpletest_test_form_submit($form, &$form_state) {
 /**
  * Test results form for $test_id.
  */
-function simpletest_result_form(&$form_sate, $test_id) {
+function simpletest_result_form(&$form_state, $test_id) {
   $form = array();
 
-  // Make sure there are test results to display and are-run is not being performed.
-  $results = simpletest_result_get($test_id);
-  if ($test_id != 're-run' && !$results) {
+  // Make sure there are test results to display and a re-run is not being performed.
+  $results = array();
+  if (is_numeric($test_id) && !$results = simpletest_result_get($test_id)) {
     drupal_set_message(t('No test results to display.'), 'error');
     drupal_goto('admin/development/testing');
     return $form;
@@ -200,7 +194,6 @@ function simpletest_result_form(&$form_sate, $test_id) {
 
   // Load all classes and include CSS.
   drupal_add_css(drupal_get_path('module', 'simpletest') . '/simpletest.css');
-  simpletest_get_all_tests();
 
   // Keep track of which test cases passed or failed.
   $filter = array(
@@ -305,7 +298,9 @@ function simpletest_result_form(&$form_sate, $test_id) {
     '#markup' => l(t('Return to list'), 'admin/development/testing'),
   );
 
-  simpletest_clean_results_table($test_id);
+  if (is_numeric($test_id)) {
+    simpletest_clean_results_table($test_id);
+  }
 
   return $form;
 }
@@ -346,7 +341,7 @@ function simpletest_result_form_submit($form, &$form_state) {
  * @return HTML output.
  */
 function theme_simpletest_result_summary($form) {
-  return '<div class="simpletest-' . ($form['#ok'] ? 'pass' : 'fail') .'">' . _simpletest_format_summary_line($form) . '</div>';
+  return '<div class="simpletest-' . ($form['#ok'] ? 'pass' : 'fail') . '">' . _simpletest_format_summary_line($form) . '</div>';
 }
 
 /**

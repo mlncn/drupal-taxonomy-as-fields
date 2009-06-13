@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.168 2009/05/12 08:37:44 dries Exp $
+// $Id: install.php,v 1.178 2009/06/08 04:33:35 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -234,7 +234,6 @@ function install_settings_form(&$form_state, $profile, $install_locale, $setting
     $form['basic_options'] = array(
       '#type' => 'fieldset',
       '#title' => st('Basic options'),
-      '#description' => '<p>' . st('To set up your @drupal database, enter the following information.', array('@drupal' => drupal_install_profile_name())) . '</p>',
     );
 
     $form['basic_options']['driver'] = array(
@@ -268,7 +267,7 @@ function install_settings_form(&$form_state, $profile, $install_locale, $setting
       '#size' => 45,
     );
 
-    // Database username
+    // Database password
     $form['basic_options']['password'] = array(
       '#type' => 'password',
       '#title' => st('Database password'),
@@ -345,8 +344,8 @@ function install_settings_form_validate($form, &$form_state) {
 function _install_settings_form_validate($database, $settings_file, &$form_state, $form = NULL) {
   global $databases;
   // Verify the table prefix
-  if (!empty($database['prefix']) && is_string($database['prefix']) && !preg_match('/^[A-Za-z0-9_.]+$/', $database['dprefix'])) {
-    form_set_error('db_prefix', st('The database table prefix you have entered, %db_prefix, is invalid. The table prefix can only contain alphanumeric characters, periods, or underscores.', array('%db_prefix' => $db_prefix)), 'error');
+  if (!empty($database['db_prefix']) && is_string($database['db_prefix']) && !preg_match('/^[A-Za-z0-9_.]+$/', $database['db_prefix'])) {
+    form_set_error('db_prefix', st('The database table prefix you have entered, %db_prefix, is invalid. The table prefix can only contain alphanumeric characters, periods, or underscores.', array('%db_prefix' => $database['db_prefix'])), 'error');
   }
 
   if (!empty($database['port']) && !is_numeric($database['port'])) {
@@ -560,7 +559,7 @@ function install_select_locale($profilename) {
     install_task_list('locale-select');
 
     drupal_set_title(st('Choose language'));
-    
+
     print theme('install_page', drupal_render(drupal_get_form('install_select_locale_form', $locales)));
     exit;
   }
@@ -626,7 +625,7 @@ function install_tasks($profile, $task) {
   drupal_install_init_database();
 
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
-  drupal_set_session('messages', $messages);
+  $_SESSION['messages'] = $messages;
 
   // URL used to direct page requests.
   $url = $base_url . '/install.php?locale=' . $install_locale . '&profile=' . $profile;
@@ -643,7 +642,7 @@ function install_tasks($profile, $task) {
   // Install profile modules.
   if ($task == 'profile-install') {
     $modules = variable_get('install_profile_modules', array());
-    $files = module_rebuild_cache();
+    $files = system_get_module_data();
     variable_del('install_profile_modules');
     $operations = array();
     foreach ($modules as $module) {
@@ -666,7 +665,7 @@ function install_tasks($profile, $task) {
   // to the same address, until the batch finished callback is invoked
   // and the task advances to 'locale-initial-import'.
   if ($task == 'profile-install-batch') {
-    include_once DRUPAL_ROOT .'/includes/batch.inc';
+    include_once DRUPAL_ROOT . '/includes/batch.inc';
     $output = _batch_page();
   }
 
@@ -801,6 +800,7 @@ function install_tasks($profile, $task) {
     $messages = drupal_set_message();
     $output = '<p>' . st('Congratulations, @drupal has been successfully installed.', array('@drupal' => drupal_install_profile_name())) . '</p>';
     $output .= '<p>' . (isset($messages['error']) ? st('Please review the messages above before continuing on to <a href="@url">your new site</a>.', array('@url' => url(''))) : st('You may now visit <a href="@url">your new site</a>.', array('@url' => url('')))) . '</p>';
+    $output .= '<p>' . st('For more information on configuring Drupal, please refer to the <a href="@help">help section</a>.', array('@help' => url('admin/help'))) . '</p>';
     $task = 'done';
   }
 
@@ -918,7 +918,7 @@ function install_check_requirements($profile, $verify) {
         'title'       => st('Settings file'),
         'value'       => st('The settings file does not exist.'),
         'severity'    => REQUIREMENT_ERROR,
-        'description' => st('The @drupal installer requires that you create a settings file as part of the installation process. Copy the %default_file file to %file. More details about installing Drupal are available in <a href="@install_txt">INSTALL.txt</a>.', array('@drupal' => drupal_install_profile_name(), '%file' => $file, '%default_file' => $conf_path .'/default.settings.php', '@install_txt' => base_path() .'INSTALL.txt')),
+        'description' => st('The @drupal installer requires that you create a settings file as part of the installation process. Copy the %default_file file to %file. More details about installing Drupal are available in <a href="@install_txt">INSTALL.txt</a>.', array('@drupal' => drupal_install_profile_name(), '%file' => $file, '%default_file' => $conf_path . '/default.settings.php', '@install_txt' => base_path() . 'INSTALL.txt')),
       );
     }
     else {
@@ -1001,7 +1001,7 @@ function install_task_list($active = NULL) {
   if (in_array($active, array('finished', 'done'))) {
     $active = NULL;
   }
-  drupal_set_content('left', theme_task_list($tasks, $active));
+  drupal_add_region_content('left', theme_task_list($tasks, $active));
 }
 
 /**
@@ -1010,10 +1010,6 @@ function install_task_list($active = NULL) {
 function install_configure_form(&$form_state, $url) {
   include_once DRUPAL_ROOT . '/includes/locale.inc';
 
-  $form['intro'] = array(
-    '#markup' => st('To configure your website, please provide the following information.'),
-    '#weight' => -10,
-  );
   $form['site_information'] = array(
     '#type' => 'fieldset',
     '#title' => st('Site information'),
@@ -1029,7 +1025,7 @@ function install_configure_form(&$form_state, $url) {
     '#type' => 'textfield',
     '#title' => st('Site e-mail address'),
     '#default_value' => ini_get('sendmail_from'),
-    '#description' => st("The <em>From</em> address in automated e-mails sent during registration and new password requests, and other notifications. (Use an address ending in your site's domain to help prevent this e-mail being flagged as spam.)"),
+    '#description' => st("Automated e-mails, such as registration information, will be sent from this address. Use an address ending in your site's domain to help prevent these e-mails from being flagged as spam."),
     '#required' => TRUE,
     '#weight' => -15,
   );
@@ -1038,12 +1034,8 @@ function install_configure_form(&$form_state, $url) {
     '#title' => st('Administrator account'),
     '#collapsible' => FALSE,
   );
-  $form['admin_account']['account']['#tree'] = TRUE;
-  $form['admin_account']['markup'] = array(
-    '#markup' => '<p class="description">' . st('The administrator account has complete access to the site; it will automatically be granted all permissions and can perform any administrative activity. This will be the only account that can perform certain activities, so keep its credentials safe.') . '</p>',
-    '#weight' => -10,
-  );
 
+  $form['admin_account']['account']['#tree'] = TRUE;
   $form['admin_account']['account']['name'] = array('#type' => 'textfield',
     '#title' => st('Username'),
     '#maxlength' => USERNAME_MAX_LENGTH,
@@ -1056,7 +1048,6 @@ function install_configure_form(&$form_state, $url) {
   $form['admin_account']['account']['mail'] = array('#type' => 'textfield',
     '#title' => st('E-mail address'),
     '#maxlength' => EMAIL_MAX_LENGTH,
-    '#description' => st('All e-mails from the system will be sent to this address. The e-mail address is not made public and will only be used if you wish to receive a new password or wish to receive certain news or notifications by e-mail.'),
     '#required' => TRUE,
     '#weight' => -5,
   );

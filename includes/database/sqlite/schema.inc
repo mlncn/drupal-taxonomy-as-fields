@@ -1,5 +1,5 @@
 <?php
-// $Id: schema.inc,v 1.4 2009/04/20 20:02:31 dries Exp $
+// $Id: schema.inc,v 1.6 2009/06/01 11:23:27 dries Exp $
 
 /**
  * @file
@@ -15,6 +15,7 @@
 class DatabaseSchema_sqlite extends DatabaseSchema {
 
   public function tableExists($table) {
+    // Don't use {} around sqlite_master table.
     return (bool) $this->connection->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '{" . $table . "}'", array(), array())->fetchField();
   }
 
@@ -429,7 +430,10 @@ class DatabaseSchema_sqlite extends DatabaseSchema {
    */
   public function addIndex(&$ret, $table, $name, $fields) {
     $schema['indexes'][$name] = $fields;
-    $ret[] = update_sql($this->createIndexSql($table, $schema));
+    $statements = $this->createIndexSql($table, $schema);
+    foreach ($statements as $statement) {
+      $ret[] = update_sql($statement);
+    }
   }
 
   /**
@@ -460,8 +464,10 @@ class DatabaseSchema_sqlite extends DatabaseSchema {
    */
   public function addUniqueKey(&$ret, $table, $name, $fields) {
     $schema['unique keys'][$name] = $fields;
-    $ret[] = update_sql($this->createIndexSql($table, $schema));
-
+    $statements = $this->createIndexSql($table, $schema);
+    foreach ($statements as $statement) {
+      $ret[] = update_sql($statement);
+    }
   }
 
   /**
@@ -564,6 +570,7 @@ class DatabaseSchema_sqlite extends DatabaseSchema {
    *   Array, both the keys and the values are the matching tables.
    */
   public function findTables($table_expression) {
+    // Don't use {} around sqlite_master table.
     $result = db_query("SELECT name FROM sqlite_master WHERE name LIKE :table_name", array(
       ':table_name' => $table_expression,
     ));

@@ -1,5 +1,5 @@
 <?php
-// $Id: update.module,v 1.32 2009/04/29 18:39:50 webchick Exp $
+// $Id: update.module,v 1.37 2009/06/08 05:00:11 dries Exp $
 
 /**
  * @file
@@ -51,9 +51,18 @@ define('UPDATE_NOT_CHECKED', -1);
  */
 define('UPDATE_UNKNOWN', -2);
 
+/**
+ * There was a failure fetching available update data for this project.
+ */
+define('UPDATE_NOT_FETCHED', -3);
 
 /**
- * Implementation of hook_help().
+ * Maximum number of attempts to fetch available update data from a given host.
+ */
+define('UPDATE_MAX_FETCH_ATTEMPTS', 2);
+
+/**
+ * Implement hook_help().
  */
 function update_help($path, $arg) {
   switch ($path) {
@@ -112,7 +121,7 @@ function update_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function update_menu() {
   $items = array();
@@ -142,7 +151,7 @@ function update_menu() {
 }
 
 /**
- * Implementation of the hook_theme() registry.
+ * Implement the hook_theme() registry.
  */
 function update_theme() {
   return array(
@@ -159,7 +168,7 @@ function update_theme() {
 }
 
 /**
- * Implementation of hook_requirements().
+ * Implement hook_requirements().
  *
  * @return
  *   An array describing the status of the site regarding available updates.
@@ -258,6 +267,7 @@ function _update_requirement_check($project, $type) {
       break;
     case UPDATE_UNKNOWN:
     case UPDATE_NOT_CHECKED:
+    case UPDATE_NOT_FETCHED:
       $requirement_label = isset($project['reason']) ? $project['reason'] : t('Can not determine status');
       $requirement['severity'] = REQUIREMENT_WARNING;
       break;
@@ -272,7 +282,7 @@ function _update_requirement_check($project, $type) {
 }
 
 /**
- * Implementation of hook_cron().
+ * Implement hook_cron().
  */
 function update_cron() {
   $frequency = variable_get('update_check_frequency', 1);
@@ -286,19 +296,19 @@ function update_cron() {
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  *
  * Adds a submit handler to the system modules and themes forms, so that if a
  * site admin saves either form, we invalidate the cache of available updates.
  *
  * @see _update_cache_clear()
  */
-function update_form_system_themes_alter(&$form, $form_state) {
+function update_form_system_themes_form_alter(&$form, $form_state) {
   $form['#submit'][] = 'update_cache_clear_submit';
 }
 
 /**
- * Implementation of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
  *
  * Adds a submit handler to the system modules and themes forms, so that if a
  * site admin saves either form, we invalidate the cache of available updates.
@@ -383,7 +393,7 @@ function update_refresh() {
 }
 
 /**
- * Implementation of hook_mail().
+ * Implement hook_mail().
  *
  * Constructs the email notification message when the site is out of date.
  *
@@ -404,11 +414,11 @@ function update_refresh() {
 function update_mail($key, &$message, $params) {
   $language = $message['language'];
   $langcode = $language->language;
-  $message['subject'] .= t('New release(s) available for !site_name', array('!site_name' => variable_get('site_name', 'Drupal')), $langcode);
+  $message['subject'] .= t('New release(s) available for !site_name', array('!site_name' => variable_get('site_name', 'Drupal')), array('langcode' => $langcode));
   foreach ($params as $msg_type => $msg_reason) {
     $message['body'][] = _update_message_text($msg_type, $msg_reason, FALSE, $language);
   }
-  $message['body'][] = t('See the available updates page for more information:', array(), $langcode) . "\n" . url('admin/reports/updates', array('absolute' => TRUE, 'language' => $language));
+  $message['body'][] = t('See the available updates page for more information:', array(), array('langcode' => $langcode)) . "\n" . url('admin/reports/updates', array('absolute' => TRUE, 'language' => $language));
 }
 
 /**
@@ -437,53 +447,54 @@ function _update_message_text($msg_type, $msg_reason, $report_link = FALSE, $lan
   switch ($msg_reason) {
     case UPDATE_NOT_SECURE:
       if ($msg_type == 'core') {
-        $text = t('There is a security update available for your version of Drupal. To ensure the security of your server, you should update immediately!', array(), $langcode);
+        $text = t('There is a security update available for your version of Drupal. To ensure the security of your server, you should update immediately!', array(), array('langcode' => $langcode));
       }
       else {
-        $text = t('There are security updates available for one or more of your modules or themes. To ensure the security of your server, you should update immediately!', array(), $langcode);
+        $text = t('There are security updates available for one or more of your modules or themes. To ensure the security of your server, you should update immediately!', array(), array('langcode' => $langcode));
       }
       break;
 
     case UPDATE_REVOKED:
       if ($msg_type == 'core') {
-        $text = t('Your version of Drupal has been revoked and is no longer available for download. Upgrading is strongly recommended!', array(), $langcode);
+        $text = t('Your version of Drupal has been revoked and is no longer available for download. Upgrading is strongly recommended!', array(), array('langcode' => $langcode));
       }
       else {
-        $text = t('The installed version of at least one of your modules or themes has been revoked and is no longer available for download. Upgrading or disabling is strongly recommended!', array(), $langcode);
+        $text = t('The installed version of at least one of your modules or themes has been revoked and is no longer available for download. Upgrading or disabling is strongly recommended!', array(), array('langcode' => $langcode));
       }
       break;
 
     case UPDATE_NOT_SUPPORTED:
       if ($msg_type == 'core') {
-        $text = t('Your version of Drupal is no longer supported. Upgrading is strongly recommended!', array(), $langcode);
+        $text = t('Your version of Drupal is no longer supported. Upgrading is strongly recommended!', array(), array('langcode' => $langcode));
       }
       else {
-        $text = t('The installed version of at least one of your modules or themes is no longer supported. Upgrading or disabling is strongly recommended! Please see the project homepage for more details.', array(), $langcode);
+        $text = t('The installed version of at least one of your modules or themes is no longer supported. Upgrading or disabling is strongly recommended! Please see the project homepage for more details.', array(), array('langcode' => $langcode));
       }
       break;
 
     case UPDATE_NOT_CURRENT:
       if ($msg_type == 'core') {
-        $text = t('There are updates available for your version of Drupal. To ensure the proper functioning of your site, you should update as soon as possible.', array(), $langcode);
+        $text = t('There are updates available for your version of Drupal. To ensure the proper functioning of your site, you should update as soon as possible.', array(), array('langcode' => $langcode));
       }
       else {
-        $text = t('There are updates available for one or more of your modules or themes. To ensure the proper functioning of your site, you should update as soon as possible.', array(), $langcode);
+        $text = t('There are updates available for one or more of your modules or themes. To ensure the proper functioning of your site, you should update as soon as possible.', array(), array('langcode' => $langcode));
       }
       break;
 
     case UPDATE_UNKNOWN:
     case UPDATE_NOT_CHECKED:
+    case UPDATE_NOT_FETCHED:
       if ($msg_type == 'core') {
-        $text = t('There was a problem determining the status of available updates for your version of Drupal.', array(), $langcode);
+        $text = t('There was a problem determining the status of available updates for your version of Drupal.', array(), array('langcode' => $langcode));
       }
       else {
-        $text = t('There was a problem determining the status of available updates for one or more of your modules or themes.', array(), $langcode);
+        $text = t('There was a problem determining the status of available updates for one or more of your modules or themes.', array(), array('langcode' => $langcode));
       }
       break;
   }
 
   if ($report_link) {
-    $text .= ' ' . t('See the <a href="@available_updates">available updates</a> page for more information.', array('@available_updates' => url('admin/reports/updates', array('language' => $language))), $langcode);
+    $text .= ' ' . t('See the <a href="@available_updates">available updates</a> page for more information.', array('@available_updates' => url('admin/reports/updates', array('language' => $language))), array('langcode' => $langcode));
   }
 
   return $text;
@@ -562,7 +573,7 @@ function _update_cache_set($cid, $data, $expire) {
     ->execute();
 }
 
-/** 
+/**
  * Retrieve data from the private update status cache table.
  *
  * @param $cid
@@ -596,7 +607,7 @@ function _update_cache_clear($cid = NULL) {
 }
 
 /**
- * Implementation of hook_flush_caches().
+ * Implement hook_flush_caches().
  *
  * Called from update.php (among others) to flush the caches.
  * Since we're running update.php, we are likely to install a new version of

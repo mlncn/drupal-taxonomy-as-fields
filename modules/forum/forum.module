@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.module,v 1.492 2009/05/09 18:28:12 dries Exp $
+// $Id: forum.module,v 1.500 2009/06/12 08:39:37 dries Exp $
 
 /**
  * @file
@@ -7,12 +7,12 @@
  */
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function forum_help($path, $arg) {
   switch ($path) {
     case 'admin/help#forum':
-      $output = '<p>' . t('The forum module lets you create threaded discussion forums with functionality similar to other message board systems. Forums are useful because they allow community members to discuss topics with one another while ensuring those conversations are archived for later reference. The <a href="@create-topic">forum topic</a> menu item (under <em>Create content</em> on the Navigation menu) creates the initial post of a new threaded discussion, or thread.', array('@create-topic' => url('node/add/forum'))) . '</p>';
+      $output = '<p>' . t('The forum module lets you create threaded discussion forums with functionality similar to other message board systems. Forums are useful because they allow community members to discuss topics with one another while ensuring those conversations are archived for later reference. The <a href="@create-topic">forum topic</a> menu item (under <em>Add new content</em> on the Navigation menu) creates the initial post of a new threaded discussion, or thread.', array('@create-topic' => url('node/add/forum'))) . '</p>';
       $output .= '<p>' . t('A threaded discussion occurs as people leave comments on a forum topic (or on other comments within that topic). A forum topic is contained within a forum, which may hold many similar or related forum topics. Forums are (optionally) nested within a container, which may hold many similar or related forums. Both containers and forums may be nested within other containers and forums, and provide structure for your message board. By carefully planning this structure, you make it easier for users to find and comment on a specific forum topic.') . '</p>';
       $output .= '<p>' . t('When administering a forum, note that:') . '</p>';
       $output .= '<ul><li>' . t('a forum topic (and all of its comments) may be moved between forums by selecting a different forum while editing a forum topic.') . '</li>';
@@ -33,7 +33,7 @@ function forum_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_theme().
+ * Implement hook_theme().
  */
 function forum_theme() {
   return array(
@@ -79,14 +79,13 @@ function forum_term_load($tid) {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function forum_menu() {
   $items['forum'] = array(
     'title' => 'Forums',
     'page callback' => 'forum_page',
     'access arguments' => array('access content'),
-    'type' => MENU_SUGGESTED_ITEM,
   );
   $items['admin/build/forum'] = array(
     'title' => 'Forums',
@@ -149,7 +148,7 @@ function forum_menu() {
 
 
 /**
- * Implementation of hook_init().
+ * Implement hook_init().
  */
 function forum_init() {
   drupal_add_css(drupal_get_path('module', 'forum') . '/forum.css');
@@ -181,7 +180,7 @@ function _forum_node_check_node_type($node, $vocabulary) {
 }
 
 /**
- * Implementation of hook_node_view().
+ * Implement hook_node_view().
  */
 function forum_node_view($node, $teaser) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -219,7 +218,7 @@ function forum_node_view($node, $teaser) {
 }
 
 /**
- * Implementation of hook_node_prepare().
+ * Implement hook_node_prepare().
  */
 function forum_node_prepare($node) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -236,7 +235,7 @@ function forum_node_prepare($node) {
 }
 
 /**
- * Implementation of hook_node_validate().
+ * Implement hook_node_validate().
  *
  * Check in particular that only a "leaf" term in the associated taxonomy.
  */
@@ -262,7 +261,7 @@ function forum_node_validate($node, $form) {
 }
 
 /**
- * Implementation of hook_node_presave().
+ * Implement hook_node_presave().
  *
  * Assign forum taxonomy when adding a topic from within a forum.
  */
@@ -293,7 +292,7 @@ function forum_node_presave($node) {
 }
 
 /**
- * Implementation of hook_node_update().
+ * Implement hook_node_update().
  */
 function forum_node_update($node) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -317,7 +316,7 @@ function forum_node_update($node) {
 }
 
 /**
- * Implementation of hook_node_insert().
+ * Implement hook_node_insert().
  */
 function forum_node_insert($node) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -330,7 +329,7 @@ function forum_node_insert($node) {
 }
 
 /**
- * Implementation of hook_node_delete().
+ * Implement hook_node_delete().
  */
 function forum_node_delete($node) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -341,7 +340,7 @@ function forum_node_delete($node) {
 }
 
 /**
- * Implementation of hook_node_load().
+ * Implement hook_node_load().
  */
 function forum_node_load($nodes, $types) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -366,7 +365,7 @@ function forum_node_load($nodes, $types) {
 }
 
 /**
- * Implementation of hook_node_info().
+ * Implement hook_node_info().
  */
 function forum_node_info() {
   return array(
@@ -380,7 +379,7 @@ function forum_node_info() {
 }
 
 /**
- * Implementation of hook_access().
+ * Implement hook_access().
  */
 function forum_access($op, $node, $account) {
   switch ($op) {
@@ -394,7 +393,7 @@ function forum_access($op, $node, $account) {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function forum_perm() {
   $perms = array(
@@ -408,7 +407,7 @@ function forum_perm() {
 }
 
 /**
- * Implementation of hook_taxonomy().
+ * Implement hook_taxonomy().
  */
 function forum_taxonomy($op, $type, $term = NULL) {
   if ($op == 'delete' && $term['vid'] == variable_get('forum_nav_vocabulary', '')) {
@@ -435,7 +434,7 @@ function forum_taxonomy($op, $type, $term = NULL) {
 }
 
 /**
- * Implementation of hook_form_alter().
+ * Implement hook_form_alter().
  */
 function forum_form_alter(&$form, $form_state, $form_id) {
   $vid = variable_get('forum_nav_vocabulary', '');
@@ -468,7 +467,7 @@ function forum_form_alter(&$form, $form_state, $form_id) {
 }
 
 /**
- * Implementation of hook_block_list().
+ * Implement hook_block_list().
  */
 function forum_block_list() {
   $blocks['active']['info'] = t('Active forum topics');
@@ -477,7 +476,7 @@ function forum_block_list() {
 }
 
 /**
- * Implementation of hook_block_configure().
+ * Implement hook_block_configure().
  */
 function forum_block_configure($delta = '') {
   $form['forum_block_num_' . $delta] = array('#type' => 'select', '#title' => t('Number of topics'), '#default_value' => variable_get('forum_block_num_' . $delta, '5'), '#options' => drupal_map_assoc(array(2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20)));
@@ -485,14 +484,14 @@ function forum_block_configure($delta = '') {
 }
 
 /**
- * Implementation of hook_block_save().
+ * Implement hook_block_save().
  */
 function forum_block_save($delta = '', $edit = array()) {
   variable_set('forum_block_num_' . $delta, $edit['forum_block_num_' . $delta]);
 }
 
 /**
- * Implementation of hook_block_view().
+ * Implement hook_block_view().
  *
  * Generates a block containing the currently active forum topics and the
  * most recently added forum topics.
@@ -536,10 +535,10 @@ function forum_block_view($delta = '') {
 }
 
 /**
- * Implementation of hook_form().
+ * Implement hook_form().
  */
 function forum_form($node, $form_state) {
-  $type = node_get_types('type', $node);
+  $type = node_type_get_type($node);
   $form['title'] = array('#type' => 'textfield', '#title' => check_plain($type->title_label), '#default_value' => !empty($node->title) ? $node->title : '', '#required' => TRUE, '#weight' => -5);
 
   if (!empty($node->nid)) {
@@ -550,8 +549,6 @@ function forum_form($node, $form_state) {
     $form['shadow'] = array('#type' => 'checkbox', '#title' => t('Leave shadow copy'), '#default_value' => $shadow, '#description' => t('If you move this topic, you can leave a link in the old forum to the new forum.'));
   }
 
-  $form['body_field'] = node_body_field($node, $type->body_label, 1);
-
   $form['#submit'][] = 'forum_submit';
   // Assign the forum topic submit handler.
 
@@ -559,7 +556,7 @@ function forum_form($node, $form_state) {
 }
 
 /**
- * Implementation of hook_term_path().
+ * Implement hook_term_path().
  */
 function forum_term_path($term) {
   return 'forum/' . $term->tid;
@@ -747,18 +744,18 @@ function template_preprocess_forums(&$variables) {
       if (node_access('create', $type)) {
         // Fetch the "General" name of the content type;
         // Push the link with title and url to the array.
-        $forum_types[$type] = array('title' => t('Post new @node_type', array('@node_type' => node_get_types('name', $type))), 'href' => 'node/add/' . str_replace('_', '-', $type) . '/' . $variables['tid']);
+        $forum_types[$type] = array('title' => t('Post new @node_type', array('@node_type' => node_type_get_name($type))), 'href' => 'node/add/' . str_replace('_', '-', $type) . '/' . $variables['tid']);
       }
     }
 
     if (empty($forum_types)) {
       // The user is logged-in; but denied access to create any new forum content type.
       if ($user->uid) {
-        $forum_types['disallowed'] = array('title' => t('You are not allowed to post new content in forum.'));
+        $forum_types['disallowed'] = array('title' => t('You are not allowed to post new content in the forum.'));
       }
       // The user is not logged-in; and denied access to create any new forum content type.
       else {
-        $forum_types['login'] = array('title' => t('<a href="@login">Login</a> to post new content in forum.', array('@login' => url('user/login', array('query' => drupal_get_destination())))), 'html' => TRUE);
+        $forum_types['login'] = array('title' => t('<a href="@login">Login</a> to post new content in the forum.', array('@login' => url('user/login', array('query' => drupal_get_destination())))), 'html' => TRUE);
       }
     }
     $variables['links'] = $forum_types;
@@ -953,7 +950,7 @@ function template_preprocess_forum_icon(&$variables) {
 function template_preprocess_forum_topic_navigation(&$variables) {
   $output = '';
 
-  // get previous and next topic
+  // Get previous and next topic.
   $sql = "SELECT n.nid, n.title, n.sticky, l.comment_count, l.last_comment_timestamp FROM {node} n INNER JOIN {node_comment_statistics} l ON n.nid = l.nid INNER JOIN {taxonomy_term_node} r ON n.nid = r.nid AND r.tid = %d WHERE n.status = 1 ORDER BY n.sticky DESC, " . _forum_get_topic_order_sql(variable_get('forum_order', 1));
   $result = db_query(db_rewrite_sql($sql), isset($variables['node']->tid) ? $variables['node']->tid : 0);
 
@@ -992,7 +989,7 @@ function template_preprocess_forum_submitted(&$variables) {
 
 function _forum_user_last_visit($nid) {
   global $user;
-  static $history = array();
+  $history = &drupal_static(__FUNCTION__, array());
 
   if (empty($history)) {
     $result = db_query('SELECT nid, timestamp FROM {history} WHERE uid = %d', $user->uid);

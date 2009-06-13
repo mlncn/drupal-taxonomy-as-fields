@@ -1,5 +1,5 @@
 <?php
-// $Id: php.test,v 1.9 2009/04/22 09:57:10 dries Exp $
+// $Id: php.test,v 1.12 2009/06/12 08:39:38 dries Exp $
 
 /**
  * Base PHP test case class.
@@ -13,7 +13,7 @@ class PHPTestCase extends DrupalWebTestCase {
     $this->drupalLogin($admin_user);
 
     // Confirm that the PHP filter is #3.
-    $this->drupalGet('admin/settings/filter/3');
+    $this->drupalGet('admin/settings/formats/3');
     $this->assertText('PHP code', t('On PHP code filter page.'));
   }
 
@@ -23,7 +23,7 @@ class PHPTestCase extends DrupalWebTestCase {
    * @return stdObject Node object.
    */
   function createNodeWithCode() {
-    return $this->drupalCreateNode(array('body' => '<?php print "SimpleTest PHP was executed!"; ?>'));
+    return $this->drupalCreateNode(array('body' => array('value' => '<?php print "SimpleTest PHP was executed!"; ?>')));
   }
 }
 
@@ -55,12 +55,12 @@ class PHPFilterTestCase extends PHPTestCase {
     $node = $this->createNodeWithCode();
 
     // Make sure that the PHP code shows up as text.
-    $this->drupalGet('node/'. $node->nid);
+    $this->drupalGet('node/' . $node->nid);
     $this->assertText('print', t('PHP code is displayed.'));
 
     // Change filter to PHP filter and see that PHP code is evaluated.
     $edit = array();
-    $edit['body_format'] = 3;
+    $edit['body[0][value_format]'] = 3;
     $this->drupalPost('node/' . $node->nid . '/edit', $edit, t('Save'));
     $this->assertRaw(t('Page %title has been updated.', array('%title' => $node->title)), t('PHP code filter turned on.'));
 
@@ -92,7 +92,7 @@ class PHPAccessTestCase extends PHPTestCase {
     $node = $this->createNodeWithCode();
 
     // Make sure that the PHP code shows up as text.
-    $this->drupalGet('node/'. $node->nid);
+    $this->drupalGet('node/' . $node->nid);
     $this->assertText('print', t('PHP code is displayed.'));
 
     // Make sure that user doesn't have access to filter.

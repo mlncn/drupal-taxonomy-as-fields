@@ -1,10 +1,10 @@
 <?php
-// $Id: common.test,v 1.37 2009/05/03 07:35:37 dries Exp $
+// $Id: common.test,v 1.46 2009/06/12 08:39:39 dries Exp $
 
 /**
  * Tests for the l() function.
  */
-class CommonLUnitTest extends DrupalWebTestCase {
+class CommonLUnitTest extends DrupalUnitTestCase {
 
   public static function getInfo() {
     return array(
@@ -26,7 +26,7 @@ class CommonLUnitTest extends DrupalWebTestCase {
   }
 }
 
-class CommonSizeTestCase extends DrupalWebTestCase {
+class CommonSizeTestCase extends DrupalUnitTestCase {
   protected $exact_test_cases;
   protected $rounded_test_cases;
 
@@ -195,7 +195,7 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
   function setUp() {
     parent::setUp('php');
     // Reset drupal_add_css() before each test.
-    drupal_add_css(NULL, 'reset');
+    drupal_static_reset('drupal_add_css');
   }
 
   /**
@@ -218,7 +218,7 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
    * Makes sure that reseting the CSS empties the cache.
    */
   function testReset() {
-    drupal_add_css(NULL, 'reset');
+    drupal_static_reset('drupal_add_css');
     $this->assertEqual(array(), drupal_add_css(), t('Resetting the CSS empties the cache.'));
   }
 
@@ -261,9 +261,7 @@ class CascadingStylesheetsTestCase extends DrupalWebTestCase {
     // Create a node, using the PHP filter that tests drupal_add_css().
     $settings = array(
       'type' => 'page',
-      'format' => 3, // PHP filter.
-      'body_format' => 3,
-      'body' => t('This tests the inline CSS!') . "<?php drupal_add_css('$css', 'inline'); ?>",
+      'body' => array(array('value' => t('This tests the inline CSS!') . "<?php drupal_add_css('$css', 'inline'); ?>", 'format' => 3)), // PHP filter.
       'promote' => 1,
     );
     $node = $this->drupalCreateNode($settings);
@@ -302,13 +300,26 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
     $result = drupal_http_request(url('node', array('absolute' => TRUE)));
     $this->assertEqual($result->code, 200, t('Fetched page successfully.'));
     $this->drupalSetContent($result->data);
-    $this->assertTitle(variable_get('site_name', 'Drupal'), t('Site title matches.'));
+    $this->assertTitle(t('Welcome to @site-name | @site-name', array('@site-name' => variable_get('site_name', 'Drupal'))), t('Site title matches.'));
 
     // Test that code and status message is returned.
     $result = drupal_http_request(url('pagedoesnotexist', array('absolute' => TRUE)));
     $this->assertTrue(!empty($result->protocol),  t('Result protocol is returned.'));
     $this->assertEqual($result->code, '404', t('Result code is 404'));
     $this->assertEqual($result->status_message, 'Not Found', t('Result status message is "Not Found"'));
+
+    // Test that timeout is respected. The test machine is expected to be able
+    // to make the connection (i.e. complete the fsockopen()) in 2 seconds and
+    // return within a total of 5 seconds. If the test machine is extremely
+    // slow, the test will fail. fsockopen() has been seen to time out in
+    // slightly less than the specified timeout, so allow a little slack on the
+    // minimum expected time (i.e. 1.8 instead of 2).
+    timer_start(__METHOD__);
+    $result = drupal_http_request(url('system-test/sleep/10', array('absolute' => TRUE)), array('timeout' => 2));
+    $time = timer_read(__METHOD__) / 1000;
+    $this->assertTrue(1.8 < $time && $time < 5, t('Request timed out (%time seconds).', array('%time' => $time)));
+    $this->assertTrue($result->error, t('An error message was returned.'));
+    $this->assertEqual($result->code, HTTP_REQUEST_TIMEOUT, t('Proper error code was returned.'));
   }
 
   function testDrupalHTTPRequestBasicAuth() {
@@ -316,7 +327,7 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
     $password = $this->randomName();
     $url = url('system-test/auth', array('absolute' => TRUE));
 
-    $auth = str_replace('http://', 'http://' . $username . ':' . $password .'@', $url);
+    $auth = str_replace('http://', 'http://' . $username . ':' . $password . '@', $url);
     $result = drupal_http_request($auth);
 
     $this->drupalSetContent($result->data);
@@ -362,12 +373,12 @@ class DrupalHTTPRequestTestCase extends DrupalWebTestCase {
 }
 
 /**
- * Testing drupal_set_content and drupal_get_content.
+ * Testing drupal_add_region_content and drupal_get_region_content.
  */
 class DrupalSetContentTestCase extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
-      'name' => t('Drupal set/get content'),
+      'name' => t('Drupal set/get regions'),
       'description' => t('Performs tests on setting and retrieiving content from theme regions.'),
       'group' => t('System')
     );
@@ -386,22 +397,22 @@ class DrupalSetContentTestCase extends DrupalWebTestCase {
     // Set some random content for each region available.
     foreach ($block_regions as $region) {
       $first_chunk = $this->randomName(32);
-      drupal_set_content($region, $first_chunk);
+      drupal_add_region_content($region, $first_chunk);
       $second_chunk = $this->randomName(32);
-      drupal_set_content($region, $second_chunk);
-      // Store the expected result for a drupal_get_content call for this region.
+      drupal_add_region_content($region, $second_chunk);
+      // Store the expected result for a drupal_get_region_content call for this region.
       $values[$region] = $first_chunk . $delimiter . $second_chunk;
     }
 
-    // Ensure drupal_get_content returns expected results when fetching all regions.
-    $content = drupal_get_content(NULL, $delimiter);
+    // Ensure drupal_get_region_content returns expected results when fetching all regions.
+    $content = drupal_get_region_content(NULL, $delimiter);
     foreach ($content as $region => $region_content) {
       $this->assertEqual($region_content, $values[$region], t('@region region text verified when fetching all regions', array('@region' => $region)));
     }
 
-    // Ensure drupal_get_content returns expected results when fetching a single region.
+    // Ensure drupal_get_region_content returns expected results when fetching a single region.
     foreach ($block_regions as $region) {
-      $region_content = drupal_get_content($region, $delimiter);
+      $region_content = drupal_get_region_content($region, $delimiter);
       $this->assertEqual($region_content, $values[$region], t('@region region text verified when fetching single region.', array('@region' => $region)));
     }
   }
@@ -433,7 +444,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
     variable_set('preprocess_js', 0);
 
     // Reset drupal_add_js() before each test.
-    drupal_add_js(NULL, 'reset');
+    drupal_static_reset('drupal_add_js');
   }
 
   function tearDown() {
@@ -485,7 +496,7 @@ class JavaScriptTestCase extends DrupalWebTestCase {
    */
   function testReset() {
     drupal_add_js('misc/collapse.js');
-    drupal_add_js(NULL, 'reset');
+    drupal_static_reset('drupal_add_js');
     $this->assertEqual(array(), drupal_add_js(), t('Resetting the JavaScript correctly empties the cache.'));
   }
 
@@ -628,123 +639,10 @@ class DrupalRenderUnitTestCase extends DrupalWebTestCase {
   }
 }
 
-
-/**
- * Tests Drupal error and exception handlers.
- */
-class DrupalErrorHandlerUnitTest extends DrupalWebTestCase {
-  public static function getInfo() {
-    return array(
-      'name' => t('Drupal error handlers'),
-      'description' => t('Performs tests on the Drupal error and exception handler.'),
-      'group' => t('System'),
-    );
-  }
-
-  function setUp() {
-    parent::setUp('system_test');
-  }
-
-  /**
-   * Test the error handler.
-   */
-  function testErrorHandler() {
-    $error_notice = array(
-      '%type' => 'Notice',
-      '%message' => 'Undefined variable: bananas',
-      '%function' => 'system_test_generate_warnings()',
-      '%line' => 194,
-      '%file' => realpath('modules/simpletest/tests/system_test.module'),
-    );
-    $error_warning = array(
-      '%type' => 'Warning',
-      '%message' => 'Division by zero',
-      '%function' => 'system_test_generate_warnings()',
-      '%line' => 196,
-      '%file' => realpath('modules/simpletest/tests/system_test.module'),
-    );
-    $error_user_notice = array(
-      '%type' => 'User notice',
-      '%message' => 'Drupal is awesome',
-      '%function' => 'system_test_generate_warnings()',
-      '%line' => 198,
-      '%file' => realpath('modules/simpletest/tests/system_test.module'),
-    );
-
-    // Set error reporting to collect notices.
-    variable_set('error_level', ERROR_REPORTING_DISPLAY_ALL);
-    $this->drupalGet('system-test/generate-warnings');
-    $this->assertErrorMessage($error_notice);
-    $this->assertErrorMessage($error_warning);
-    $this->assertErrorMessage($error_user_notice);
-
-    // Set error reporting to not collect notices.
-    variable_set('error_level', ERROR_REPORTING_DISPLAY_SOME);
-    $this->drupalGet('system-test/generate-warnings');
-    $this->assertNoErrorMessage($error_notice);
-    $this->assertErrorMessage($error_warning);
-    $this->assertErrorMessage($error_user_notice);
-
-    // Set error reporting to not show any errors.
-    variable_set('error_level', ERROR_REPORTING_HIDE);
-    $this->drupalGet('system-test/generate-warnings');
-    $this->assertNoErrorMessage($error_notice);
-    $this->assertNoErrorMessage($error_warning);
-    $this->assertNoErrorMessage($error_user_notice);
-  }
-
-  /**
-   * Test the exception handler.
-   */
-  function testExceptionHandler() {
-    $error_exception = array(
-      '%type' => 'Exception',
-      '%message' => 'Drupal is awesome',
-      '%function' => 'system_test_trigger_exception()',
-      '%line' => 207,
-      '%file' => realpath('modules/simpletest/tests/system_test.module'),
-    );
-    $error_pdo_exception = array(
-      '%type' => 'PDOException',
-      '%message' => 'SQLSTATE',
-      '%function' => 'system_test_trigger_pdo_exception()',
-      '%line' => 215,
-      '%file' => realpath('modules/simpletest/tests/system_test.module'),
-    );
-
-    $this->drupalGet('system-test/trigger-exception');
-    $this->assertErrorMessage($error_exception);
-
-    $this->drupalGet('system-test/trigger-pdo-exception');
-    // We cannot use assertErrorMessage() since the extact error reported
-    // varies from database to database. Check for the error keyword 'SQLSTATE'.
-    $this->assertText($error_pdo_exception['%type'], t('Found %type in error page.', $error_pdo_exception));
-    $this->assertText($error_pdo_exception['%message'], t('Found %message in error page.', $error_pdo_exception));
-    $error_details = t('in %function (line %line of %file)', $error_pdo_exception);
-    $this->assertRaw($error_details, t("Found '!message' in error page.", array('!message' => $error_details)));
-  }
-
-  /**
-   * Helper function: assert that the error message is found.
-   */
-  function assertErrorMessage(array $error) {
-    $message = t('%type: %message in %function (line %line of %file).', $error);
-    $this->assertRaw($message, t('Error !message found.', array('!message' => $message)));
-  }
-
-  /**
-   * Helper function: assert that the error message is not found.
-   */
-  function assertNoErrorMessage(array $error) {
-    $message = t('%type: %message in %function (line %line of %file).', $error);
-    $this->assertNoRaw($message, t('Error !message not found.', array('!message' => $message)));
-  }
-}
-
 /**
  * Test for valid_url().
  */
-class ValidUrlTestCase extends DrupalWebTestCase {
+class ValidUrlTestCase extends DrupalUnitTestCase {
   public static function getInfo() {
     return array(
       'name' => t('Valid Url'),
@@ -824,7 +722,7 @@ class ValidUrlTestCase extends DrupalWebTestCase {
       foreach ($valid_relative_urls as $url) {
         $test_url = $front . $url;
         $valid_url = valid_url($test_url);
-        $this->assertTrue($valid_url,t('@url is a valid url.', array('@url' => $test_url)));
+        $this->assertTrue($valid_url, t('@url is a valid url.', array('@url' => $test_url)));
       }
     }
   }
@@ -843,7 +741,7 @@ class ValidUrlTestCase extends DrupalWebTestCase {
       foreach ($invalid_relative_urls as $url) {
         $test_url = $front . $url;
         $valid_url = valid_url($test_url);
-        $this->assertFALSE($valid_url,t('@url is NOT a valid url.', array('@url' => $test_url)));
+        $this->assertFALSE($valid_url, t('@url is NOT a valid url.', array('@url' => $test_url)));
       }
     }
   }
@@ -870,7 +768,7 @@ class DrupalDataApiTest extends DrupalWebTestCase {
    */
   function testDrupalWriteRecord() {
     // Insert an object record for a table with a single-field primary key.
-    $vocabulary = new StdClass();
+    $vocabulary = new stdClass();
     $vocabulary->name = 'test';
     $insert_result = drupal_write_record('taxonomy_vocabulary', $vocabulary);
     $this->assertTrue($insert_result == SAVED_NEW, t('Correct value returned when a record is inserted with drupal_write_record() for a table with a single-field primary key.'));
@@ -882,7 +780,7 @@ class DrupalDataApiTest extends DrupalWebTestCase {
     $this->assertTrue($update_result == SAVED_UPDATED, t('Correct value returned when a record updated with drupal_write_record() for table with single-field primary key.'));
 
     // Insert an object record for a table with a multi-field primary key.
-    $vocabulary_node_type = new StdClass();
+    $vocabulary_node_type = new stdClass();
     $vocabulary_node_type->vid = $vocabulary->vid;
     $vocabulary_node_type->type = 'page';
     $insert_result = drupal_write_record('taxonomy_vocabulary_node_type', $vocabulary_node_type);
@@ -919,7 +817,7 @@ class DrupalErrorCollectionUnitTest extends DrupalWebTestCase {
   }
 
   function setUp() {
-    parent::setUp('system_test');
+    parent::setUp('system_test', 'error_test');
   }
 
   /**
@@ -927,14 +825,13 @@ class DrupalErrorCollectionUnitTest extends DrupalWebTestCase {
    */
   function testErrorCollect() {
     $this->collectedErrors = array();
-    $this->drupalGet('system-test/generate-warnings-with-report');
-
+    $this->drupalGet('error-test/generate-warnings-with-report');
     $this->assertEqual(count($this->collectedErrors), 3, t('Three errors were collected'));
 
     if (count($this->collectedErrors) == 3) {
-      $this->assertError($this->collectedErrors[0], 'Notice', 'system_test_generate_warnings()', 'system_test.module', 'Undefined variable: bananas');
-      $this->assertError($this->collectedErrors[1], 'Warning', 'system_test_generate_warnings()', 'system_test.module', 'Division by zero');
-      $this->assertError($this->collectedErrors[2], 'User notice', 'system_test_generate_warnings()', 'system_test.module', 'Drupal is awesome');
+      $this->assertError($this->collectedErrors[0], 'Notice', 'error_test_generate_warnings()', 'error_test.module', 'Undefined variable: bananas');
+      $this->assertError($this->collectedErrors[1], 'Warning', 'error_test_generate_warnings()', 'error_test.module', 'Division by zero');
+      $this->assertError($this->collectedErrors[2], 'User notice', 'error_test_generate_warnings()', 'error_test.module', 'Drupal is awesome');
     }
     else {
       // Give back the errors to the log report.

@@ -1,11 +1,11 @@
 <?php
-// $Id: user.test,v 1.35 2009/05/06 19:56:21 webchick Exp $
+// $Id: user.test,v 1.42 2009/06/11 07:51:30 dries Exp $
 
 class UserRegistrationTestCase extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
       'name' => t('User registration'),
-      'description' => t('Registers a user, fails login, resets password, successfully logs in with the one time password, changes password, logs out, successfully logs in with the new password, visits profile page.'),
+      'description' => t('Registers a user, fails login, resets password, successfully logs in with the one time password, fails password change, changes password, logs out, successfully logs in with the new password, visits profile page.'),
       'group' => t('User')
     );
   }
@@ -57,12 +57,19 @@ class UserRegistrationTestCase extends DrupalWebTestCase {
 
     // Login using password reset page.
     $url = user_pass_reset_url($user);
-    sleep(1); // TODO Find better way.
     $this->drupalGet($url);
     $this->assertText(t('This login can be used only once.'), t('Login can be used only once.'));
 
     $this->drupalPost(NULL, NULL, t('Log in'));
     $this->assertText(t('You have just used your one-time login link. It is no longer necessary to use this link to login. Please change your password.'), t('This link is no longer valid.'));
+
+    // Check password type validation
+    $edit = array();
+    $edit['pass[pass1]'] = '99999.0';
+    $edit['pass[pass2]'] = '99999';
+    $this->drupalPost(NULL, $edit, t('Save'));
+    $this->assertText(t('The specified passwords do not match.'), t('Type mismatched passwords display an error message.'));
+    $this->assertNoText(t('The changes have been saved.'), t('Save user password with mismatched type in password confirm.'));
 
     // Change user password.
     $new_pass = user_password();
@@ -514,7 +521,7 @@ class UserPictureTestCase extends DrupalWebTestCase {
     $file_check = file_check_directory($file_dir, FILE_CREATE_DIRECTORY, 'file_directory_path');
 
     $picture_dir = variable_get('user_picture_path', 'pictures');
-    $picture_path = $file_dir . '/' .$picture_dir;
+    $picture_path = $file_dir . '/' . $picture_dir;
 
     $pic_check = file_check_directory($picture_path, FILE_CREATE_DIRECTORY, 'user_picture_path');
     $this->_directory_test = is_writable($picture_path);
@@ -725,7 +732,7 @@ class UserPermissionsTestCase extends DrupalWebTestCase {
   function setUp() {
     parent::setUp();
 
-    $this->admin_user = $this->drupalCreateUser(array('administer permissions', 'access user profiles'));
+    $this->admin_user = $this->drupalCreateUser(array('administer permissions', 'access user profiles', 'administer site configuration', 'administer users'));
 
     // Find the new role ID - it must be the maximum.
     $all_rids = array_keys($this->admin_user->roles);
@@ -758,13 +765,33 @@ class UserPermissionsTestCase extends DrupalWebTestCase {
     $this->assertFalse(user_access('access user profiles', $account, TRUE), t('User no longer has "access user profiles" permission.'));
   }
 
+  /**
+   * Test assigning of permissions for the administrator role.
+   */
+  function testAdministratorRole() {
+    $this->drupalLogin($this->admin_user);
+    $this->drupalGet('admin/user/settings');
+
+    // Set the user's role to be the administrator role.
+    $edit = array();
+    $edit['user_admin_role'] = $this->rid;
+    $this->drupalPost('admin/user/settings', $edit, t('Save configuration'));
+
+    // Enable aggregator module and ensure the 'administer news feeds'
+    // permission is assigned by default.
+    $edit = array();
+    $edit['modules[Core][aggregator][enable]'] = TRUE;
+    $this->drupalPost('admin/build/modules', $edit, t('Save configuration'));
+
+    $this->assertTrue(user_access('administer news feeds', $this->admin_user, TRUE), t('The permission was automatically assigned to the administrator role'));
+  }
 }
 
 class UserAdminTestCase extends DrupalWebTestCase {
   public static function getInfo() {
     return array(
-      'name' => t('User admininstration'),
-      'description' => t('Test user admininstration page functionality.'),
+      'name' => t('User administration'),
+      'description' => t('Test user administration page functionality.'),
       'group' => t('User')
     );
   }
@@ -923,6 +950,30 @@ class UserBlocksUnitTests extends DrupalWebTestCase {
   }
 
   /**
+   * Test the user login block.
+   */
+  function testUserLoginBlock() {
+    // Create a user with some permission that anonymous users lack.
+    $user = $this->drupalCreateUser(array('administer permissions'));
+
+    // Log in using the block.
+    $edit = array();
+    $edit['name'] = $user->name;
+    $edit['pass'] = $user->pass_raw;
+    $this->drupalPost('admin/user/permissions', $edit, t('Log in'));
+    $this->assertText(t('Log out'), t('Logged in.'));
+
+    // Check that we are still on the same page.
+    $this->assertPattern('!<title.*?' . t('Permissions') . '.*?</title>!', t('Still on the same page after login for access denied page'));
+
+    // Now, log out and repeat with a non-403 page.
+    $this->clickLink(t('Log out'));
+    $this->drupalPost('filter/tips', $edit, t('Log in'));
+    $this->assertText(t('Log out'), t('Logged in.'));
+    $this->assertPattern('!<title.*?' . t('Compose tips') . '.*?</title>!', t('Still on the same page after login for allowed page'));
+  }
+
+  /**
    * Test the Who's Online block.
    */
   function testWhosOnlineBlock() {
@@ -994,7 +1045,7 @@ class UserSaveTestCase extends DrupalWebTestCase {
     // User ID must be a number that is not in the database.
     $max_uid = db_result(db_query('SELECT MAX(uid) FROM {users}'));
     $test_uid = $max_uid + mt_rand(1000, 1000000);
-    $test_name = $this->randomName(); 
+    $test_name = $this->randomName();
 
     // Create the base user, based on drupalCreateUser().
     $user = array(

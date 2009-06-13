@@ -1,5 +1,5 @@
 <?php
-// $Id: phptemplate.engine,v 1.71 2008/09/20 20:22:25 webchick Exp $
+// $Id: phptemplate.engine,v 1.73 2009/06/02 03:57:22 webchick Exp $
 
 /**
  * @file
@@ -14,14 +14,13 @@ function phptemplate_init($template) {
 }
 
 /**
- * Implementation of hook_theme to tell Drupal what templates the engine
+ * Implement hook_theme to tell Drupal what templates the engine
  * and the current theme use. The $existing argument will contain hooks
  * pre-defined by Drupal so that we can use that information if
  * we need to.
  */
 function phptemplate_theme($existing, $type, $theme, $path) {
-  $templates = drupal_find_theme_functions($existing, array('phptemplate', $theme));
+  $templates = drupal_find_theme_functions($existing, array($theme));
   $templates += drupal_find_theme_templates($existing, '.tpl.php', $path);
   return $templates;
 }
-

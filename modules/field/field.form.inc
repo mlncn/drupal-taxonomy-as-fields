@@ -1,5 +1,5 @@
 <?php
-// $Id: field.form.inc,v 1.8 2009/05/03 09:49:32 dries Exp $
+// $Id: field.form.inc,v 1.10 2009/06/02 13:47:25 dries Exp $
 
 /**
  * @file
@@ -15,7 +15,7 @@ function field_default_form($obj_type, $object, $field, $instance, $items, &$for
   // This could be called with no object, as when a UI module creates a
   // dummy form to set default values.
   if ($object) {
-    list($id, ,) = field_attach_extract_ids($obj_type, $object);
+    list($id, , ) = field_attach_extract_ids($obj_type, $object);
   }
   $addition = array();
 
@@ -392,7 +392,7 @@ function field_add_more_js($bundle_name, $field_name) {
   // Just grab the data we need.
   $form_state['values'] = $form_state_copy['values'];
   // Reset cached ids, so that they don't affect the actual form we output.
-  form_clean_id(NULL, TRUE);
+  drupal_static_reset('form_clean_id');
 
   // Sort the $form_state['values'] we just built *and* the incoming $_POST data
   // according to d-n-d reordering.

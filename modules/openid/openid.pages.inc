@@ -1,5 +1,5 @@
 <?php
-// $Id: openid.pages.inc,v 1.16 2009/05/12 08:37:44 dries Exp $
+// $Id: openid.pages.inc,v 1.18 2009/05/25 10:43:52 dries Exp $
 
 /**
  * @file
@@ -53,9 +53,9 @@ function openid_user_identities($account) {
     $rows[] = array(check_plain($identity->authname), l(t('Delete'), 'user/' . $account->uid . '/openid/delete/' . $identity->aid));
   }
 
-  $output = theme('table', $header, $rows);
-  $output .= drupal_render(drupal_get_form('openid_user_add'));
-  return $output;
+  $build['openid_table'] = array('#markup' => theme('table', $header, $rows));
+  $build['openid_user_add'] = drupal_get_form('openid_user_add');
+  return $build;
 }
 
 /**
@@ -94,7 +94,7 @@ function openid_user_delete_form($form_state, $account, $aid = 0) {
     ':aid' => $aid,
   ))
   ->fetchField();
-  return confirm_form(array(), t('Are you sure you want to delete the OpenID %authname for %user?', array('%authname' => $authname, '%user' => $account->name)), 'user/'. $account->uid .'/openid');
+  return confirm_form(array(), t('Are you sure you want to delete the OpenID %authname for %user?', array('%authname' => $authname, '%user' => $account->name)), 'user/' . $account->uid . '/openid');
 }
 
 function openid_user_delete_form_submit(&$form_state, $form_values) {
@@ -106,5 +106,5 @@ function openid_user_delete_form_submit(&$form_state, $form_values) {
   if ($query) {
     drupal_set_message(t('OpenID deleted.'));
   }
-  $form_state['#redirect'] = 'user/'. $form_state['#args'][0]->uid .'/openid';
+  $form_state['#redirect'] = 'user/' . $form_state['#args'][0]->uid . '/openid';
 }

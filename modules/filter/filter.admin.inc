@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.admin.inc,v 1.27 2009/04/26 06:00:31 dries Exp $
+// $Id: filter.admin.inc,v 1.30 2009/06/12 08:39:37 dries Exp $
 
 /**
  * @file
@@ -32,8 +32,8 @@ function filter_admin_overview() {
     $options[$id] = '';
     $form[$id]['name'] = array('#markup' => $format->name);
     $form[$id]['roles'] = array('#markup' => $default ? t('All roles may use the default format') : ($roles ? implode(', ', $roles) : t('No roles may use this format')));
-    $form[$id]['configure'] = array('#markup' => l(t('configure'), 'admin/settings/filter/' . $id));
-    $form[$id]['delete'] = array('#markup' => $default ? '' : l(t('delete'), 'admin/settings/filter/delete/' . $id));
+    $form[$id]['configure'] = array('#markup' => l(t('configure'), 'admin/settings/formats/' . $id));
+    $form[$id]['delete'] = array('#markup' => $default ? '' : l(t('delete'), 'admin/settings/formats/delete/' . $id));
     $form[$id]['weight'] = array('#type' => 'weight', '#default_value' => $format->weight);
   }
   $form['default'] = array('#type' => 'radios', '#options' => $options, '#default_value' => variable_get('filter_default_format', 1));
@@ -184,7 +184,7 @@ function filter_admin_format_form(&$form_state, $format) {
 function filter_admin_format_form_validate($form, &$form_state) {
   if (!isset($form_state['values']['format'])) {
     $name = trim($form_state['values']['name']);
-    $result = db_fetch_object(db_query("SELECT format FROM {filter_format} WHERE name='%s'", $name));
+    $result = db_query("SELECT format FROM {filter_format} WHERE name = :name", array(':name' => $name))->fetchField();
     if ($result) {
       form_set_error('name', t('Text format names must be unique. A format named %name already exists.', array('%name' => $name)));
     }
@@ -203,25 +203,34 @@ function filter_admin_format_form_submit($form, &$form_state) {
   // Add a new text format.
   if (!$format) {
     $new = TRUE;
-    db_query("INSERT INTO {filter_format} (name) VALUES ('%s')", $name);
-    $format = db_result(db_query("SELECT MAX(format) AS format FROM {filter_format}"));
+    db_insert('filter_format')
+      ->fields(array('name' => $name))
+      ->execute();
+    $format = db_query("SELECT MAX(format) AS format FROM {filter_format}")->fetchField();
     drupal_set_message(t('Added text format %format.', array('%format' => $name)));
   }
   else {
     drupal_set_message(t('The text format settings have been updated.'));
   }
-
-  db_query("DELETE FROM {filter} WHERE format = %d", $format);
+  db_delete('filter')
+    ->condition('format', $format)
+    ->execute();
+  $query = db_insert('filter')->fields(array('format', 'module', 'delta', 'weight'));
   foreach ($form_state['values']['filters'] as $id => $checked) {
     if ($checked) {
       list($module, $delta) = explode('/', $id);
       // Add new filters to the bottom.
       $weight = isset($current[$id]->weight) ? $current[$id]->weight : 10;
-      db_query("INSERT INTO {filter} (format, module, delta, weight) VALUES (%d, '%s', %d, %d)", $format, $module, $delta, $weight);
-
+      $query->values(array(
+        'format' => $format,
+        'module' => $module,
+        'delta'  => $delta,
+        'weight' => $weight,
+      ));
       // Check if there are any 'no cache' filters.
       $cache &= !module_invoke($module, 'filter', 'no cache', $delta);
     }
+    $query->execute();
   }
 
   // We store the roles as a string for ease of use.
@@ -254,7 +263,7 @@ function filter_admin_format_form_submit($form, &$form_state) {
   cache_clear_all($format . ':', 'cache_filter', TRUE);
 
   // If a new filter was added, return to the main list of filters. Otherwise, stay on edit filter page to show new changes.
-  $return = 'admin/settings/filter';
+  $return = 'admin/settings/formats';
   if (!empty($new)) {
     $return .= '/' . $format;
   }
@@ -277,11 +286,11 @@ function filter_admin_delete() {
       $form['format'] = array('#type' => 'hidden', '#value' => $format->format);
       $form['name'] = array('#type' => 'hidden', '#value' => $format->name);
 
-      return confirm_form($form, t('Are you sure you want to delete the text format %format?', array('%format' => $format->name)), 'admin/settings/filter', t('If you have any content left in this text format, it will be switched to the default text format. This action cannot be undone.'), t('Delete'), t('Cancel'));
+      return confirm_form($form, t('Are you sure you want to delete the text format %format?', array('%format' => $format->name)), 'admin/settings/formats', t('If you have any content left in this text format, it will be switched to the default text format. This action cannot be undone.'), t('Delete'), t('Cancel'));
     }
     else {
       drupal_set_message(t('The default format cannot be deleted.'));
-      drupal_goto('admin/settings/filter');
+      drupal_goto('admin/settings/formats');
     }
   }
   else {
@@ -302,10 +311,6 @@ function filter_admin_delete_submit($form, &$form_state) {
 
   $default = variable_get('filter_default_format', 1);
   // Replace existing instances of the deleted format with the default format.
-  db_update('node_revision')
-    ->fields(array('format' => $default))
-    ->condition('format', $form_state['values']['format'])
-    ->execute();
   if (db_table_exists('comment')) {
     db_update('comment')
       ->fields(array('format' => $default))
@@ -322,7 +327,7 @@ function filter_admin_delete_submit($form, &$form_state) {
   cache_clear_all($form_state['values']['format'] . ':', 'cache_filter', TRUE);
   drupal_set_message(t('Deleted text format %format.', array('%format' => $form_state['values']['name'])));
 
-  $form_state['redirect'] = 'admin/settings/filter';
+  $form_state['redirect'] = 'admin/settings/formats';
   return;
 }
 

@@ -1,8 +1,13 @@
 <?php
-// $Id: blogapi.install,v 1.6 2009/02/26 07:30:26 webchick Exp $
+// $Id: blogapi.install,v 1.9 2009/06/01 22:07:08 dries Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the blogapi module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function blogapi_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function blogapi_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function blogapi_uninstall() {
   // Remove tables.
@@ -19,7 +24,7 @@ function blogapi_uninstall() {
 
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function blogapi_schema() {
   $schema['blogapi_files'] = array(
@@ -54,6 +59,9 @@ function blogapi_schema() {
     'primary key' => array('fid'),
     'indexes' => array(
       'uid' => array('uid'),
+    ),
+    'foreign keys' => array(
+      'uid' => array('users' => 'uid'),
     ),
   );
 

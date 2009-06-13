@@ -1,8 +1,13 @@
 <?php
-// $Id: comment.install,v 1.32 2009/02/26 07:30:26 webchick Exp $
+// $Id: comment.install,v 1.36 2009/06/04 03:33:27 webchick Exp $
 
 /**
- * Implementation of hook_install().
+ * @file
+ * Install, update and uninstall functions for the comment module.
+ */
+
+/**
+ * Implement hook_install().
  */
 function comment_install() {
   // Create tables.
@@ -10,7 +15,7 @@ function comment_install() {
 }
 
 /**
- * Implementation of hook_uninstall().
+ * Implement hook_uninstall().
  */
 function comment_uninstall() {
   // Remove tables.
@@ -18,7 +23,7 @@ function comment_uninstall() {
 
   // Remove variables.
   variable_del('comment_block_count');
-  $node_types = array_keys(node_get_types());
+  $node_types = array_keys(node_type_get_types());
   foreach ($node_types as $node_type) {
     variable_del('comment_' . $node_type);
     variable_del('comment_anonymous_' . $node_type);
@@ -33,7 +38,7 @@ function comment_uninstall() {
 }
 
 /**
- * Implementation of hook_enable().
+ * Implement hook_enable().
  */
 function comment_enable() {
   // Insert records into the node_comment_statistics for nodes that are missing.
@@ -85,7 +90,7 @@ function comment_update_6002() {
     'comment_preview' => COMMENT_PREVIEW_REQUIRED,
     'comment_form_location' => COMMENT_FORM_SEPARATE_PAGE,
   );
-  $types = node_get_types();
+  $types = node_type_get_types();
   foreach ($settings as $setting => $default) {
     $value = variable_get($setting, $default);
     foreach ($types as $type => $object) {
@@ -120,7 +125,7 @@ function comment_update_6003() {
  * Remove comment settings for page ordering.
  */
 function comment_update_7000() {
-  $types = node_get_types();
+  $types = node_type_get_types();
   foreach ($types as $type => $object) {
     variable_del('comment_default_order' . $type);
   }
@@ -154,7 +159,7 @@ function comment_update_7002() {
  */
 
 /**
- * Implementation of hook_schema().
+ * Implement hook_schema().
  */
 function comment_schema() {
   $schema['comment'] = array(
@@ -256,6 +261,9 @@ function comment_schema() {
       'status' => array('status'),
     ),
     'primary key' => array('cid'),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
+    ),
   );
 
   $schema['node_comment_statistics'] = array(
@@ -297,6 +305,9 @@ function comment_schema() {
     'primary key' => array('nid'),
     'indexes' => array(
       'node_comment_timestamp' => array('last_comment_timestamp'),
+    ),
+    'foreign keys' => array(
+      'nid' => array('node' => 'nid'),
     ),
   );
 

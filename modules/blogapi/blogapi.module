@@ -1,5 +1,5 @@
 <?php
-// $Id: blogapi.module,v 1.150 2009/05/09 18:28:11 dries Exp $
+// $Id: blogapi.module,v 1.155 2009/06/12 08:39:35 dries Exp $
 
 /**
  * @file
@@ -7,7 +7,7 @@
  */
 
 /**
- * Implementation of hook_help().
+ * Implement hook_help().
  */
 function blogapi_help($path, $arg) {
   switch ($path) {
@@ -21,7 +21,7 @@ function blogapi_help($path, $arg) {
 }
 
 /**
- * Implementation of hook_perm().
+ * Implement hook_perm().
  */
 function blogapi_perm() {
   return array(
@@ -33,7 +33,7 @@ function blogapi_perm() {
 }
 
 /**
- * Implementation of hook_xmlrpc().
+ * Implement hook_xmlrpc().
  */
 function blogapi_xmlrpc() {
   return array(
@@ -213,7 +213,7 @@ function blogapi_blogger_new_post($appkey, $blogid, $username, $password, $conte
   }
   else {
     $edit['title'] = blogapi_blogger_title($content);
-    $edit['body'] = $content;
+    $edit['body'][0]['value'] = $content;
   }
 
   if (!node_access('create', $edit['type'])) {
@@ -271,15 +271,15 @@ function blogapi_blogger_edit_post($appkey, $postid, $username, $password, $cont
   $original_status = $node->status;
   $node->status = $publish;
 
-  // check for bloggerAPI vs. metaWeblogAPI
+  // Check for bloggerAPI vs. metaWeblogAPI.
   if (is_array($content)) {
     $node->title = $content['title'];
-    $node->body = $content['description'];
+    $node->body[0]['value'] = $content['description'];
     _blogapi_mt_extra($node, $content);
   }
   else {
     $node->title = blogapi_blogger_title($content);
-    $node->body = $content;
+    $node->body[0]['value'] = $content;
   }
 
   module_invoke_all('node_blogapi_edit', $node);
@@ -331,7 +331,7 @@ function blogapi_status_error_check($node, $original_status) {
 
   $node = (object) $node;
 
-  $node_type_default = variable_get('node_options_'. $node->type, array('status', 'promote'));
+  $node_type_default = variable_get('node_options_' . $node->type, array('status', 'promote'));
 
   // If we don't have the 'administer nodes' permission and the status is
   // changing or for a new node the status is not the content type's default,
@@ -379,7 +379,7 @@ function blogapi_blogger_get_recent_posts($appkey, $blogid, $username, $password
   }
 
   if ($bodies) {
-    $result = db_query_range("SELECT n.nid, n.title, r.body, r.format, n.comment, n.created, u.name FROM {node} n, {node_revision} r, {users} u WHERE n.uid = u.uid AND n.vid = r.vid AND n.type = :type AND n.uid = :uid ORDER BY n.created DESC",  array(
+    $result = db_query_range("SELECT n.nid, n.title, n.comment, n.created, u.name FROM {node} n, {node_revision} r, {users} u WHERE n.uid = u.uid AND n.vid = r.vid AND n.type = :type AND n.uid = :uid ORDER BY n.created DESC",  array(
       ':type' => $blogid,
       ':uid' => $user->uid
     ), 0, $number_of_posts);
@@ -584,7 +584,7 @@ function blogapi_mt_validate_terms($node) {
       $term_list = array_unique($node->taxonomy);
       $params = $term_list;
       $params[] = $node->type;
-      $result = db_query(db_rewrite_sql("SELECT t.tid, t.vid FROM {taxonomy_term_data} t INNER JOIN {taxonomy_vocabulary_node_type} n ON t.vid = n.vid WHERE t.tid IN (". db_placeholders($term_list) .") AND n.type = '%s'", 't', 'tid'), $params);
+      $result = db_query(db_rewrite_sql("SELECT t.tid, t.vid FROM {taxonomy_term_data} t INNER JOIN {taxonomy_vocabulary_node_type} n ON t.vid = n.vid WHERE t.tid IN (" . db_placeholders($term_list) . ") AND n.type = '%s'", 't', 'tid'), $params);
       $found_terms = array();
       $found_count = 0;
       while ($term = db_fetch_object($result)) {
@@ -719,7 +719,7 @@ function blogapi_blogger_title(&$contents) {
  * Add some settings to the admin_settings form.
  */
 function blogapi_admin_settings() {
-  $node_types = array_map('check_plain', node_get_types('names'));
+  $node_types = array_map('check_plain', node_type_get_names());
   $defaults = isset($node_types['blog']) ? array('blog' => 1) : array();
   $form['blogapi_node_types'] = array(
     '#type' => 'checkboxes',
@@ -768,7 +768,7 @@ function blogapi_admin_settings() {
     '#field_suffix' => t('MB')
   );
 
-  $form['settings_general']['upload_max_size'] = array('#value' => '<p>'. t('Your PHP settings limit the maximum file size per upload to %size.', array('%size' => format_size(file_upload_max_size()))).'</p>');
+  $form['settings_general']['upload_max_size'] = array('#value' => '<p>' . t('Your PHP settings limit the maximum file size per upload to %size.', array('%size' => format_size(file_upload_max_size()))) . '</p>');
 
   $roles = user_roles(FALSE, 'administer content with blog api');
   $form['roles'] = array('#type' => 'value', '#value' => $roles);
@@ -809,7 +809,7 @@ function blogapi_admin_settings() {
 }
 
 /**
- * Implementation of hook_menu().
+ * Implement hook_menu().
  */
 function blogapi_menu() {
   $items['blogapi/rsd'] = array(
@@ -831,7 +831,7 @@ function blogapi_menu() {
 }
 
 /**
- * Implementation of hook_init().
+ * Implement hook_init().
  */
 function blogapi_init() {
   if (drupal_is_front_page()) {
@@ -892,14 +892,14 @@ function _blogapi_mt_extra($node, $struct) {
 
   // Merge the 3 body sections (description, mt_excerpt, mt_text_more) into one body.
   if ($struct['mt_excerpt']) {
-    $node->body = $struct['mt_excerpt'] . '<!--break-->' . $node->body;
+    $node->body[0]['value'] = $struct['mt_excerpt'] . '<!--break-->' . $node->body[0]['value'];
   }
   if ($struct['mt_text_more']) {
-    $node->body = $node->body . '<!--extended-->' . $struct['mt_text_more'];
+    $node->body[0]['value'] = $node->body[0]['value'] . '<!--extended-->' . $struct['mt_text_more'];
   }
 
   if ($struct['mt_convert_breaks']) {
-    $node->format = $struct['mt_convert_breaks'];
+    $node->body[0]['format'] = $struct['mt_convert_breaks'];
   }
 
   if ($struct['dateCreated']) {
@@ -922,17 +922,19 @@ function _blogapi_get_post($node, $bodies = TRUE) {
   );
 
   if ($bodies) {
+    $body = $node->body[0]['value'];
+    $format = $node->body[0]['format'];
     if ($node->comment == 1) {
       $comment = 2;
     }
     elseif ($node->comment == 2) {
       $comment = 1;
     }
-    $xmlrpcval['content'] = "<title>$node->title</title>$node->body";
-    $xmlrpcval['description'] = $node->body;
+    $xmlrpcval['content'] = "<title>$node->title</title>$body";
+    $xmlrpcval['description'] = $body;
     // Add MT specific fields
     $xmlrpcval['mt_allow_comments'] = (int) $comment;
-    $xmlrpcval['mt_convert_breaks'] = $node->format;
+    $xmlrpcval['mt_convert_breaks'] = $format;
   }
 
   return $xmlrpcval;
@@ -959,7 +961,7 @@ function _blogapi_validate_blogid($blogid) {
 function _blogapi_get_node_types() {
   $available_types = array_keys(array_filter(variable_get('blogapi_node_types', array('blog' => 1))));
   $types = array();
-  foreach (node_get_types() as $type => $name) {
+  foreach (node_type_get_types() as $type => $name) {
     if (node_access('create', $type) && in_array($type, $available_types)) {
       $types[] = $type;
     }
