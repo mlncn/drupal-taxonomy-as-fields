@@ -1882,3 +1882,27 @@ function taxonomy_field_allowed_values($field) {
   }
   return $options;
 }
+
+/*
+ * Implement hook_field_attach_load().
+ *
+ * This preloads all taxonomy terms for a given object at once using
+ * taxonomy_term_load_multiple.
+ */
+function taxonomy_field_attach_load($obj_type, $objects, $age) {
+  $tids = array();
+  foreach ($objects as $id => $object) {
+    foreach ($object as $delta => $item) {
+      if ($field = field_info_field($delta)) {
+        if (($field['type'] == 'list_number') && ($field['settings']['allowed_values_function'] == 'taxonomy_field_allowed_values')) {
+          foreach ($item as $value) {
+            $tids[] = $value['value'];
+          }
+        }
+      }
+    }
+  }
+  if (count($tids)) {
+    taxonomy_term_load_multiple($tids);
+  }
+}
