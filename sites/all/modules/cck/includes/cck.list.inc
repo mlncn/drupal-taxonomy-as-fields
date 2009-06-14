@@ -68,7 +68,7 @@ function list_field_settings_form($field, $instance) {
     '#type' => 'textfield',
     '#title' => t('Allowed values function'),
     '#default_value' => $allowed_values_function,
-    '#description' => t('The name of a function that will return the allowed values list. If this field is filled out, the array returned by this code will override the allowed values list above.'),
+    '#description' => t('The name of a function that will return the allowed values list. If this field is filled out, the array returned by this code will override the allowed values list above. Use %taxonomy for a vocabulary.', array('%taxonomy' => 'taxonomy_field_allowed_values')),
   );
   $form['advanced_options'] = array(
     '#type' => 'fieldset',
@@ -97,6 +97,18 @@ function list_field_settings_form($field, $instance) {
       '#description' => empty($allowed_values_php) ? t("You're not allowed to input PHP code.") : t('This PHP code was set by an administrator and will override the allowed values list and allowed values functions shown above.'),
     );
   }
+  $vid = !empty($settings['vid']) ? $settings['vid'] : '';
+  $vocabularies = taxonomy_get_vocabularies();
+  foreach ($vocabularies as $vocabulary) {
+    $options[$vocabulary->vid] = $vocabulary->name;
+  }
+  $form['vid'] = array(
+    '#type' => 'select',
+    '#title' => t('Vocabulary'),
+    '#default_value' => $vid,
+    '#options' => $options,
+    '#description' => t('The vocabulary which supplies the options for this field.'),
+  );
 
   return $form;
 }
@@ -121,6 +133,7 @@ function list_field_settings_form_validate($form, &$form_state) {
   if (empty($new_values['allowed_values_function'])) {
     $new_values['allowed_values_function'] = 'cck_list_allowed_values_php';
   }
+  $new_values['vid'] = $form_values['field']['settings']['vid'];
   form_set_value($form, $new_values, $form_state);   
 }
 

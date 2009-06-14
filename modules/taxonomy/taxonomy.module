@@ -62,6 +62,12 @@ function taxonomy_theme() {
     'taxonomy_overview_terms' => array(
       'arguments' => array('form' => array()),
     ),
+    'field_formatter_term_link' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'field_formatter_term_plain' => array(
+      'arguments' => array('element' => NULL),
+    ),
   );
 }
 
@@ -1800,4 +1806,79 @@ function taxonomy_hook_info() {
       ),
     ),
   );
+}
+
+/**
+ * Implement hook_field_formatter_info().
+ */
+function taxonomy_field_formatter_info() {
+  return array(
+    'term_link' => array(
+      'label' => t('Term: link'),
+      'field types' => array('list_number'),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+      ),
+    ),
+    'term_plain' => array(
+      'label' => t('Term: plain text'),
+      'field types' => array('list_number'),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+      ),
+    ),
+  );
+}
+
+/**
+ * Theme function for 'default' term field formatter.
+ */
+function theme_field_formatter_term_link($element) {
+  $field = field_info_field($element['#field_name']);
+  if (($allowed_values = taxonomy_field_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
+    $term = taxonomy_term_load($element['#item']['value']);
+    return l($term->name, taxonomy_term_path($term));
+  }
+  // If no match was found in allowed values, fall back to the key.
+  return 'invalid - '. $element['#item']['value'];
+}
+
+/**
+ * Theme function for 'default' term field formatter.
+ */
+function theme_field_formatter_term_plain($element) {
+  $field = field_info_field($element['#field_name']);
+  if (($allowed_values = taxonomy_field_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
+    $term = taxonomy_term_load($element['#item']['value']);
+    return $term->name;
+  }
+  // If no match was found in allowed values, fall back to the key.
+  return 'invalid - '. $element['#item']['value'];
+}
+
+/**
+ *  Create an array of the allowed values for this field.
+ *
+ *  Call the allowed_values_function to retrieve the allowed
+ *  values array.
+ *
+ *  This function should imitate the features of _taxonomy_term_select
+ *
+ *  TODO deal with excluded tids?
+ *  TODO support scope limiting to a particular subtree of the vocabulary
+ *  TODO support multiple vocabularies in one field
+ *  TODO support multiple subtrees of the same or different vocabularies
+ *  in one field
+ *  TODO access control?
+ */
+function taxonomy_field_allowed_values($field) {
+  $tree = taxonomy_get_tree($field['settings']['vid']);
+  $options = array();
+
+  if ($tree) {
+    foreach ($tree as $term) {
+      $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
+    }
+  }
+  return $options;
 }
