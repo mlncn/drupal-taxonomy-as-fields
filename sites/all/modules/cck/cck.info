@@ -1,0 +1,12 @@
+; $Id: cck.info,v 1.5 2009/02/03 19:53:47 karens Exp $
+name = CCK Field UI
+description = Add custom fields to users or content types using a User Interface.
+package = CCK
+core = 7.x
+files[] = cck.module
+files[] = cck.install
+files[] = includes/cck.admin.inc
+files[] = includes/cck.text.inc
+files[] = includes/cck.number.inc
+files[] = includes/cck.list.inc
+files[] = theme/theme.inc
