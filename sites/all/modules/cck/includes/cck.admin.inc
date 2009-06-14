@@ -961,6 +961,9 @@ function cck_field_settings_form_submit($form, &$form_state) {
 /**
  * The Field API doesn't allow field updates,
  * so we create a method here to update field if no data is created yet.
+ *
+ * @see
+ *   field_create_field()
  */
 function cck_field_update_field($field) {
 
@@ -969,6 +972,9 @@ function cck_field_update_field($field) {
 
   $defaults = field_info_field_settings($field['type']);
   $field['settings'] = array_merge($defaults, (array) $field['settings']);
+  $data = $field;
+  unset($data['columns'], $data['field_name'], $data['type'], $data['locked'], $data['module'], $data['active'], $data['deleted']);
+  $field['data'] = $data;
 
   drupal_write_record('field_config', $field, array('field_name'));
 
