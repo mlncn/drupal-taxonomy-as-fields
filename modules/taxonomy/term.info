@@ -4,3 +4,4 @@ description = Defines taxonomy term field types. Use with Options to create sele
 package = Core - fields
 core = 7.x
 files[]=term.module
+files[]=term.test
