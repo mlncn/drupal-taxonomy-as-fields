@@ -14,6 +14,9 @@ function term_theme() {
     'field_formatter_term_default' => array(
       'arguments' => array('element' => NULL),
     ),
+    'field_formatter_term_plain' => array(
+      'arguments' => array('element' => NULL),
+    ),
   );
 }
 
@@ -25,7 +28,6 @@ function term_field_info() {
     'term' => array(
       'label' => t('Term'),
       'description' => t('This field stores keys from key/value terms of allowed numbers where the stored numeric key has significance and must be preserved, i.e. \'Lifetime in days\': 1|1 day, 7|1 week, 31|1 month.'),
-      'settings' => array('allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'term_default',
       'settings' => array('vid' => 0),
@@ -94,6 +96,13 @@ function term_field_formatter_info() {
         'multiple values' => FIELD_BEHAVIOR_DEFAULT,
       ),
     ),
+    'term_plain' => array(
+      'label' => t('Plain text'),
+      'field types' => array('term'),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+      ),
+    ),
   );
 }
 
@@ -111,6 +120,19 @@ function theme_field_formatter_term_default($element) {
 }
 
 /**
+ * Theme function for 'default' term field formatter.
+ */
+function theme_field_formatter_term_plain($element) {
+  $field = field_info_field($element['#field_name']);
+  if (($allowed_values = term_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
+    $term = taxonomy_term_load($element['#item']['value']);
+    return $term->name;
+  }
+  // If no match was found in allowed values, fall back to the key.
+  return 'invalid - '. $element['#item']['value'];
+}
+
+/**
  *  Create an array of the allowed values for this field.
  *
  *  Call the allowed_values_function to retrieve the allowed
@@ -118,8 +140,8 @@ function theme_field_formatter_term_default($element) {
  *
  *  This function should imitate the features of _taxonomy_term_select
  *
- *  TODO Rework this to create a method of selecting plugable allowed values terms
- *  TODO deal with excluded tids
+ *  TODO deal with excluded tids?
+ *  TODO support scope limiting to a particular subtree of the vocabulary
  *
  */
 function term_allowed_values($field) {
