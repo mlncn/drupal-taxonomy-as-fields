@@ -1,0 +1,343 @@
+<?php
+// $Id: text.test,v 1.7 2009/06/12 08:39:37 dries Exp $
+
+class TextFieldTestCase extends DrupalWebTestCase {
+  protected $instance;
+
+  public static function getInfo() {
+    return array(
+      'name'  => t('Text Field'),
+      'description'  => t("Test the creation of text fields."),
+      'group' => t('Field')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('field_test');
+
+    $web_user = $this->drupalCreateUser(array('access field_test content', 'administer field_test content'));
+    $this->drupalLogin($web_user);
+  }
+
+  // Test fields.
+
+  /**
+   * Test text field validation.
+   */
+  function testTextFieldValidation() {
+    // Create a field with settings to validate.
+    $max_length = 3;
+    $this->field = array(
+      'field_name' => drupal_strtolower($this->randomName()),
+      'type' => 'text',
+      'settings' => array(
+        'max_length' => $max_length,
+      )
+    );
+    field_create_field($this->field);
+    $this->instance = array(
+      'field_name' => $this->field['field_name'],
+      'bundle' => FIELD_TEST_BUNDLE,
+      'widget' => array(
+        'type' => 'text_textfield',
+      ),
+      'display' => array(
+        'full' => array(
+          'type' => 'text_default',
+        ),
+      ),
+    );
+    field_create_instance($this->instance);
+    // Test valid and invalid values with field_attach_validate().
+    $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
+    for ($i = 0; $i <= $max_length + 2; $i++) {
+      $entity->{$this->field['field_name']}[0]['value'] = str_repeat('x', $i);
+      try {
+        field_attach_validate('test_entity', $entity);
+        $this->assertTrue($i <= $max_length, "Length $i does not cause validation error when max_length is $max_length");
+      }
+      catch (FieldValidationException $e) {
+        $this->assertTrue($i > $max_length, "Length $i causes validation error when max_length is $max_length");
+      }
+    }
+  }
+
+  /**
+   * Test widgets.
+   */
+  function testTextfieldWidgets() {
+    $this->_testTextfieldWidgets('text', 'text_textfield');
+    $this->_testTextfieldWidgets('text_long', 'text_textarea');
+  }
+
+  /**
+   * Helper function for testTextfieldWidgets().
+   */
+  function _testTextfieldWidgets($field_type, $widget_type) {
+    // Setup a field and instance
+    $entity_type = 'test_entity';
+    $this->field_name = drupal_strtolower($this->randomName());
+    $this->field = array('field_name' => $this->field_name, 'type' => $field_type);
+    field_create_field($this->field);
+    $this->instance = array(
+      'field_name' => $this->field_name,
+      'bundle' => FIELD_TEST_BUNDLE,
+      'label' => $this->randomName() . '_label',
+      'settings' => array(
+        'text_processing' => TRUE,
+      ),
+      'widget' => array(
+        'type' => $widget_type,
+      )
+    );
+    field_create_instance($this->instance);
+
+    // Display creation form.
+    $this->drupalGet('test-entity/add/test-bundle');
+    $this->assertFieldByName($this->field_name . '[0][value]', '', t('Widget is displayed'));
+    $this->assertNoFieldByName($this->field_name . '[0][format]', '1', t('Format selector is not displayed'));
+
+    // Submit with some value.
+    $value = $this->randomName();
+    $edit = array(
+      $this->field_name . '[0][value]' => $value,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+    preg_match('|test-entity/(\d+)/edit|', $this->url, $match);
+    $id = $match[1];
+    $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
+
+    // Display the object.
+    $entity = field_test_entity_load($id);
+    $entity->content = field_attach_view($entity_type, $entity);
+    $this->content = drupal_render($entity->content);
+    $this->assertText($value, 'Filtered tags are not displayed');
+  }
+
+  /**
+   * Test widgets + 'formatted_text' setting.
+   */
+  function testTextfieldWidgetsFormatted() {
+    $this->_testTextfieldWidgetsFormatted('text', 'text_textfield');
+    $this->_testTextfieldWidgetsFormatted('text_long', 'text_textarea');
+  }
+
+  /**
+   * Helper function for testTextfieldWidgetsFormatted().
+   */
+  function _testTextfieldWidgetsFormatted($field_type, $widget_type) {
+    // Setup a field and instance
+    $entity_type = 'test_entity';
+    $this->field_name = drupal_strtolower($this->randomName());
+    $this->field = array('field_name' => $this->field_name, 'type' => $field_type);
+    field_create_field($this->field);
+    $this->instance = array(
+      'field_name' => $this->field_name,
+      'bundle' => FIELD_TEST_BUNDLE,
+      'label' => $this->randomName() . '_label',
+      'settings' => array(
+        'text_processing' => TRUE,
+      ),
+      'widget' => array(
+        'type' => $widget_type,
+      )
+    );
+    field_create_instance($this->instance);
+
+    // Display creation form.
+    // By default, the user only has access to 'Filtered HTML', and no format
+    // selector is displayed
+    $this->drupalGet('test-entity/add/test-bundle');
+    $this->assertFieldByName($this->field_name . '[0][value]', '', t('Widget is displayed'));
+    $this->assertNoFieldByName($this->field_name . '[0][value_format]', '1', t('Format selector is not displayed'));
+
+    // Submit with data that should be filtered.
+    $value = $this->randomName() . '<br />' . $this->randomName();
+    $edit = array(
+      $this->field_name . '[0][value]' => $value,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+    preg_match('|test-entity/(\d+)/edit|', $this->url, $match);
+    $id = $match[1];
+    $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
+
+    // Display the object.
+    $entity = field_test_entity_load($id);
+    $entity->content = field_attach_view($entity_type, $entity);
+    $this->content = drupal_render($entity->content);
+    $this->assertNoRaw($value, 'Filtered tags are not displayed');
+    $this->assertRaw(str_replace('<br />', '', $value), t('Filtered value is displayed correctly'));
+
+    // Allow the user to use the 'Full HTML' format.
+    db_update('filter_format')->fields(array('roles' => ',2,'))->condition('format', 2)->execute();
+
+    // Display edition form.
+    // We should now have a 'text format' selector.
+    $this->drupalGet('test-entity/' . $id . '/edit');
+    $this->assertFieldByName($this->field_name . '[0][value]', '', t('Widget is displayed'));
+    $this->assertFieldByName($this->field_name . '[0][value_format]', '1', t('Format selector is displayed'));
+
+    // Edit and change the format to 'Full HTML'.
+    $edit = array(
+      $this->field_name . '[0][value_format]' => 2,
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+    $this->assertRaw(t('test_entity @id has been updated.', array('@id' => $id)), t('Entity was updated'));
+
+    // Display the object.
+    $entity = field_test_entity_load($id);
+    $entity->content = field_attach_view($entity_type, $entity);
+    $this->content = drupal_render($entity->content);
+    $this->assertRaw($value, t('Value is displayed unfiltered'));
+  }
+
+  // Test formatters.
+  /**
+   *
+   */
+}
+
+class TextSummaryTestCase extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => t('Text summary'),
+      'description' => t('Test text_summary() with different strings and lengths.'),
+      'group' => t('Field'),
+    );
+  }
+
+  /**
+   * Tests an edge case where the first sentence is a question and
+   * subsequent sentences are not. This edge case is documented at
+   * http://drupal.org/node/180425.
+   */
+  function testFirstSentenceQuestion() {
+    $text = 'A question? A sentence. Another sentence.';
+    $expected = 'A question? A sentence.';
+    $this->callTextSummary($text, $expected, NULL, 30);
+  }
+
+  /**
+   * Test summary with long example.
+   */
+  function testLongSentence() {
+    $text = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ' . // 125
+            'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ' . // 108
+            'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. ' . // 103
+            'Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.'; // 110
+    $expected = 'Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. ' .
+                'Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. ' .
+                'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.';
+    // First three sentences add up to: 336, so add one for space and then 3 to get half-way into next word.
+    $this->callTextSummary($text, $expected, NULL, 340);
+  }
+
+  /**
+   * Test various summary length edge cases.
+   */
+  function testLength() {
+    // This string tests a number of edge cases.
+    $text = "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>";
+
+    // The summaries we expect text_summary() to return when $size is the index
+    // of each array item.
+    // Using no text format:
+    $expected = array(
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<",
+      "<p",
+      "<p>",
+      "<p>\n",
+      "<p>\nH",
+      "<p>\nHi",
+      "<p>\nHi\n",
+      "<p>\nHi\n<",
+      "<p>\nHi\n</",
+      "<p>\nHi\n</p",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+    );
+
+    // And using a text format WITH the line-break and htmlcorrector filters.
+    $expected_lb = array(
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<",
+      "<p",
+      "<p></p>",
+      "<p></p>",
+      "<p></p>",
+      "<p></p>",
+      "<p>\nHi</p>",
+      "<p>\nHi</p>",
+      "<p>\nHi</p>",
+      "<p>\nHi</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+      "<p>\nHi\n</p>\n<p>\nfolks\n<br />\n!\n</p>",
+    );
+
+    // Test text_summary() for different sizes.
+    for ($i = 0; $i <= 37; $i++) {
+      $this->callTextSummary($text, $expected[$i],    NULL, $i);
+      $this->callTextSummary($text, $expected_lb[$i], 1,    $i);
+      $this->callTextSummary($text, $expected_lb[$i], 2,    $i);
+    }
+  }
+
+  /**
+   * Calls text_summary() and asserts that the expected teaser is returned.
+   */
+  function callTextSummary($text, $expected, $format = NULL, $size = NULL) {
+    $summary = text_summary($text, $format, $size);
+    $this->assertIdentical($summary, $expected, t('Generated summary "@summary" matches expected "@expected".', array('@summary' => $summary, '@expected' => $expected)));
+  }
+}
