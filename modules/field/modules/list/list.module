@@ -42,7 +42,7 @@ function list_field_info() {
     'list_number' => array(
       'label' => t('List (numeric)'),
       'description' => t('This field stores keys from key/value lists of allowed numbers where the stored numeric key has significance and must be preserved, i.e. \'Lifetime in days\': 1|1 day, 7|1 week, 31|1 month.'),
-      'settings' => array('allowed_values_function' => '', 'vid' => ''),
+      'settings' => array('allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'list_default',
     ),

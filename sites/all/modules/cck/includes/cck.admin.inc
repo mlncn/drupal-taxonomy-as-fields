@@ -1,5 +1,5 @@
 <?php
-// $Id: cck.admin.inc,v 1.18 2009/06/05 19:25:08 yched Exp $
+// $Id: cck.admin.inc,v 1.19 2009/06/14 13:04:35 yched Exp $
 
 /**
  * @file

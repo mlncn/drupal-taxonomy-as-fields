@@ -9,4 +9,5 @@ files[] = includes/cck.admin.inc
 files[] = includes/cck.text.inc
 files[] = includes/cck.number.inc
 files[] = includes/cck.list.inc
+files[] = includes/cck.term.inc
 files[] = theme/theme.inc
