@@ -27,6 +27,7 @@ function term_field_settings_form($field, $instance) {
     '#default_value' => $settings['vid'],
     '#options' => $options,
     '#required' => TRUE,
+    '#multiple' => TRUE,
     '#description' => t('The vocabulary which supplies the options for this field.'),
   );
 

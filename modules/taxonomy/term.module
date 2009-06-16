@@ -30,7 +30,7 @@ function term_field_info() {
       'description' => t('This field represents a taxonomy term reference.'),
       'default_widget' => 'options_select',
       'default_formatter' => 'term_default',
-      'settings' => array('vid' => 0),
+      'settings' => array('vid' => array(0)),
     ),
   );
 }
@@ -114,32 +114,22 @@ function term_field_formatter_info() {
  * Theme function for 'default' term field formatter.
  */
 function theme_field_formatter_term_default($element) {
-  $field = field_info_field($element['#field_name']);
-  if (($allowed_values = term_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
-    $term = taxonomy_term_load($element['#item']['value']);
-    return l($term->name, taxonomy_term_path($term));
-  }
-  // If no match was found in allowed values, fall back to the key.
-  return 'invalid - '. $element['#item']['value'];
+  $term = $element['#item']['term'];
+  return l($term->name, taxonomy_term_path($term));
 }
 
 /**
  * Theme function for 'default' term field formatter.
  */
 function theme_field_formatter_term_plain($element) {
-  $field = field_info_field($element['#field_name']);
-  if (($allowed_values = term_allowed_values($field)) && isset($allowed_values[$element['#item']['value']])) {
-    $term = taxonomy_term_load($element['#item']['value']);
-    return $term->name;
-  }
-  // If no match was found in allowed values, fall back to the key.
-  return 'invalid - '. $element['#item']['value'];
+  $term = $element['#item']['term'];
+  return $term->name;
 }
 
 /**
  *  Create an array of the allowed values for this field.
  *
- *  Call the allowed_values_function to retrieve the allowed
+ *  Call the field's allowed_values function to retrieve the allowed
  *  values array.
  *
  *  This function should imitate the features of _taxonomy_term_select
@@ -150,14 +140,17 @@ function theme_field_formatter_term_plain($element) {
  *  TODO support multiple subtrees of the same or different vocabularies
  *  in one field
  *  TODO access control?
+ *  TODO the field settings could also enforce some constraints on the user's
+ *  choosing behavior. e.g. force user to choose a term with no children, etc.
  */
 function term_allowed_values($field) {
-  $tree = taxonomy_get_tree($field['settings']['vid']);
   $options = array();
-
-  if ($tree) {
-    foreach ($tree as $term) {
-      $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
+  foreach ($field['settings']['vid'] as $vid) {
+    $tree = taxonomy_get_tree($vid);
+    if ($tree) {
+      foreach ($tree as $term) {
+        $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
+      }
     }
   }
   return $options;
@@ -168,26 +161,38 @@ function term_allowed_values($field) {
  *
  * This preloads all taxonomy terms for a given object at once using taxonomy_term_load_multiple
  * and unsets values for invalid terms which don't exist.
+ *
+ * @return
+ *   array with 'term' object at that index
  */
 function term_field_load($obj_type, $objects, $field, $instances, &$items, $age) {
+  $loading = &drupal_static(__FUNCTION__);
   $tids = array();
+
+  if (!isset($loading[$obj_type])) {
+    $loading[$obj_type] = array();
+  }
   foreach ($objects as $id => $object) {
-    foreach ($items[$id] as $delta => $item) {
-      $tids[$item['value']] = $item['value'];
+    if (!isset($loading[$obj_type][$id])) {
+      $loading[$obj_type][$id] = TRUE;
+      foreach ($items[$id] as $delta => $item) {
+        $tids[$item['value']] = $item['value'];
+      }
     }
   }
   if (count($tids)) {
     $terms = taxonomy_term_load_multiple($tids);
-    $missing_tids = array_flip(array_diff_key($tids, $terms));
-    if (count($missing_tids)) {
-      foreach ($objects as $id => $object) {
-        foreach ($items[$id] as $delta => $item) {
-          if (array_search($item['value'], $missing_tids)) {
-            unset($items[$id][$delta]);
-          }
+    foreach ($objects as $id => $object) {
+      foreach ($items[$id] as $delta => $item) {
+        if (isset($terms[$item['value']])) {
+          $items[$id][$delta]['term'] = $terms[$item['value']];
+        }
+        else {
+          unset($items[$id][$delta]);
         }
       }
     }
+    unset($loading[$obj_type][$id]);
   }
 }
 
@@ -202,6 +207,13 @@ function term_taxonomy_term_insert($term) {
  * Implement hook_taxonomy_term_update().
  */
 function term_taxonomy_term_update($term) {
+  _term_clean_field_cache($term);
+}
+
+/*
+ * Implement hook_taxonomy_term_delete().
+ */
+function term_taxonomy_term_delete($term) {
   _term_clean_field_cache($term);
 }
 
