@@ -166,22 +166,57 @@ function term_allowed_values($field) {
  *   array with 'term' object at that index
  */
 function term_field_load($obj_type, $objects, $field, $instances, &$items, $age) {
-  $loading = &drupal_static(__FUNCTION__);
+  $term_cache = &drupal_static(__FUNCTION__, array());
   $tids = array();
 
-  if (!isset($loading[$obj_type])) {
-    $loading[$obj_type] = array();
-  }
   foreach ($objects as $id => $object) {
-    if (!isset($loading[$obj_type][$id])) {
-      $loading[$obj_type][$id] = TRUE;
-      foreach ($items[$id] as $delta => $item) {
-        $tids[$item['value']] = $item['value'];
-      }
+    foreach ($items[$id] as $delta => $item) {
+      $tids[$item['value']] = $item['value'];
     }
   }
+  // this code is taken from taxonomy_term_load_multiple but all of the
+  // code related to query conditions is removed.
   if (count($tids)) {
-    $terms = taxonomy_term_load_multiple($tids);
+    $terms = array();
+    $passed_tids = !empty($tids) ? array_flip($tids) : FALSE;
+    // Load any available terms from the internal cache.
+    if ($term_cache) {
+      $terms += array_intersect_key($term_cache, $passed_tids);
+      // If any terms were loaded, remove them from the $tids still to load.
+      $tids = array_keys(array_diff_key($passed_tids, $terms));
+    }
+    // Load any remaining terms from the database, this is necessary if we have
+    // $tids still to load, or if $conditions was passed without $tids.
+    if ($tids) {
+      $query = db_select('taxonomy_term_data', 't');
+      $query->join('taxonomy_vocabulary', 'v', 't.vid = v.vid');
+      $taxonomy_term_data = drupal_schema_fields_sql('taxonomy_term_data');
+      $query->fields('t', $taxonomy_term_data);
+      $query->addField('v', 'machine_name', 'vocabulary_machine_name');
+
+      // If the $tids array is populated, add those to the query.
+      if ($tids) {
+        $query->condition('t.tid', $tids, 'IN');
+      }
+
+      $queried_terms = $query->execute()->fetchAllAssoc('tid');
+
+      if (!empty($queried_terms)) {
+        $terms += $queried_terms;
+        $term_cache += $queried_terms;
+      }
+    }
+
+    // Ensure that the returned array is ordered the same as the original $tids
+    // array if this was passed in and remove any invalid tids.
+    if ($passed_tids) {
+      // Remove any invalid tids from the array.
+      $passed_tids = array_intersect_key($passed_tids, $terms);
+      foreach ($terms as $term) {
+        $passed_tids[$term->tid] = $term;
+      }
+      $terms = $passed_tids;
+    }
     foreach ($objects as $id => $object) {
       foreach ($items[$id] as $delta => $item) {
         if (isset($terms[$item['value']])) {
@@ -192,7 +227,6 @@ function term_field_load($obj_type, $objects, $field, $instances, &$items, $age)
         }
       }
     }
-    unset($loading[$obj_type][$id]);
   }
 }
 
