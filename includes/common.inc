@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.922 2009/06/13 19:28:57 dries Exp $
+// $Id: common.inc,v 1.925 2009/06/18 21:19:01 webchick Exp $
 
 /**
  * @file
@@ -536,8 +536,9 @@ function drupal_http_request($url, array $options = array()) {
   // or PUT request. Some non-standard servers get confused by Content-Length in
   // at least HEAD/GET requests, and Squid always requires Content-Length in
   // POST/PUT requests.
-  if (!empty($options['data']) || $options['method'] == 'POST' || $options['method'] == 'PUT') {
-    $options['headers']['Content-Length'] = strlen($options['data']);
+  $content_length = strlen($options['data']);
+  if ($content_length > 0 || $options['method'] == 'POST' || $options['method'] == 'PUT') {
+    $options['headers']['Content-Length'] = $content_length;
   }
 
   // If the server URL has a user then attempt to use basic authentication.
@@ -1276,7 +1277,7 @@ function flood_register_event($name) {
  *
  * @param $name
  *   The name of the event.
- * @param $number
+ * @param $threshold
  *   The maximum number of the specified event per hour (per visitor).
  * @return
  *   True if the user did not exceed the hourly threshold. False otherwise.
@@ -3744,6 +3745,56 @@ function drupal_render_children(&$element, $children_keys = NULL) {
     $output .= drupal_render($element[$key]);
   }
   return $output;
+}
+
+/**
+ * Render and print an element.
+ *
+ * This function renders an element using drupal_render() and then prints out
+ * the rendered output. The top level element is always rendered and printed
+ * even if hide() had been previously used on it.
+ *
+ * Any nested elements are only printed if they haven't been printed before or
+ * if they have been re-enabled with show(). If the element is a string instead
+ * of a renderable array it is also printed.
+ *
+ * @see drupal_render()
+ * @see show()
+ * @see hide()
+ */
+function render(&$element) {
+  if (is_array($element)) {
+    show($element);
+    print drupal_render($element);
+  }
+  else {
+    print $element;
+  }
+}
+
+/**
+ * Hide an element from later rendering.
+ *
+ * @see render()
+ * @see show()
+ */
+function hide(&$element) {
+  $element['#printed'] = TRUE;
+  return $element;
+}
+
+/**
+ * Show a hidden or already printed element from later rendering.
+ *
+ * Alternatively, render($element) could be used which automatically shows the
+ * element while rendering and printing it.
+ *
+ * @see render()
+ * @see hide()
+ */
+function show(&$element) {
+  $element['#printed'] = FALSE;
+  return $element;
 }
 
 /**
