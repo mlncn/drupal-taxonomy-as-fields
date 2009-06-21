@@ -119,7 +119,7 @@ function theme_field_formatter_term_default($element) {
 }
 
 /**
- * Theme function for 'default' term field formatter.
+ * Theme function for 'plain' term field formatter.
  */
 function theme_field_formatter_term_plain($element) {
   $term = $element['#item']['term'];
@@ -136,12 +136,11 @@ function theme_field_formatter_term_plain($element) {
  *
  *  TODO deal with excluded tids?
  *  TODO support scope limiting to a particular subtree of the vocabulary
- *  TODO support multiple vocabularies in one field
- *  TODO support multiple subtrees of the same or different vocabularies
- *  in one field
- *  TODO access control?
- *  TODO the field settings could also enforce some constraints on the user's
- *  choosing behavior. e.g. force user to choose a term with no children, etc.
+ *  TODO support multiple subtrees of the same or different vocabularies in one field
+ *  TODO allow values that aren't in a vocabulary if the field/widget/vocabulary (which?) is for
+ *  tagging.
+ *  TODO the field settings could also enforce some constraints on the user's choosing behavior.
+ *  e.g. force user to choose a term with no children, etc.
  */
 function term_allowed_values($field) {
   $options = array();
