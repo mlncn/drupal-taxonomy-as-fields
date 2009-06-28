@@ -1,5 +1,5 @@
 <?php
-// $Id: system.test,v 1.50 2009/06/13 21:08:31 dries Exp $
+// $Id: system.test,v 1.53 2009/06/28 03:56:43 webchick Exp $
 
 /**
  * Helper class for module test cases.
@@ -113,6 +113,7 @@ class EnableDisableTestCase extends ModuleTestCase {
     // Install (and enable) aggregator module.
     $edit = array();
     $edit['modules[Core][aggregator][enable]'] = 'aggregator';
+    $edit['modules[Core][forum][enable]'] = 'forum';
     $this->drupalPost('admin/build/modules', $edit, t('Save configuration'));
     $this->assertText(t('The configuration options have been saved.'), t('Modules status has been updated.'));
 
@@ -402,7 +403,7 @@ class AdminOverviewTestCase extends DrupalWebTestCase {
     // Comments on permissions follow the format: [task], [module] that the permission relates to.
     $permissions = array();
     $permissions[] = 'access administration pages';
-    $permissions[] = 'administer comments'; // Content management, Comment.
+    $permissions[] = 'administer nodes'; // Content management, Comment.
     $permissions[] = 'administer blocks'; // Site building, Block.
     $permissions[] = 'administer filters'; // Site configuration, Filter.
     $permissions[] = 'administer users'; // User management, User.
@@ -414,7 +415,7 @@ class AdminOverviewTestCase extends DrupalWebTestCase {
     $this->checkOverview(array(t('Content management'), t('User management'), t('Reports'), t('Site building'), t('Site configuration')));
 
     $this->drupalGet('admin/by-module');
-    $this->checkOverview(array(t('Comment'), t('Block'), t('Filter'), t('User'), t('Database logging')));
+    $this->checkOverview(array(t('Node'), t('Block'), t('Filter'), t('User'), t('Database logging')));
   }
 
   /**
@@ -425,18 +426,13 @@ class AdminOverviewTestCase extends DrupalWebTestCase {
   function checkOverview(array $panels = array()) {
     if ($this->parse()) {
       $found = 0;
-      $extra = 0;
       $divs = $this->xpath("//div[@class='admin-panel']");
       foreach ($divs as $panel) {
         if (in_array(trim($panel->h3), $panels)) {
           $found++;
         }
-        else {
-          $extra++;
-        }
       }
       $this->assertTrue(count($panels) == $found, t('Required panels found.'));
-      $this->assertFalse($extra, t('No extra panels found.'));
     }
   }
 

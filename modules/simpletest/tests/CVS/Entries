@@ -5,7 +5,6 @@
 /database_test.info/1.2/Fri Jun 12 07:15:26 2009//
 /database_test.install/1.8/Sat Jun 13 03:11:34 2009//
 /database_test.module/1.9/Sat Jun 13 03:11:35 2009//
-/database_test.test/1.57/Sat Jun 13 03:11:36 2009//
 /field_test.info/1.2/Fri Jun 12 07:15:26 2009//
 /field_test.install/1.4/Sat May 30 11:17:32 2009//
 /field_test.module/1.9/Sat Jun 13 03:11:36 2009//
@@ -32,7 +31,6 @@
 /taxonomy_test.module/1.5/Sat Jun 13 03:11:42 2009//
 /theme.test/1.3/Sat Jun 13 03:11:42 2009//
 /unicode.test/1.4/Fri Jun 12 07:15:26 2009//
-/xmlrpc.test/1.9/Sat Jun 13 03:11:42 2009//
 /xmlrpc_test.info/1.1/Fri Jun 12 07:15:26 2009//
 /xmlrpc_test.module/1.4/Sat Jun 13 03:11:42 2009//
 /form_test.module/1.7/Sat Jun 13 03:11:38 2009//
@@ -40,6 +38,8 @@
 /error.test/1.3/Wed Jun 10 20:00:10 2009//
 /error_test.info/1.1/Fri May 22 15:03:46 2009//
 /error_test.module/1.3/Sat May 30 11:17:32 2009//
-/cache.test/1.7/Fri Jun 19 05:46:00 2009//
 /module.test/1.6/Sat Jun 20 18:30:39 2009//
+/cache.test/1.8/Sun Jun 28 14:49:16 2009//
+/database_test.test/1.58/Sun Jun 28 14:49:16 2009//
+/xmlrpc.test/1.10/Sun Jun 28 14:49:16 2009//
 D
