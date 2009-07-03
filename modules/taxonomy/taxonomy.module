@@ -1235,16 +1235,6 @@ function taxonomy_vocabulary_load_multiple($vids = array(), $conditions = array(
       ->orderBy('v.name')
       ->addTag('vocabulary_access');
 
-<<<<<<< taxonomy.module
-=======
-    if (!empty($type)) {
-      $query->join('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid AND n.type = :type', array(':type' => $type));
-    }
-    else {
-      $query->leftJoin('taxonomy_vocabulary_node_type', 'n', 'v.vid = n.vid');
-    }
-
->>>>>>> 1.483
     // If the $vids array is populated, add those to the query.
     if ($vids) {
       $query->condition('v.vid', $vids, 'IN');
