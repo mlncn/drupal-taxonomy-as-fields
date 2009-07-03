@@ -36,6 +36,14 @@ function term_field_info() {
 }
 
 /**
+ * Implement hook_field_widget_info_alter().
+ */
+function term_field_widget_info_alter(&$info) {
+  $info['options_select']['field types'][] = 'term';
+  $info['options_buttons']['field types'][] = 'term';
+}
+
+/**
  * Implement hook_field_schema().
  */
 function term_field_schema($field) {
