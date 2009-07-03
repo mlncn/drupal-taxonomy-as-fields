@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.58 2009/06/15 09:49:58 dries Exp $
+// $Id: user.admin.inc,v 1.60 2009/07/01 08:39:56 dries Exp $
 
 /**
  * @file
@@ -415,27 +415,6 @@ function user_admin_settings() {
     '#rows' => 15,
   );
 
-  $form['email_no_approval_required'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Welcome (no approval required)'),
-    '#collapsible' => TRUE,
-    '#collapsed' => (variable_get('user_register', 1) != 1),
-    '#description' => t('Customize welcome e-mail messages sent to new members upon registering, when no administrator approval is required.') . ' ' . $email_token_help,
-    '#group' => 'email',
-  );
-  $form['email_no_approval_required']['user_mail_register_no_approval_required_subject'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Subject'),
-    '#default_value' => _user_mail_text('register_no_approval_required_subject'),
-    '#maxlength' => 180,
-  );
-  $form['email_no_approval_required']['user_mail_register_no_approval_required_body'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Body'),
-    '#default_value' => _user_mail_text('register_no_approval_required_body'),
-    '#rows' => 15,
-  );
-
   $form['email_pending_approval'] = array(
     '#type' => 'fieldset',
     '#title' => t('Welcome (awaiting approval)'),
@@ -457,6 +436,27 @@ function user_admin_settings() {
     '#rows' => 8,
   );
 
+  $form['email_no_approval_required'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Welcome (no approval required)'),
+    '#collapsible' => TRUE,
+    '#collapsed' => (variable_get('user_register', 1) != 1),
+    '#description' => t('Customize welcome e-mail messages sent to new members upon registering, when no administrator approval is required.') . ' ' . $email_token_help,
+    '#group' => 'email',
+  );
+  $form['email_no_approval_required']['user_mail_register_no_approval_required_subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => _user_mail_text('register_no_approval_required_subject'),
+    '#maxlength' => 180,
+  );
+  $form['email_no_approval_required']['user_mail_register_no_approval_required_body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Body'),
+    '#default_value' => _user_mail_text('register_no_approval_required_body'),
+    '#rows' => 15,
+  );
+  
   $form['email_password_reset'] = array(
     '#type' => 'fieldset',
     '#title' => t('Password recovery'),
@@ -943,5 +943,20 @@ function user_modules_installed($modules) {
         }
       }
     }
+  }
+}
+
+/**
+ * Implement hook_modules_uninstalled().
+ */
+function user_modules_uninstalled($modules) {
+  $permissions = array();
+  foreach ($modules as $module) {
+    $permissions = array_merge($permissions, array_keys(module_invoke($module, 'perm')));
+  }
+  if (!empty($permissions)) {
+    db_delete('role_permission')
+      ->condition('permission', $permissions, 'IN')
+      ->execute();
   }
 }

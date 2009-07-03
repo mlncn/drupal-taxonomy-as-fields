@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.41 2009/06/24 18:16:38 dries Exp $
+// $Id: user.pages.inc,v 1.45 2009/07/01 12:47:30 dries Exp $
 
 /**
  * @file
@@ -101,9 +101,9 @@ function user_pass_reset(&$form_state, $uid, $timestamp, $hashed_pass, $action =
           watchdog('user', 'User %name used one-time login link at time %timestamp.', array('%name' => $account->name, '%timestamp' => $timestamp));
           // Set the new user.
           $user = $account;
-          // user_authenticate_finalize() also updates the login timestamp of the
+          // user_login_finalize() also updates the login timestamp of the
           // user, which invalidates further use of the one-time login link.
-          user_authenticate_finalize($form_state['values']);
+          user_login_finalize();
           drupal_set_message(t('You have just used your one-time login link. It is no longer necessary to use this link to login. Please change your password.'));
           drupal_goto('user/' . $user->uid . '/edit');
         }
@@ -136,12 +136,10 @@ function user_logout() {
 
   watchdog('user', 'Session closed for %name.', array('%name' => $user->name));
 
-  // Destroy the current session:
-  session_destroy();
   module_invoke_all('user_logout', NULL, $user);
 
-  // Load the anonymous user
-  $user = drupal_anonymous_user();
+  // Destroy the current session, and reset $user to the anonymous user.
+  session_destroy();
 
   drupal_goto();
 }

@@ -1,3 +1,10 @@
+<<<<<<< jquery.js
+// $Id$
+
+=======
+// $Id: jquery.js,v 1.17 2009/06/30 03:35:11 webchick Exp $
+
+>>>>>>> 1.17
 /*
  * jQuery JavaScript Library v1.3.2
  * http://jquery.com/

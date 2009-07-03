@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.178 2009/06/08 04:33:35 dries Exp $
+// $Id: install.php,v 1.181 2009/06/30 21:44:06 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -1096,7 +1096,7 @@ function install_configure_form(&$form_state, $url) {
     '#title' => st('Update notifications'),
     '#options' => array(1 => st('Check for updates automatically')),
     '#default_value' => array(1),
-    '#description' => st('With this option enabled, Drupal will notify you when new releases are available. This will significantly enhance your site\'s security and is <strong>highly recommended</strong>. This requires your site to periodically send anonymous information on its installed components to <a href="@drupal">drupal.org</a>. For more information please see the <a href="@update">update notification information</a>.', array('@drupal' => 'http://drupal.org', '@update' => 'http://drupal.org/handbook/modules/update')),
+    '#description' => st('The system will notify you when updates and important security releases are available for installed components. Anonymous information about your site is sent to <a href="@drupal">Drupal.org</a>.', array('@drupal' => 'http://drupal.org')),
     '#weight' => 15,
   );
 
@@ -1158,8 +1158,9 @@ function install_configure_form_submit($form, &$form_state) {
   $account = user_load(1);
   $merge_data = array('init' => $form_state['values']['mail'], 'roles' => array(), 'status' => 1);
   user_save($account, array_merge($form_state['values'], $merge_data));
-  // Log in the first user.
-  user_authenticate($form_state['values']);
+  // Load global $user and perform final login tasks.
+  $form_state['uid'] = 1;
+  user_login_submit(array(), $form_state);
   $form_state['values'] = $form_state['old_values'];
   unset($form_state['old_values']);
   variable_set('user_email_verification', TRUE);
@@ -1167,9 +1168,6 @@ function install_configure_form_submit($form, &$form_state) {
   if (isset($form_state['values']['clean_url'])) {
     variable_set('clean_url', $form_state['values']['clean_url']);
   }
-  // The user is now logged in, but has no session ID yet, which
-  // would be required later in the request, so remember it.
-  $user->sid = session_id();
 
   // Record when this install ran.
   variable_set('install_time', $_SERVER['REQUEST_TIME']);
