@@ -6,7 +6,7 @@
  * on behalf of core List module.
  */
 
-function term_field_settings_form($field, $instance) {
+function taxonomy_field_settings_form($field, $instance) {
   // Alter the description for allowed values slightly depending
   // on the type of widget.
   $widget_type = $instance['widget']['type'];

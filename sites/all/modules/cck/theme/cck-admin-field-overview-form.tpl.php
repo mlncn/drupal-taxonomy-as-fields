@@ -1,5 +1,5 @@
 <?php
-// $Id: cck-admin-field-overview-form.tpl.php,v 1.5 2009/02/03 19:53:48 karens Exp $
+// $Id: cck-admin-field-overview-form.tpl.php,v 1.6 2009/06/26 18:07:11 yched Exp $
 ?>
 <div>
   <?php print $help; ?>
@@ -49,7 +49,8 @@
             <span class="<?php print $row->label_class; ?>"><?php print $row->label; ?></span>
           </td>
           <td><?php print $row->weight . $row->parent . $row->hidden_name; ?></td>
-          <td colspan="4"><?php print $row->description; ?></td>
+          <td colspan="3"><?php print $row->description; ?></td>
+          <td><?php print $row->configure; ?>&nbsp;&nbsp;<?php print $row->remove; ?></td>
           <?php break;
         case 'separator': ?>
           <td colspan="6" class="region"><?php print t('Add'); ?></td>

@@ -1,5 +1,5 @@
 <?php
-// $Id: cck.admin.inc,v 1.19 2009/06/14 13:04:35 yched Exp $
+// $Id: cck.admin.inc,v 1.22 2009/07/02 21:22:51 yched Exp $
 
 /**
  * @file
@@ -235,6 +235,8 @@ function cck_field_overview_form(&$form_state, $bundle) {
       'description' => array('#markup' => isset($extra[$name]['description']) ? $extra[$name]['description'] : ''),
       'weight' => array('#type' => 'textfield', '#default_value' => $weight, '#size' => 3),
       'parent' => array('#type' => 'hidden', '#default_value' => ''),
+      'configure' => array('#value' => isset($extra[$name]['configure']) ? $extra[$name]['configure'] : ''),
+      'remove' => array('#value' => isset($extra[$name]['remove']) ? $extra[$name]['remove'] : ''),
       'hidden_name' => array('#type' => 'hidden', '#default_value' => $name),
       '#leaf' => TRUE,
       '#root' => TRUE,
@@ -655,12 +657,6 @@ function cck_display_overview_form(&$form_state, $bundle, $contexts_selector = '
         '#options' => $options,
         '#default_value' => isset($defaults[$key]['type']) ? $defaults[$key]['type'] : 'default',
       );
-      // exclude from $content
-      $form[$name][$key]['exclude'] = array(
-        '#type' => 'checkbox',
-        '#options' => array(0 => t('Include'), 1 => t('Exclude')),
-        '#default_value' => isset($defaults[$key]['exclude']) ? $defaults[$key]['exclude'] : 0,
-      );
     }
   }
 
@@ -696,12 +692,6 @@ function cck_display_overview_form(&$form_state, $bundle, $contexts_selector = '
         '#options' => $options,
         '#default_value' => isset($defaults[$key]['format']) ? $defaults[$key]['format'] : 'fieldset',
       );
-      // exclude in $content
-      $form[$name][$key]['exclude'] = array(
-        '#type' => 'checkbox',
-        '#options' => array(0 => t('Include'), 1 => t('Exclude')),
-        '#default_value' => isset($defaults[$key]['exclude']) ? $defaults[$key]['exclude'] : 0,
-      );
     }
     foreach ($group['fields'] as $field_name => $field) {
       $form[$field_name]['parent']['#value'] = $name;
@@ -723,9 +713,8 @@ function cck_display_overview_form_submit($form, &$form_state) {
     // Groups are handled in fieldgroup_display_overview_form_submit().
     if (in_array($key, $form['#fields'])) {
       $instance = field_info_instance($key, $form['#bundle']);
-      // We have some numeric keys here, so we can't use array_merge.
       unset($values['weight'], $values['parent']);
-      $instance['display'] = $values + (array) $instance['display'];
+      $instance['display'] = array_merge($instance['display'], $values);
       field_update_instance($instance);
     }
   }
@@ -939,19 +928,24 @@ function cck_field_settings_form(&$form_state, $bundle, $field_name) {
  * Save a field's settings after editing.
  */
 function cck_field_settings_form_submit($form, &$form_state) {
-
   $form_values = $form_state['values'];
-  $field = $form_values['field'];
+  $field_values = $form_values['field'];
 
   // Don't allow changes to fields with data.
-  if (cck_field_has_data($field['field_name'])) {
+  if (cck_field_has_data($field_values['field_name'])) {
     return;
   }
 
+  // Merge incoming form values into the existing field.
+  $field = field_info_field($field_values['field_name']);
+  // Remove the 'bundles' element added by field_info_field
+  // TODO: this is ugly, there should be a better way.
+  unset($field['bundles']);
   $bundle = $form['#bundle'];
   $instance = field_info_instance($field['field_name'], $bundle);
 
   // Update the field.
+  $field = array_merge($field, $field_values);
   cck_field_update_field($field);
 
   drupal_set_message(t('Updated field %label field settings.', array('%label' => $instance['label'])));
@@ -966,14 +960,13 @@ function cck_field_settings_form_submit($form, &$form_state) {
  *   field_create_field()
  */
 function cck_field_update_field($field) {
-
   $field_types = field_info_field_types();
   $module = $field_types[$field['type']]['module'];
 
   $defaults = field_info_field_settings($field['type']);
   $field['settings'] = array_merge($defaults, (array) $field['settings']);
   $data = $field;
-  unset($data['columns'], $data['field_name'], $data['type'], $data['locked'], $data['module'], $data['active'], $data['deleted']);
+  unset($data['id'], $data['columns'], $data['field_name'], $data['type'], $data['locked'], $data['module'], $data['cardinality'], $data['active'], $data['deleted']);
   $field['data'] = $data;
 
   drupal_write_record('field_config', $field, array('field_name'));
@@ -1455,6 +1448,9 @@ function cck_field_edit_form_submit($form, &$form_state) {
 
   // Update any field settings that have changed.
   $field = field_info_field($instance['field_name']);
+  // Remove the 'bundles' element added by field_info_field
+  // TODO: this is ugly, there should be a better way.
+  unset($field['bundles']);
   $field = array_merge($field, $form_state['values']['field']);
   cck_field_update_field($field);
 

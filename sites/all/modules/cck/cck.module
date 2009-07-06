@@ -1,5 +1,5 @@
 <?php
-// $Id: cck.module,v 1.15 2009/06/05 19:25:08 yched Exp $
+// $Id: cck.module,v 1.19 2009/07/02 20:31:05 yched Exp $
 /**
  * @file
  * Allows administrators to associate custom fields to content types.
@@ -87,7 +87,7 @@ function cck_menu() {
     'weight' => 2,
   );
   // Create an 'Edit' tab for the user.
-  $items['admin/user/settings/edit'] = array(
+  $items['admin/settings/user/edit'] = array(
     'title' => 'Edit',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('user_admin_settings'),
@@ -331,6 +331,28 @@ function _cck_node_extra_fields($type_name) {
         'weight' => -5
       );
     }
+    $extra['revision_information'] = array(
+      'label' => t('Revision information'),
+      'description' => t('Node module form.'),
+      'weight' => 20
+    );
+    $extra['author'] = array(
+      'label' => t('Authoring information'),
+      'description' => t('Node module form.'),
+      'weight' => 20
+    );
+    $extra['options'] = array(
+      'label' => t('Publishing options'),
+      'description' => t('Node module form.'),
+      'weight' => 25
+    );
+    if (module_exists('comment') && variable_get("comment_$type_name", 2) != 0) {
+      $extra['comment_settings'] = array(
+        'label' => t('Comment settings'),
+        'description' => t('Comment module form.'),
+        'weight' => 30
+      );
+    }
     if (module_exists('locale') && variable_get("language_content_type_$type_name", 0)) {
       $extra['language'] = array(
         'label' => t('Language'),
@@ -357,6 +379,23 @@ function _cck_node_extra_fields($type_name) {
         'label' => t('Book'),
         'description' => t('Book module element.'),
         'weight' => 10
+      );
+    }
+    if ($type_name == 'poll' && module_exists('poll')) {
+      $extra['title'] = array(
+        'label' => t('Poll title'),
+        'description' => t('Poll module title.'),
+        'weight' => -5
+      );
+      $extra['choice_wrapper'] = array(
+        'label' => t('Poll choices'),
+        'description' => t('Poll module choices.'),
+        'weight' => -4
+      );
+      $extra['settings'] = array(
+        'label' => t('Poll settings'),
+        'description' => t('Poll module settings.'),
+        'weight' => -3
       );
     }
     if (module_exists('upload') && variable_get("upload_$type_name", TRUE)) {
@@ -483,15 +522,15 @@ function cck_cck_build_modes() {
     ),
     'rss' => array(
       'title' => t('RSS'),
-      'build modes' => array(NODE_BUILD_RSS),
+      'build modes' => array('rss'),
     ),
     'print' => array(
       'title' => t('Print'),
-      'build modes' => array(NODE_BUILD_PRINT),
+      'build modes' => array('print'),
     ),
     'search' => array(
       'title' => t('Search'),
-      'build modes' => array(NODE_BUILD_SEARCH_INDEX, NODE_BUILD_SEARCH_RESULT),
+      'build modes' => array('search_index', 'search_result'),
     ),
   );
   return $modes;
@@ -500,11 +539,7 @@ function cck_cck_build_modes() {
 /**
  *  Implementation of hook_node_type().
  *
- *  TODO Right way to do this in D7? Not needed for users since the user type is never deleted.
- *   Content types could be deleted. Not sure about other entities.
- *   [yched] : fieldable will need to take care of calling field_rename_bundle(), field_delete_bundle()
- *     when appropriate anyway. Those functions - we don't have them yet :) - will need to call a hook
- *     so that CCK UI is notified of this.
+ *  TODO D7: This should be done in hook_field_[create|rename|delete]_bundle().
  */
 function cck_node_type($op, $info) {
   switch ($op) {

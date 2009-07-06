@@ -1,5 +1,5 @@
 <?php
-// $Id: fieldgroup.module,v 1.90 2009/03/11 15:13:02 karens Exp $
+// $Id: fieldgroup.module,v 1.91 2009/06/25 00:30:37 yched Exp $
 
 /**
  * @file
@@ -151,7 +151,6 @@ function fieldgroup_group_edit_form(&$form_state, $bundle, $group_name) {
 
   foreach (array_keys(field_build_modes(field_info_bundle_entity($bundle))) as $key) {
     $form['settings']['display'][$key]['format'] = array('#type' => 'value', '#value' => isset($group['settings']['display'][$key]['format']) ? $group['settings']['display'][$key]['format'] : 'fieldset');
-    $form['settings']['display'][$key]['exclude'] = array('#type' => 'value', '#value' => isset($group['settings']['display'][$key]['exclude']) ? $group['settings']['display'][$key]['exclude'] : 0);
   }
 
   $form['settings']['display']['label'] = array('#type' => 'value', '#value' => $group['settings']['display']['label']);
@@ -477,7 +476,6 @@ function field_group_default_settings($group_type, $bundle) {
   module_load_include('inc', 'field', 'includes/field.admin');
   foreach (array_keys(field_build_modes(field_info_bundle_entity($bundle))) as $key) {
     $settings['display'][$key]['format'] = 'fieldset';
-    $settings['display'][$key]['exclude'] = 0;
   }
   // Allow other modules to add new default settings.
   $settings = array_merge($settings, module_invoke_all('fieldgroup_default_settings', $group_type));
@@ -490,8 +488,7 @@ function fieldgroup_display_overview_form_submit($form, &$form_state) {
   foreach ($form_values as $key => $values) {
     if (in_array($key, $form['#groups'])) {
       $group = $groups[$key];
-      // We have some numeric keys here, so we can't use array_merge.
-      $group['settings']['display'] = $values + $group['settings']['display'];
+      $group['settings']['display'] = array_merge($group['settings']['display'], $values);
       fieldgroup_save_group($form['#bundle'], $group);
     }
   }
@@ -571,39 +568,10 @@ function fieldgroup_view(&$node, $teaser) {
         }
       }
 
-      // The wrapper lets us get the themed output for the group
-      // to populate the $GROUP_NAME_rendered variable for node templates,
-      // and hide it from the $content variable if needed.
-      // See fieldgroup_preprocess_node(), theme_fieldgroup_wrapper().
-      $wrapper = array(
-        'group' => $element,
-        '#weight' => $group['weight'],
-        '#post_render' => array('fieldgroup_wrapper_post_render'),
-        '#group_name' => $group_name,
-        '#bundle' => $node->type,
-        '#context' => $context,
-      );
-
-      $node->content[$group_name] = $wrapper;
+      $node->content[$group_name] = $element;
     }
   }
   break;
-}
-
-/**
- * Hide specified fields from the $content variable in node templates.
- */
-function fieldgroup_wrapper_post_render($content, $element) {
-  $groups = fieldgroup_groups($element['#bundle']);
-  $group = $groups[$element['#group_name']];
-
-  // The display settings are not in quite the same place in the
-  // group and the field, so create the value the theme will expect.
-  $group['display_settings'] = $group['settings']['display'];
-  if (theme('field_exclude', $content, $group, $element['#context'])) {
-    return '';
-  }
-  return $content;
 }
 
 /*
@@ -753,19 +721,4 @@ function fieldgroup_preprocess_fieldgroup_simple(&$vars) {
     'fieldgroup-simple-'. $element['#node']->type,
     'fieldgroup-simple-'. $element['#group_name'] .'-'. $element['#node']->type,
   );
-}
-
-/**
- * Theme preprocess function for node.
- *
- * Adds $GROUP_NAME_rendered variables,
- * containing the themed output for the whole group.
- */
-function fieldgroup_preprocess_node(&$vars) {
-  $node = $vars['node'];
-
-  foreach (fieldgroup_groups($node->type) as $group_name => $group) {
-    // '#chilren' might not be set if the group is empty.
-    $vars[$group_name .'_rendered'] = isset($node->content[$group_name]['#children']) ? $node->content[$group_name]['#children'] : '';
-  }
 }

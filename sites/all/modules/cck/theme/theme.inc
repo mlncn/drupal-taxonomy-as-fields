@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.7 2009/02/07 01:09:36 yched Exp $
+// $Id: theme.inc,v 1.8 2009/06/25 00:30:37 yched Exp $
 
 /**
  * @file
@@ -8,18 +8,19 @@
 function template_preprocess_cck_field_overview_form(&$vars) {
   $form = &$vars['form'];
 
+  // TODO D7: abstract texts over bundles / entity types
   switch ($form['#bundle']) {
     case 'user':
       $vars['help'] = theme('advanced_help_topic', 'cck', 'manage-user-fields') . t('Add fields to the user, and arrange them on user display and input forms.');
       break;
     default:
       $vars['help'] = theme('advanced_help_topic', 'cck', 'manage-fields') . t('Add fields to the Content type, and arrange them on content display and input forms.');
-
   }
   if (module_exists('fieldgroup')) {
     $vars['help'] .= '<br>'. t('You can add a field to a group by dragging it below and to the right of the group.');
   }
   if (!module_exists('advanced_help')) {
+    // TODO D7
     //$vars['help'] .= '<br/>' . t('Note: Installing the <a href="!adv_help">Advanced help</a> module will let you access more and better help.', array('!adv_help' => 'http://drupal.org/project/advanced_help'));
   }
 
@@ -89,9 +90,7 @@ function template_preprocess_cck_field_overview_form(&$vars) {
   $vars['submit'] = drupal_render_children($form);
 
   // Add tabledrag behavior.
-//  drupal_add_tabledrag('cck-field-overview', 'match', 'parent', 'group-parent', 'group-parent', 'field-name', FALSE, 1);
   drupal_add_tabledrag('cck-field-overview', 'match', 'parent', 'group-parent', 'group-parent', 'field-name', TRUE, 1);
-//  drupal_add_tabledrag('cck-field-overview', 'order', 'sibling', 'field-weight', NULL, NULL, FALSE);
   drupal_add_tabledrag('cck-field-overview', 'order', 'sibling', 'field-weight');
 
   // Add settings for the update selects behavior.
@@ -117,9 +116,10 @@ function template_preprocess_cck_display_overview_form(&$vars) {
 
   $vars['contexts'] = cck_build_modes(field_info_bundle_entity($form['#bundle']), $contexts_selector);
 
+  // TODO D7: abstract texts over bundles / entity types
   switch ($form['#bundle']) {
     case 'user':
-      $help = t("Configure how user fields and field labels should be displayed. Use the 'Exclude' checkbox to exclude an item from the !content value passed to the user template.", array('!content' => '$user_profile'));
+      $help = t('Configure how user fields and field labels should be displayed.');
       break;
 
     default:
@@ -129,7 +129,6 @@ function template_preprocess_cck_display_overview_form(&$vars) {
       else {
         $help = t("Configure how this content type's fields should be displayed when it's rendered in the following contexts.");
       }
-      $help .= ' '. t("Use the 'Exclude' checkbox to exclude an item from the !content value passed to the node template.", array('!content' => '$content'));
   }
 
   $vars['help'] = $help;
@@ -145,13 +144,12 @@ function template_preprocess_cck_display_overview_form(&$vars) {
     $element = &$form[$key];
     $row = new stdClass();
     foreach (element_children($element) as $child) {
-      if (!array_key_exists('exclude', $element[$child])) {
-        $row->{$child} = drupal_render($element[$child]);
-      }
-      else {
+      if (array_key_exists('label', $element[$child])) {
         $row->{$child}->label = drupal_render($element[$child]['label']);
         $row->{$child}->type = drupal_render($element[$child]['type']);
-        $row->{$child}->exclude = drupal_render($element[$child]['exclude']);
+      }
+      else {
+        $row->{$child} = drupal_render($element[$child]);
       }
     }
     $row->label_class = in_array($key, $form['#groups']) ? 'label-group' : 'label-field';

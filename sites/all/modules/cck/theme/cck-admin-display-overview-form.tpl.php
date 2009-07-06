@@ -1,5 +1,5 @@
 <?php
-// $Id: cck-admin-display-overview-form.tpl.php,v 1.5 2009/02/03 19:53:48 karens Exp $
+// $Id: cck-admin-display-overview-form.tpl.php,v 1.6 2009/06/25 00:30:37 yched Exp $
 ?>
 <div>
   <?php print $help; ?>
@@ -10,7 +10,7 @@
       <tr>
         <th>&nbsp;</th>
         <?php foreach ($contexts as $key => $value): ?>
-          <th colspan="3"><?php print $value; ?>
+          <th colspan="2"><?php print $value; ?>
         <?php endforeach; ?>
       </tr>
       <tr>
@@ -18,7 +18,6 @@
         <?php foreach ($contexts as $key => $value): ?>
           <th><?php print t('Label'); ?></th>
           <th><?php print t('Format'); ?></th>
-          <th><?php print t('Exclude'); ?></th>
         <?php endforeach; ?>
       </tr>
     </thead>
@@ -31,7 +30,6 @@
           <?php foreach ($contexts as $context => $title): ?>
             <td><?php print $row->{$context}->label; ?></td>
             <td><?php print $row->{$context}->type; ?></td>
-            <td><?php print $row->{$context}->exclude; ?></td>
           <?php endforeach; ?>
         </tr>
         <?php $count++;
