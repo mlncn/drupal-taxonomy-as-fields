@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.344 2009/06/29 17:27:58 dries Exp $
+// $Id: form.inc,v 1.347 2009/07/05 18:02:08 dries Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -2002,7 +2002,7 @@ function form_process_ahah($element) {
   // Adding the same javascript settings twice will cause a recursion error,
   // we avoid the problem by checking if the javascript has already been added.
   if ((isset($element['#ahah']['callback']) || isset($element['#ahah']['path'])) && isset($element['#ahah']['event']) && !isset($js_added[$element['#id']])) {
-    drupal_add_js('misc/jquery.form.js', array('weight' => JS_LIBRARY));
+    drupal_add_library('system', 'form');
     drupal_add_js('misc/ahah.js');
 
     $ahah_binding = array(
@@ -2607,14 +2607,10 @@ function theme_form_element($element) {
     $class[] = 'form-item-' . strtr($element['#type'], array('_' => '-'));
   }
   if (!empty($element['#name'])) {
-    $class[] = strtr($element['#name'], array('_' => '-', '[' => '-', ']' => '')) . '-wrapper';
+    $class[] = strtr($element['#name'], array(' ' => '-', '_' => '-', '[' => '-', ']' => '')) . '-wrapper';
   }
 
-  $output = '<div class="' . implode(' ', $class) . '"';
-  if (!empty($element['#id'])) {
-    $output .= ' id="' . $element['#id'] . '-wrapper"';
-  }
-  $output .= ">\n";
+  $output = '<div class="' . implode(' ', $class) . '">' . "\n";
   $required = !empty($element['#required']) ? '<span class="form-required" title="' . $t('This field is required.') . '">*</span>' : '';
 
   if (!empty($element['#title']) && empty($element['#form_element_skip_title'])) {

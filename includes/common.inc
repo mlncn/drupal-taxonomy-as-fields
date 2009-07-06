@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.926 2009/07/02 04:27:22 webchick Exp $
+// $Id: common.inc,v 1.930 2009/07/04 18:26:42 webchick Exp $
 
 /**
  * @file
@@ -233,7 +233,7 @@ function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
   $params = array();
 
   foreach ($query as $key => $value) {
-    $key = drupal_urlencode($key);
+    $key = rawurlencode($key);
     if ($parent) {
       $key = $parent . '[' . $key . ']';
     }
@@ -246,7 +246,7 @@ function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
       $params[] = drupal_query_string_encode($value, $exclude, $key);
     }
     else {
-      $params[] = $key . '=' . drupal_urlencode($value);
+      $params[] = $key . '=' . rawurlencode($value);
     }
   }
 
@@ -552,7 +552,7 @@ function drupal_http_request($url, array $options = array()) {
   // user-agent is used to ensure that multiple testing sessions running at the
   // same time won't interfere with each other as they would if the database
   // prefix were stored statically in a file or database variable.
-  if (preg_match("/simpletest\d+/", $db_prefix, $matches)) {
+  if (is_string($db_prefix) && preg_match("/^simpletest\d+/", $db_prefix, $matches)) {
     $options['headers']['User-Agent'] = $matches[0];
   }
 
@@ -809,7 +809,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
 
   // When running inside the testing framework, we relay the errors
   // to the tested site by the way of HTTP headers.
-  if (preg_match("/^simpletest\d+/", $_SERVER['HTTP_USER_AGENT']) && !headers_sent() && (!defined('SIMPLETEST_COLLECT_ERRORS') || SIMPLETEST_COLLECT_ERRORS)) {
+  if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/^simpletest\d+$/", $_SERVER['HTTP_USER_AGENT']) && !headers_sent() && (!defined('SIMPLETEST_COLLECT_ERRORS') || SIMPLETEST_COLLECT_ERRORS)) {
     // $number does not use drupal_static as it should not be reset
     // as it uniquely identifies each PHP error.
     static $number = 0;
@@ -1359,12 +1359,12 @@ function filter_xss($string, $allowed_tags = array('a', 'em', 'strong', 'cite', 
   // Defuse all HTML entities
   $string = str_replace('&', '&amp;', $string);
   // Change back only well-formed entities in our whitelist
-  // Named entities
-  $string = preg_replace('/&amp;([A-Za-z][A-Za-z0-9]*;)/', '&\1', $string);
   // Decimal numeric entities
   $string = preg_replace('/&amp;#([0-9]+;)/', '&#\1', $string);
   // Hexadecimal numeric entities
   $string = preg_replace('/&amp;#[Xx]0*((?:[0-9A-Fa-f]{2})+;)/', '&#x\1', $string);
+  // Named entities
+  $string = preg_replace('/&amp;([A-Za-z][A-Za-z0-9]*;)/', '&\1', $string);
 
   return preg_replace_callback('%
     (
@@ -1958,8 +1958,8 @@ function format_date($timestamp, $type = 'medium', $format = '', $timezone = NUL
  * @param $options
  *   An associative array of additional options, with the following keys:
  *   - 'query'
- *       A query string to append to the link, or an array of query key/value
- *       properties.
+ *       A URL-encoded query string to append to the link, or an array of query
+ *       key/value-pairs without any URL-encoding.
  *   - 'fragment'
  *       A fragment identifier (or named anchor) to append to the link.
  *       Do not include the '#' character.
@@ -2063,7 +2063,7 @@ function url($path = NULL, array $options = array()) {
 
   $base = $options['absolute'] ? $options['base_url'] . '/' : base_path();
   $prefix = empty($path) ? rtrim($options['prefix'], '/') : $options['prefix'];
-  $path = drupal_urlencode($prefix . $path);
+  $path = drupal_encode_path($prefix . $path);
 
   if (variable_get('clean_url', '0')) {
     // With Clean URLs.
@@ -2779,15 +2779,6 @@ function drupal_add_js($data = NULL, $options = NULL) {
           'scope' => 'header',
           'weight' => JS_LIBRARY,
         ),
-        'misc/jquery.js' => array(
-          'data' => 'misc/jquery.js',
-          'type' => 'file',
-          'scope' => 'header',
-          'weight' => JS_LIBRARY - 2,
-          'cache' => TRUE,
-          'defer' => FALSE,
-          'preprocess' => TRUE,
-        ),
         'misc/drupal.js' => array(
           'data' => 'misc/drupal.js',
           'type' => 'file',
@@ -2798,6 +2789,8 @@ function drupal_add_js($data = NULL, $options = NULL) {
           'preprocess' => TRUE,
         ),
       );
+      // jQuery itself is registered as a library.
+      drupal_add_library('system', 'jquery');
     }
 
     switch ($options['type']) {
@@ -2951,6 +2944,124 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
   // Keep the order of JS files consistent as some are preprocessed and others are not.
   // Make sure any inline or JS setting variables appear last after libraries have loaded.
   return $preprocessed . $no_preprocess . $output;
+}
+
+/**
+ * Adds multiple JavaScript or CSS files at the same time.
+ *
+ * A library defines a set of JavaScript and/or CSS files, optionally using
+ * settings, and optionally requiring another library. For example, a library
+ * can be a jQuery plugin, a JavaScript framework, or a CSS framework. This
+ * function allows modules to load a library defined/shipped by itself or a
+ * depending module; without having to add all files of the library separately.
+ * Each library is only loaded once.
+ *
+ * @param $module
+ *   The name of the module that registered the library.
+ * @param $name
+ *   The name of the library to add.
+ * @return
+ *   TRUE when the library was successfully added or FALSE if the library or one
+ *   of its dependencies could not be added.
+ *
+ * @see drupal_get_library()
+ * @see hook_library()
+ * @see hook_library_alter()
+ */
+function drupal_add_library($module, $name) {
+  $added = &drupal_static(__FUNCTION__, array());
+
+  // Only process the library if it exists and it was not added already.
+  if (!isset($added[$module][$name]) && $library = drupal_get_library($module, $name)) {
+    // Prevent repeated/recursive processing.
+    $added[$module][$name] = TRUE;
+
+    // Ensure dependencies first.
+    foreach ($library['dependencies'] as $dependency) {
+      if (drupal_add_library($dependency[0], $dependency[1]) === FALSE) {
+        // If any dependent library could not be added, this library will break;
+        // stop here.
+        $added[$module][$name] = FALSE;
+        return FALSE;
+      }
+    }
+
+    // Add defined JavaScript.
+    foreach ($library['js'] as $data => $options) {
+      // For JS settings we need to transform $options['data'] into $data.
+      if (isset($options['type'], $options['data']) && $options['type'] == 'setting') {
+        $data = $options['data'];
+        unset($options['data']);
+      }
+      // If not specified, assign a default weight of JS_LIBRARY.
+      elseif (!isset($options['weight'])) {
+        $options['weight'] = JS_LIBRARY;
+      }
+      drupal_add_js($data, $options);
+    }
+
+    // Add defined stylesheets.
+    foreach ($library['css'] as $data => $options) {
+      drupal_add_css($data, $options);
+    }
+  }
+  // Requested library does not exist.
+  else {
+    $added[$module][$name] = FALSE;
+  }
+
+  return $added[$module][$name];
+}
+
+/**
+ * Retrieves information for a JavaScript/CSS library.
+ *
+ * Library information is statically cached. Libraries are keyed by module for
+ * several reasons:
+ * - Libraries are not unique. Multiple modules might ship with the same library
+ *   in a different version or variant. This registry cannot (and does not
+ *   attempt to) prevent library conflicts.
+ * - Modules implementing and thereby depending on a library that is registered
+ *   by another module can only rely on that module's library.
+ * - Two (or more) modules can still register the same library and use it
+ *   without conflicts in case the libraries are loaded on certain pages only.
+ *
+ * @param $module
+ *   The name of a module that registered a library.
+ * @param $library
+ *   The name of a registered library.
+ * @return
+ *   The definition of the requested library, if existent, or FALSE.
+ *
+ * @see drupal_add_library()
+ * @see hook_library()
+ * @see hook_library_alter()
+ *
+ * @todo The purpose of drupal_get_*() is completely different to other page
+ *   requisite API functions; find and use a different name.
+ */
+function drupal_get_library($module, $name) {
+  $libraries = &drupal_static(__FUNCTION__, array());
+
+  if (!array_key_exists($module, $libraries)) {
+    // Retrieve all libraries associated with the module.
+    $module_libraries = module_invoke($module, 'library');
+
+    // Allow modules to alter the module's registered libraries.
+    if (!empty($module_libraries)) {
+      drupal_alter('library', $module_libraries, $module);
+    }
+    $libraries[$module] = $module_libraries;
+  }
+  if (!empty($libraries[$module][$name]) && is_array($libraries[$module][$name])) {
+    // Add default elements to allow for easier processing.
+    $libraries[$module][$name] += array('dependencies' => array(), 'js' => array(), 'css' => array());
+  }
+  else {
+    $libraries[$module][$name] = FALSE;
+  }
+
+  return $libraries[$module][$name];
 }
 
 /**
@@ -3168,11 +3279,13 @@ function drupal_json($var = NULL) {
  *   characters are double escaped so PHP will still see the encoded version.
  * - With clean URLs, Apache changes '//' to '/', so every second slash is
  *   double escaped.
+ * - This function should only be used on paths, not on query string arguments,
+ *   otherwise unwanted double encoding will occur.
  *
  * @param $text
  *   String to encode
  */
-function drupal_urlencode($text) {
+function drupal_encode_path($text) {
   if (variable_get('clean_url', '0')) {
     return str_replace(array('%2F', '%26', '%23', '//'),
                         array('/', '%2526', '%2523', '/%252F'),

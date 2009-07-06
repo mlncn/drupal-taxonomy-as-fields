@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.718 2009/07/01 13:44:53 dries Exp $
+// $Id: system.module,v 1.722 2009/07/05 18:00:10 dries Exp $
 
 /**
  * @file
@@ -112,6 +112,11 @@ function system_help($path, $arg) {
         return '<p>' . t('The <em>Powered by Drupal</em> block is an optional link to the home page of the Drupal project. While there is absolutely no requirement that sites feature this link, it may be used to show support for Drupal.') . '</p>';
       }
       break;
+    case 'admin/settings/maintenance-mode':
+      global $user;
+      if ($user->uid == 1) {
+        return '<p>' . t('If you are upgrading to a newer version of Drupal or upgrading contributed modules or themes you may need to run !update-php.', array('!update-php' => l('update.php', 'update.php'))) . '</p>';
+      }
     case 'admin/settings/actions':
     case 'admin/settings/actions/manage':
       $output = '<p>' . t('Actions are individual tasks that the system can do, such as unpublishing a piece of content or banning a user. Modules, such as the trigger module, can fire these actions when certain system events happen; for example, when a new post is added or when a user logs in. Modules may also provide additional actions.') . '</p>';
@@ -188,9 +193,9 @@ function system_theme() {
 }
 
 /**
- * Implement hook_perm().
+ * Implement hook_permission().
  */
-function system_perm() {
+function system_permission() {
   return array(
     'administer site configuration' => array(
       'title' => t('Administer site configuration'),
@@ -789,6 +794,359 @@ function system_menu() {
 }
 
 /**
+ * Implementation of hook_library().
+ */
+function system_library() {
+  // jQuery.
+  $libraries['jquery'] = array(
+    'title' => 'jQuery',
+    'website' => 'http://jquery.com',
+    'version' => '1.3.2',
+    'js' => array(
+      'misc/jquery.js' => array('weight' => JS_LIBRARY - 20),
+    ),
+  );
+
+  // jQuery Form Plugin.
+  $libraries['form'] = array(
+    'title' => 'jQuery Form Plugin',
+    'website' => 'http://malsup.com/jquery/form/',
+    'version' => '2.16',
+    'js' => array(
+      'misc/jquery.form.js' => array(),
+    ),
+  );
+
+  // Farbtastic.
+  $libraries['farbtastic'] = array(
+    'title' => 'Farbtastic',
+    'website' => 'http://code.google.com/p/farbtastic/',
+    'version' => '1.2',
+    'js' => array(
+      'misc/farbtastic/farbtastic.js' => array(),
+    ),
+    'css' => array(
+      'misc/farbtastic/farbtastic.css' => array('preprocess' => FALSE),
+    ),
+  );
+
+  // Cookie.
+  $libraries['cookie'] = array(
+    'title' => 'Cookie',
+    'website' => 'http://plugins.jquery.com/project/cookie',
+    'version' => '1.0',
+    'js' => array(
+      'misc/jquery.cookie.js' => array(),
+    ),
+  );
+
+  // jQuery UI.
+  $libraries['ui'] = array(
+    'title' => 'jQuery UI: Core',
+    'website' => 'http://jqueryui.com',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.core.js' => array('weight' => JS_LIBRARY - 10),
+    ),
+    'css' => array(
+      'misc/ui/ui.core.css' => array(),
+      'misc/ui/ui.theme.css' => array(),
+    ),
+  );
+  $libraries['ui.accordion'] = array(
+    'title' => 'jQuery UI: Accordion',
+    'website' => 'http://jqueryui.com/demos/accordion/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.accordion.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.accordion.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.datepicker'] = array(
+    'title' => 'jQuery UI: Date Picker',
+    'website' => 'http://jqueryui.com/demos/datepicker/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.datepicker.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.datepicker.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.dialog'] = array(
+    'title' => 'jQuery UI: Dialog',
+    'website' => 'http://jqueryui.com/demos/dialog/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.dialog.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.dialog.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.draggable'] = array(
+    'title' => 'jQuery UI: Dialog',
+    'website' => 'http://jqueryui.com/demos/draggable/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.draggable.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.droppable'] = array(
+    'title' => 'jQuery UI: Droppable',
+    'website' => 'http://jqueryui.com/demos/droppable/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.droppable.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+      array('system', 'ui.draggable'),
+    ),
+  );
+  $libraries['ui.progressbar'] = array(
+    'title' => 'jQuery UI: Progress Bar',
+    'website' => 'http://jqueryui.com/demos/progressbar/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.progressbar.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.progressbar.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.resizable'] = array(
+    'title' => 'jQuery UI: Resizable',
+    'website' => 'http://jqueryui.com/demos/resizable/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.resizable.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.resizable.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.selectable'] = array(
+    'title' => 'jQuery UI: Selectable',
+    'website' => 'http://jqueryui.com/demos/selectable/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.selectable.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.selectable.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.slider'] = array(
+    'title' => 'jQuery UI: Slider',
+    'website' => 'http://jqueryui.com/demos/slider/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.slider.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.slider.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.sortable'] = array(
+    'title' => 'jQuery UI: Sortable',
+    'website' => 'http://jqueryui.com/demos/sortable/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.sortable.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['ui.tabs'] = array(
+    'title' => 'jQuery UI: Tabs',
+    'website' => 'http://jqueryui.com/demos/tabs/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/ui.tabs.js' => array(),
+    ),
+    'css' => array(
+      'misc/ui/ui.tabs.css' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['effects'] = array(
+    'title' => 'jQuery UI: Effects',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.core.js' => array('weight' => JS_LIBRARY - 9),
+    ),
+    'dependencies' => array(
+      array('system', 'ui'),
+    ),
+  );
+  $libraries['effects.blind'] = array(
+    'title' => 'jQuery UI: Effects Blind',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.blind.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.bounce'] = array(
+    'title' => 'jQuery UI: Effects Bounce',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.bounce.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.clip'] = array(
+    'title' => 'jQuery UI: Effects Clip',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.clip.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.drop'] = array(
+    'title' => 'jQuery UI: Effects Drop',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.drop.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.explode'] = array(
+    'title' => 'jQuery UI: Effects Explode',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.explode.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.fold'] = array(
+    'title' => 'jQuery UI: Effects Fold',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.fold.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.highlight'] = array(
+    'title' => 'jQuery UI: Effects Fold',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.highlight.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.pulsate'] = array(
+    'title' => 'jQuery UI: Effects Pulsate',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.pulsate.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.scale'] = array(
+    'title' => 'jQuery UI: Effects Pulsate',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.scale.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.shake'] = array(
+    'title' => 'jQuery UI: Effects Shake',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.scale.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.slide'] = array(
+    'title' => 'jQuery UI: Effects Slide',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.slide.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+  $libraries['effects.transfer'] = array(
+    'title' => 'jQuery UI: Effects Transfer',
+    'website' => 'http://jqueryui.com/demos/effect/',
+    'version' => '1.7.2',
+    'js' => array(
+      'misc/ui/effects.transfer.js' => array(),
+    ),
+    'dependencies' => array(
+      array('system', 'effects'),
+    ),
+  );
+
+  return $libraries;
+}
+
+/**
  * Retrieve a blocked IP address from the database.
  *
  * @param $iid integer
@@ -867,7 +1225,7 @@ function system_filetransfer_backends() {
 
 /**
  *  Helper function to return a form for configuring a filetransfer backend.
- * 
+ *
  * @param string $filetransfer_backend_name
  *   The name of the backend to return a form for.
  *
@@ -880,7 +1238,7 @@ function system_get_filetransfer_settings_form($filetransfer_backend_name, $defa
   
   foreach ($form as $name => &$element) {
     if (isset($defaults[$name])) {
-      $element['#default_value'] = $defaults[$name];  
+      $element['#default_value'] = $defaults[$name];
     }
   }
   return $form;
@@ -963,8 +1321,8 @@ function system_init() {
   // server for that user temporarily to allow the slave server to catch up.
   // That way, that user will see their changes immediately while for other
   // users we still get the benefits of having a slave server, just with slightly
-  // stale data.  Code that wants to disable the slave server should use the 
-  // db_set_ignore_slave() function to set $_SESSION['ignore_slave_server'] to 
+  // stale data.  Code that wants to disable the slave server should use the
+  // db_set_ignore_slave() function to set $_SESSION['ignore_slave_server'] to
   // the timestamp after which the slave can be re-enabled.
   if (isset($_SESSION['ignore_slave_server'])) {
     if ($_SESSION['ignore_slave_server'] >= REQUEST_TIME) {
@@ -1303,7 +1661,7 @@ function system_get_files_database(&$files, $type) {
 
 /**
  * Updates the records in the system table based on the files array.
- * 
+ *
  * @param $files
  *   An array of files.
  * @param $type
@@ -1464,6 +1822,7 @@ function _system_get_theme_data() {
         'footer' => 'Footer',
         'highlight' => 'Highlighted content',
         'help' => 'Help',
+        'page_top' => 'Page top',
       ),
       'description' => '',
       'features' => array(
@@ -1847,7 +2206,7 @@ function system_get_module_admin_tasks($module) {
   $admin_tasks = array();
   $admin_task_count = 0;
   // Check for permissions.
-  if (in_array($module, module_implements('perm')) && $admin_access) {
+  if (in_array($module, module_implements('permission')) && $admin_access) {
     $admin_tasks[-1] = l(t('Configure permissions'), 'admin/user/permissions', array('fragment' => 'module-' . $module));
   }
 
@@ -2656,7 +3015,7 @@ function system_image_toolkits() {
  *
  * @param $overwrite boolean
  *   Defaults to TRUE, will overwrite existing files of the same name.
- *  
+ *
  * @return
  *   On success the address the files was saved to, FALSE on failure.
  */

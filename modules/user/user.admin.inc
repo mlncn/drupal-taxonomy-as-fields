@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.60 2009/07/01 08:39:56 dries Exp $
+// $Id: user.admin.inc,v 1.62 2009/07/05 18:07:04 dries Exp $
 
 /**
  * @file
@@ -585,10 +585,10 @@ function user_admin_settings() {
  * Menu callback: administer permissions.
  *
  * @ingroup forms
- * @see user_admin_perm_submit()
- * @see theme_user_admin_perm()
+ * @see user_admin_permissions_submit()
+ * @see theme_user_admin_permissions()
  */
-function user_admin_perm($form_state, $rid = NULL) {
+function user_admin_permissions($form_state, $rid = NULL) {
 
   // Retrieve role names for columns.
   $role_names = user_roles();
@@ -606,8 +606,8 @@ function user_admin_perm($form_state, $rid = NULL) {
   // Render role/permission overview:
   $options = array();
   $hide_descriptions = !system_admin_compact_mode();
-  foreach (module_implements('perm') as $module) {
-    if ($permissions = module_invoke($module, 'perm')) {
+  foreach (module_implements('permission') as $module) {
+    if ($permissions = module_invoke($module, 'permission')) {
       $info = drupal_parse_info_file(drupal_get_path('module', $module) . "/$module.info");
       $form['permission'][] = array(
         '#markup' => $info['name'],
@@ -645,9 +645,9 @@ function user_admin_perm($form_state, $rid = NULL) {
 /**
  * Save permissions selected on the administer permissions page.
  *
- * @see user_admin_perm
+ * @see user_admin_permissions()
  */
-function user_admin_perm_submit($form, &$form_state) {
+function user_admin_permissions_submit($form, &$form_state) {
   foreach ($form_state['values']['role_names'] as $rid => $name) {
     $checked = array_filter($form_state['values'][$rid]);
     // Delete existing permissions for the role. This handles "unchecking" checkboxes.
@@ -675,7 +675,7 @@ function user_admin_perm_submit($form, &$form_state) {
  *
  * @ingroup themeable
  */
-function theme_user_admin_perm($form) {
+function theme_user_admin_permissions($form) {
   $roles = user_roles();
   foreach (element_children($form['permission']) as $key) {
     $row = array();
@@ -933,7 +933,7 @@ function user_modules_installed($modules) {
   $rid = variable_get('user_admin_role', 0);
   if ($rid) {
     foreach ($modules as $module) {
-      if ($permissions = module_invoke($module, 'perm')) {
+      if ($permissions = module_invoke($module, 'permission')) {
         foreach (array_keys($permissions) as $permission) {
           db_insert('role_permission')
             ->fields(array(
@@ -952,7 +952,7 @@ function user_modules_installed($modules) {
 function user_modules_uninstalled($modules) {
   $permissions = array();
   foreach ($modules as $module) {
-    $permissions = array_merge($permissions, array_keys(module_invoke($module, 'perm')));
+    $permissions = array_merge($permissions, array_keys(module_invoke($module, 'permission')));
   }
   if (!empty($permissions)) {
     db_delete('role_permission')
