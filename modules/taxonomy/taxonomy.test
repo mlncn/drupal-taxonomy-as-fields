@@ -749,8 +749,6 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     $this->vocabulary = $this->createVocabulary();
   }
 
-  // Test fields.
-
   /**
    * Test term field validation.
    */
@@ -784,10 +782,10 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     $entity->{$this->field['field_name']}[0]['value'] = $term->tid;
     field_attach_validate('test_entity', $entity);
     try {
-      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] == $term->tid, "Term $term->tid does not cause validation error");
+      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] == $term->tid, t('Correct term does not cause validation error'));
     }
     catch (FieldValidationException $e) {
-      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] != $term->tid, "Term $term->tid doesn't cause validation error even though it is in $this->vocabulary->vid");
+      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] != $term->tid, t('Term from wrong vocabulary does not cause validation error'));
     }
 
     $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
@@ -797,7 +795,7 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
       field_attach_validate('test_entity', $entity);
     }
     catch (FieldValidationException $e) {
-      $this->assertTrue($this->field['settings']['vid'] != $bad_term->vid, "Term $bad_term->tid does cause validation error");
+      $this->assertTrue($this->field['settings']['vid'] != $bad_term->vid, t('Wrong term causes validation error'));
     }
   }
 
@@ -853,7 +851,7 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     $entity = field_test_entity_load($id);
     $entity->content = field_attach_view($entity_type, $entity);
     $this->content = drupal_render($entity->content);
-    $this->assertText($term->name, 'Term name is displayed');
+    $this->assertText($term->name, t('Term name is displayed'));
   }
 
   // Test formatters.

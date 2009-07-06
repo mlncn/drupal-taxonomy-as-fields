@@ -405,6 +405,7 @@ function taxonomy_term_save($term) {
   }
   else {
     $status = drupal_write_record('taxonomy_term_data', $term);
+    _taxonomy_clean_field_cache($term);
     field_attach_insert('taxonomy_term', $term);
     module_invoke_all('taxonomy_term_update', $term);
   }
@@ -482,7 +483,6 @@ function taxonomy_term_save($term) {
 
   cache_clear_all();
   taxonomy_terms_static_reset();
-  _taxonomy_clean_field_cache($term);
 
   return $status;
 }
@@ -1905,7 +1905,7 @@ function taxonomy_field_validate($obj_type, $object, $field, $instance, $items, 
   $allowed_values = taxonomy_allowed_values($field);
   foreach ($items as $delta => $item) {
     if (!empty($item['value'])) {
-      if (count($allowed_values) && !array_key_exists($item['value'], $allowed_values)) {
+      if (!isset($allowed_values[$item['value']])) {
         $errors[$field['field_name']][$delta][] = array(
           'error' => 'term_illegal_value',
           'message' => t('%name: illegal value.', array('%name' => t($instance['label']))),
@@ -1919,7 +1919,7 @@ function taxonomy_field_validate($obj_type, $object, $field, $instance, $items, 
  * Implement hook_field_is_empty().
  */
 function taxonomy_field_is_empty($item, $field) {
-  if (empty($item['value']) && (string)$item['value'] !== '0') {
+  if (empty($item['value']) && (string) $item['value'] !== '0') {
     return TRUE;
   }
   return FALSE;
@@ -1970,14 +1970,6 @@ function theme_field_formatter_term_plain($element) {
  *  values array.
  *
  *  This function should imitate the features of _taxonomy_term_select
- *
- *  TODO deal with excluded tids?
- *  TODO support scope limiting to a particular subtree of the vocabulary
- *  TODO support multiple subtrees of the same or different vocabularies in one field
- *  TODO allow values that aren't in a vocabulary if the field/widget/vocabulary (which?) is for
- *  tagging.
- *  TODO the field settings could also enforce some constraints on the user's choosing behavior.
- *  e.g. force user to choose a term with no children, etc.
  */
 function taxonomy_allowed_values($field) {
   $options = array();
@@ -1995,7 +1987,7 @@ function taxonomy_allowed_values($field) {
 /*
  * Implement hook_field_load().
  *
- * This preloads all taxonomy terms for a given object at once using taxonomy_term_load_multiple
+ * This preloads all taxonomy terms for a given object at once using
  * and unsets values for invalid terms which don't exist.
  *
  * @return
@@ -2015,6 +2007,7 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
     $taxonomy_term_data = drupal_schema_fields_sql('taxonomy_term_data');
     $query->fields('t', $taxonomy_term_data);
     $query->condition('t.tid', $tids, 'IN');
+    $query->addTag('term_access');
     $terms = $query->execute()->fetchAllAssoc('tid');
     foreach ($objects as $id => $object) {
       foreach ($items[$id] as $delta => $item) {
@@ -2029,16 +2022,23 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
   }
 }
 
+/**
+ * Helper function that clears field cache when terms are updated or deleted
+ */
 function _taxonomy_clean_field_cache($term) {
   $fields = field_read_fields(array('type' => 'term'));
+  $cids = array();
   foreach ($fields as $field) {
     if (in_array($term->vid, $field['settings']['vid'])) {
       $objects = field_attach_query($field['field_name'], array(array('value', $term->tid)));
       foreach ($objects as $obj_type => $ids) {
         foreach ($ids as $id) {
-          cache_clear_all("field:$obj_type:$id", 'cache_field');
+          $cids[] = "field:$obj_type:id";
         }
       }
     }
+  }
+  if (count($cids)) {
+    cache_clear_all($cids, 'cache_field');
   }
 }
