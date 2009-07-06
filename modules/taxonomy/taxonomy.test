@@ -727,3 +727,137 @@ class TaxonomyHooksTestCase extends TaxonomyWebTestCase {
     $this->assertFalse($antonyms, t('The antonyms were deleted from the database.'));
   }
 }
+
+class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
+  protected $instance;
+  protected $vocabulary;
+
+  public static function getInfo() {
+    return array(
+      'name'  => t('Term Field'),
+      'description'  => t("Test the creation of term fields."),
+      'group' => t('Taxonomy')
+    );
+  }
+
+  function setUp() {
+    parent::setUp('field_test');
+
+    $web_user = $this->drupalCreateUser(array('access field_test content', 'administer field_test content', 'administer taxonomy'));
+    $this->drupalLogin($web_user);
+
+    $this->vocabulary = $this->createVocabulary();
+  }
+
+  // Test fields.
+
+  /**
+   * Test term field validation.
+   */
+  function testTermFieldValidation() {
+    // Create a field with settings to validate.
+    $this->field = array(
+      'field_name' => drupal_strtolower($this->randomName()),
+      'type' => 'term',
+      'settings' => array(
+        'vid' => array($this->vocabulary->vid),
+      )
+    );
+    field_create_field($this->field);
+    $this->instance = array(
+      'field_name' => $this->field['field_name'],
+      'bundle' => FIELD_TEST_BUNDLE,
+      'widget' => array(
+        'type' => 'options_select',
+      ),
+      'display' => array(
+        'full' => array(
+          'type' => 'term_default',
+        ),
+      ),
+    );
+    field_create_instance($this->instance);
+
+    // Test valid and invalid values with field_attach_validate().
+    $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
+    $term = $this->createTerm($this->vocabulary);
+    $entity->{$this->field['field_name']}[0]['value'] = $term->tid;
+    field_attach_validate('test_entity', $entity);
+    try {
+      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] == $term->tid, "Term $term->tid does not cause validation error");
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] != $term->tid, "Term $term->tid doesn't cause validation error even though it is in $this->vocabulary->vid");
+    }
+
+    $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
+    $bad_term = $this->createTerm($this->createVocabulary());
+    $entity->{$this->field['field_name']}[0]['value'] = $bad_term->tid;
+    try {
+      field_attach_validate('test_entity', $entity);
+    }
+    catch (FieldValidationException $e) {
+      $this->assertTrue($this->field['settings']['vid'] != $bad_term->vid, "Term $bad_term->tid does cause validation error");
+    }
+  }
+
+  /**
+   * Test widgets.
+   */
+  function testTermfieldWidgets() {
+    $this->_testTermfieldWidgets('term', 'options_select');
+  }
+
+  /**
+   * Helper function for testTermfieldWidgets().
+   */
+  function _testTermfieldWidgets($field_type, $widget_type) {
+    // Setup a field and instance
+    $entity_type = 'test_entity';
+    $this->field_name = drupal_strtolower($this->randomName());
+    $this->field = array(
+      'field_name' => $this->field_name,
+      'type' => $field_type,
+      'settings' => array(
+        'vid' => array($this->vocabulary->vid),
+      )
+    );
+    field_create_field($this->field);
+    $this->instance = array(
+      'field_name' => $this->field_name,
+      'bundle' => FIELD_TEST_BUNDLE,
+      'label' => $this->randomName() . '_label',
+      'widget' => array(
+        'type' => $widget_type,
+      )
+    );
+    field_create_instance($this->instance);
+
+    // create a term in the vocabulary
+    $term = $this->createTerm($this->vocabulary);
+
+    // Display creation form.
+    $this->drupalGet('test-entity/add/test-bundle');
+    $this->assertFieldByName($this->field_name . '[value]', '', t('Widget is displayed'));
+
+    // Submit with some value.
+    $edit = array(
+      $this->field_name . '[value]' => array($term->tid),
+    );
+    $this->drupalPost(NULL, $edit, t('Save'));
+    preg_match('|test-entity/(\d+)/edit|', $this->url, $match);
+    $id = $match[1];
+    $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
+
+    // Display the object.
+    $entity = field_test_entity_load($id);
+    $entity->content = field_attach_view($entity_type, $entity);
+    $this->content = drupal_render($entity->content);
+    $this->assertText($term->name, 'Term name is displayed');
+  }
+
+  // Test formatters.
+  /**
+   *
+   */
+}
