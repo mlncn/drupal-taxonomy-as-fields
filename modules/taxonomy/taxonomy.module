@@ -1996,7 +1996,7 @@ function taxonomy_allowed_values($field) {
 /*
  * Implement hook_field_load().
  *
- * This preloads all taxonomy terms for a given object at once using
+ * This preloads all taxonomy terms for a given object at once 
  * and unsets values for invalid terms which don't exist.
  *
  */
@@ -2036,17 +2036,33 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
  * and the loading of the objects see #50
  */
 function _taxonomy_clean_field_cache($term) {
-  $fields = field_read_fields(array('type' => 'term'));
   $cids = array();
-  foreach ($fields as $field) {
-    if ($field['settings']['vid'] == $term->vid) {
-      $objects = field_attach_query($field['field_name'], array(array('value', $term->tid)));
+
+  // Determine object types that are not cacheable.
+  $obj_types = array();
+  foreach (field_info_fieldable_types() as $obj_type => $info) {
+    if (!$info['cacheable']) {
+      $obj_types[] = $obj_type;
+    }
+  }
+
+  // Load info for all taxonomy term fields.
+  $fields = field_read_fields(array('type' => 'term'));
+  foreach ($fields as $field_name => $field) {
+
+    // Assemble an array of vocabulary IDs that are used in this field.
+    $vids = array();
+    $vids[$field['settings']['vid']] = $field['settings']['vid'];
+    foreach ($field['settings']['allowed_values'] as $tree) {
+      $vids[$tree['vid']] = $tree['vid'];
+    }
+    
+    // Check this term's vocabulary against those used for the field's options.
+    if (in_array($term->vid, $vids)) {
+      $objects = field_attach_query($field['field_name'], array(array('value', $term->tid), array('type', $obj_types, 'NOT IN')));
       foreach ($objects as $obj_type => $ids) {
-        $info = field_info_fieldable_types($obj_type);
-        if ($info['cacheable']) {
-          foreach ($ids as $id) {
-            $cids[] = "field:$obj_type:id";
-          }
+        foreach ($ids as $id) {
+          $cids[] = "field:$obj_type:$id";
         }
       }
     }
