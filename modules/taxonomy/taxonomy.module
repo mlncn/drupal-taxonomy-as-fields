@@ -1859,7 +1859,16 @@ function taxonomy_field_info() {
       'description' => t('This field represents a taxonomy term reference.'),
       'default_widget' => 'options_select',
       'default_formatter' => 'term_default',
-      'settings' => array('vid' => array(0)),
+      'settings' => array(
+        'vid' => '0',
+        'parent' => '0',
+        'allowed_values' => array(
+          // array(
+          //  'vid' => '0',
+          //  'parent' => '0',
+          // ),
+        ),
+      ),
     ),
   );
 }
@@ -1876,19 +1885,14 @@ function taxonomy_field_widget_info_alter(&$info) {
  * Implement hook_field_schema().
  */
 function taxonomy_field_schema($field) {
-  switch ($field['type']) {
-    default:
-      $columns = array(
-        'value' => array(
-          'type' => 'int',
-          'unsigned' => TRUE,
-          'not null' => FALSE,
-        ),
-      );
-      break;
-  }
   return array(
-    'columns' => $columns,
+    'columns' => array(
+      'value' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+    ),
     'indexes' => array(
       'value' => array('value'),
     ),
@@ -1973,10 +1977,15 @@ function theme_field_formatter_term_plain($element) {
  */
 function taxonomy_allowed_values($field) {
   $options = array();
-  foreach ($field['settings']['vid'] as $vid) {
-    $tree = taxonomy_get_tree($vid);
-    if ($tree) {
-      foreach ($tree as $term) {
+  $trees[] = array(
+    'vid' => $field['settings']['vid'],
+    'parent' => $field['settings']['parent'],
+  );
+  array_unshift($field['settings']['allowed_values'], $trees);
+  foreach ($trees as $tree) {
+    $terms = taxonomy_get_tree($tree['vid'], $tree['parent']);
+    if ($terms) {
+      foreach ($terms as $term) {
         $options[$term->tid] = str_repeat('-', $term->depth) . $term->name;
       }
     }
@@ -1990,8 +1999,6 @@ function taxonomy_allowed_values($field) {
  * This preloads all taxonomy terms for a given object at once using
  * and unsets values for invalid terms which don't exist.
  *
- * @return
- *   array with 'term' object at that index
  */
 function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $age) {
   $tids = array();
@@ -2024,16 +2031,22 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
 
 /**
  * Helper function that clears field cache when terms are updated or deleted
+ *
+ * TODO figure out how to reverse the order of cacheable object type checking
+ * and the loading of the objects see #50
  */
 function _taxonomy_clean_field_cache($term) {
   $fields = field_read_fields(array('type' => 'term'));
   $cids = array();
   foreach ($fields as $field) {
-    if (in_array($term->vid, $field['settings']['vid'])) {
+    if ($field['settings']['vid'] == $term->vid) {
       $objects = field_attach_query($field['field_name'], array(array('value', $term->tid)));
       foreach ($objects as $obj_type => $ids) {
-        foreach ($ids as $id) {
-          $cids[] = "field:$obj_type:id";
+        $info = field_info_fieldable_types($obj_type);
+        if ($info['cacheable']) {
+          foreach ($ids as $id) {
+            $cids[] = "field:$obj_type:id";
+          }
         }
       }
     }
