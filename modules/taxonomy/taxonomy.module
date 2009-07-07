@@ -2054,7 +2054,7 @@ function _taxonomy_clean_field_cache($term) {
     
     // Check this term's vocabulary against those used for the field's options.
     if (in_array($term->vid, $vids)) {
-      $objects = field_attach_query($field['field_name'], array(array('value', $term->tid), array('type', $obj_types, 'NOT IN')));
+      $objects = field_attach_query($field['field_name'], array(array('value', $term->tid), array('type', $obj_types, 'NOT IN')), FIELD_QUERY_NO_LIMIT);
       foreach ($objects as $obj_type => $ids) {
         foreach ($ids as $id) {
           $cids[] = "field:$obj_type:$id";
