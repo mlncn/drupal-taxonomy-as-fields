@@ -1863,10 +1863,6 @@ function taxonomy_field_info() {
         'vid' => '0',
         'parent' => '0',
         'allowed_values' => array(
-          // array(
-          //  'vid' => '0',
-          //  'parent' => '0',
-          // ),
         ),
       ),
     ),
@@ -1997,8 +1993,7 @@ function taxonomy_allowed_values($field) {
  * Implement hook_field_load().
  *
  * This preloads all taxonomy terms for a given object at once 
- * and unsets values for invalid terms which don't exist.
- *
+ * and unsets values for invalid terms which do not exist.
  */
 function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $age) {
   $tids = array();
@@ -2008,7 +2003,7 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
       $tids[$item['value']] = $item['value'];
     }
   }
-  if (count($tids)) {
+  if (!empty($tids)) {
     $terms = array();
     $query = db_select('taxonomy_term_data', 't');
     $taxonomy_term_data = drupal_schema_fields_sql('taxonomy_term_data');
