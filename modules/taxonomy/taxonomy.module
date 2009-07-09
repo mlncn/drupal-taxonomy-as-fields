@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.module,v 1.484 2009/07/05 18:00:10 dries Exp $
+// $Id: taxonomy.module,v 1.485 2009/07/08 07:18:07 dries Exp $
 
 /**
  * @file
@@ -174,15 +174,17 @@ function taxonomy_menu() {
     'type' => MENU_LOCAL_TASK,
   );
 
-  $items['taxonomy/term/%taxonomy_terms'] = array(
+  $items['taxonomy/term/%taxonomy_term'] = array(
     'title' => 'Taxonomy term',
+    'title callback' => 'taxonomy_term_title',
+    'title arguments' => array(2),
     'page callback' => 'taxonomy_term_page',
     'page arguments' => array(2),
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
 
-  $items['taxonomy/term/%taxonomy_terms/view'] = array(
+  $items['taxonomy/term/%taxonomy_term/view'] = array(
     'title' => 'View',
     'type' => MENU_DEFAULT_LOCAL_TASK,
   );
@@ -195,7 +197,15 @@ function taxonomy_menu() {
     'type' => MENU_LOCAL_TASK,
     'weight' => 10,
   );
-
+  $items['taxonomy/term/%taxonomy_term/feed'] = array(
+    'title' => 'Taxonomy term',
+    'title callback' => 'taxonomy_term_title',
+    'title arguments' => array(2),
+    'page callback' => 'taxonomy_term_feed',
+    'page arguments' => array(2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
   $items['taxonomy/autocomplete'] = array(
     'title' => 'Autocomplete taxonomy',
     'page callback' => 'taxonomy_autocomplete',
@@ -1339,17 +1349,6 @@ function taxonomy_vocabulary_load($vid) {
 }
 
 /**
- * Return array of tids and join operator.
- *
- * This is a wrapper function for taxonomy_terms_parse_string which is called
- * by the menu system when loading a path with taxonomy terms.
- */
-function taxonomy_terms_load($str_tids) {
-  $terms = taxonomy_terms_parse_string($str_tids);
-  return $terms;
-}
-
-/**
  * Load multiple taxonomy terms based on certain conditions.
  *
  * This function should be used whenever you need to load more than one term
@@ -1416,6 +1415,7 @@ function taxonomy_term_load_multiple($tids = array(), $conditions = array()) {
   // $tids still to load, or if $conditions was passed without $tids.
   if ($tids || ($conditions && !$passed_tids)) {
     $query = db_select('taxonomy_term_data', 't');
+    $query->addTag('term_access');
     $query->join('taxonomy_vocabulary', 'v', 't.vid = v.vid');
     $taxonomy_term_data = drupal_schema_fields_sql('taxonomy_term_data');
     $query->addField('v', 'machine_name', 'vocabulary_machine_name');
@@ -1739,32 +1739,6 @@ function taxonomy_node_update_index($node) {
 }
 
 /**
- * Parses a comma or plus separated string of term IDs.
- *
- * @param $str_tids
- *   A string of term IDs, separated by plus or comma.
- *   comma (,) means AND
- *   plus (+) means OR
- *
- * @return an associative array with an operator key (either 'and'
- *   or 'or') and a tid key containing an array of the term ids.
- */
-function taxonomy_terms_parse_string($str_tids) {
-  $terms = array('operator' => '', 'tids' => array());
-  if (preg_match('/^([0-9]+[+ ])+[0-9]+$/', $str_tids)) {
-    $terms['operator'] = 'or';
-    // The '+' character in a query string may be parsed as ' '.
-    $terms['tids'] = preg_split('/[+ ]/', $str_tids);
-  }
-  elseif (preg_match('/^([0-9]+,)*[0-9]+$/', $str_tids)) {
-    $terms['operator'] = 'and';
-    $terms['tids'] = explode(',', $str_tids);
-  }
-  $terms['str_tids'] = $str_tids;
-  return $terms;
-}
-
-/**
  * Implement hook_help().
  */
 function taxonomy_help($path, $arg) {
@@ -1848,6 +1822,7 @@ function taxonomy_hook_info() {
     ),
   );
 }
+<<<<<<< taxonomy.module
 
 /**
  * Implement hook_field_info().
@@ -2003,7 +1978,7 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
       $tids[$item['value']] = $item['value'];
     }
   }
-  if (!empty($tids)) {
+  if ($tids) {
     $terms = array();
     $query = db_select('taxonomy_term_data', 't');
     $taxonomy_term_data = drupal_schema_fields_sql('taxonomy_term_data');
@@ -2065,4 +2040,17 @@ function _taxonomy_clean_field_cache($term) {
   if (count($cids)) {
     cache_clear_all($cids, 'cache_field');
   }
+}=======
+
+/**
+ * Title callback for term pages.
+ *
+ * @param $term
+ *   A term object.
+ * @return
+ *   The term name to be used as the page title.
+ */
+function taxonomy_term_title($term) {
+  return check_plain($term->name);
 }
+>>>>>>> 1.485
