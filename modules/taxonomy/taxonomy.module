@@ -1822,7 +1822,6 @@ function taxonomy_hook_info() {
     ),
   );
 }
-<<<<<<< taxonomy.module
 
 /**
  * Implement hook_field_info().
@@ -2040,7 +2039,7 @@ function _taxonomy_clean_field_cache($term) {
   if (count($cids)) {
     cache_clear_all($cids, 'cache_field');
   }
-}=======
+}
 
 /**
  * Title callback for term pages.
@@ -2053,4 +2052,3 @@ function _taxonomy_clean_field_cache($term) {
 function taxonomy_term_title($term) {
   return check_plain($term->name);
 }
->>>>>>> 1.485
