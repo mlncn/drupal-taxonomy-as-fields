@@ -1825,6 +1825,14 @@ function taxonomy_hook_info() {
 
 /**
  * Implement hook_field_info().
+ *
+ * Field settings:
+ * - allowed_values: a list array of one or more vocabulary trees:
+ *   - vid: a vocabulary ID.
+ *   - parent: a term ID of a term whose children are allowed. This should be
+ *     '0' if all terms in a vocabulary are allowed. The allowed values do not
+ *     include the parent term.
+ *
  */
 function taxonomy_field_info() {
   return array(
@@ -1834,9 +1842,11 @@ function taxonomy_field_info() {
       'default_widget' => 'options_select',
       'default_formatter' => 'term_default',
       'settings' => array(
-        'vid' => '0',
-        'parent' => '0',
         'allowed_values' => array(
+          array(
+            'vid' => '0',
+            'parent' => '0',
+          ),
         ),
       ),
     ),
@@ -1938,21 +1948,16 @@ function theme_field_formatter_term_plain($element) {
 }
 
 /**
- *  Create an array of the allowed values for this field.
+ * Create an array of the allowed values for this field.
  *
- *  Call the field's allowed_values function to retrieve the allowed
- *  values array.
+ * Call the field's allowed_values function to retrieve the allowed
+ * values array.
  *
- *  This function should imitate the features of _taxonomy_term_select
+ * @see _taxonomy_term_select()
  */
 function taxonomy_allowed_values($field) {
   $options = array();
-  $trees[] = array(
-    'vid' => $field['settings']['vid'],
-    'parent' => $field['settings']['parent'],
-  );
-  array_unshift($field['settings']['allowed_values'], $trees);
-  foreach ($trees as $tree) {
+  foreach ($field['settings']['allowed_values'] as $tree) {
     $terms = taxonomy_get_tree($tree['vid'], $tree['parent']);
     if ($terms) {
       foreach ($terms as $term) {
@@ -2000,9 +2005,6 @@ function taxonomy_field_load($obj_type, $objects, $field, $instances, &$items, $
 
 /**
  * Helper function that clears field cache when terms are updated or deleted
- *
- * TODO figure out how to reverse the order of cacheable object type checking
- * and the loading of the objects see #50
  */
 function _taxonomy_clean_field_cache($term) {
   $cids = array();
@@ -2020,23 +2022,25 @@ function _taxonomy_clean_field_cache($term) {
   foreach ($fields as $field_name => $field) {
 
     // Assemble an array of vocabulary IDs that are used in this field.
-    $vids = array();
-    $vids[$field['settings']['vid']] = $field['settings']['vid'];
     foreach ($field['settings']['allowed_values'] as $tree) {
       $vids[$tree['vid']] = $tree['vid'];
     }
     
     // Check this term's vocabulary against those used for the field's options.
     if (in_array($term->vid, $vids)) {
-      $objects = field_attach_query($field['field_name'], array(array('value', $term->tid), array('type', $obj_types, 'NOT IN')), FIELD_QUERY_NO_LIMIT);
-      foreach ($objects as $obj_type => $ids) {
-        foreach ($ids as $id) {
+      $conditions = array(array('value', $term->tid));
+      if ($obj_types) {
+        $conditions[] = array('type', $obj_types, 'NOT IN');
+      }
+      $results = field_attach_query($field['field_name'], $conditions, FIELD_QUERY_NO_LIMIT);
+      foreach ($results as $obj_type => $objects) {
+        foreach (array_keys($objects) as $id) {
           $cids[] = "field:$obj_type:$id";
         }
       }
     }
   }
-  if (count($cids)) {
+  if ($cids) {
     cache_clear_all($cids, 'cache_field');
   }
 }

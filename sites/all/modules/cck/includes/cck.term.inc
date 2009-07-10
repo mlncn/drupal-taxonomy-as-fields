@@ -13,18 +13,23 @@ function taxonomy_field_settings_form($field, $instance) {
   foreach ($vocabularies as $vocabulary) {
     $options[$vocabulary->vid] = $vocabulary->name;
   }
-  $form['vid'] = array(
-    '#type' => 'select',
-    '#title' => t('Vocabulary'),
-    '#default_value' => $field['settings']['vid'],
-    '#options' => $options,
-    '#required' => TRUE,
-    '#description' => t('The vocabulary which supplies the options for this field.'),
+  $form['allowed_values'] = array(
+    '#tree' => TRUE,
   );
-  $form['parent'] = array(
-    '#type' => 'value',
-    '#value' => $field['settings']['parent'],
-  );
+  foreach ($field['settings']['allowed_values'] as $delta => $tree) {
+    $form['allowed_values'][$delta]['vid'] = array(
+      '#type' => 'select',
+      '#title' => t('Vocabulary'),
+      '#default_value' => $tree['vid'],
+      '#options' => $options,
+      '#required' => TRUE,
+      '#description' => t('The vocabulary which supplies the options for this field.'),
+    );
+    $form['allowed_values'][$delta]['parent'] = array(
+      '#type' => 'value',
+      '#value' => $tree['parent'],
+    );
+  }
 
   return $form;
 }

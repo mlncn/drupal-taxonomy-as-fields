@@ -758,9 +758,12 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
       'field_name' => drupal_strtolower($this->randomName()),
       'type' => 'term',
       'settings' => array(
-        'vid' => $this->vocabulary->vid,
-        'parent' => '0',
-        'allowed_values' => array(),
+        'allowed_values' => array(
+          array(
+            'vid' => $this->vocabulary->vid,
+            'parent' => '0',
+          ),
+        ),
       )
     );
     field_create_field($this->field);
@@ -797,7 +800,7 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
       field_attach_validate('test_entity', $entity);
     }
     catch (FieldValidationException $e) {
-      $this->assertTrue($this->field['settings']['vid'] != $bad_term->vid, t('Wrong term causes validation error'));
+      $this->assertTrue($this->field['settings']['allowed_values'][0]['vid'] != $bad_term->vid, t('Wrong term causes validation error'));
     }
   }
 
@@ -819,9 +822,12 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
       'field_name' => $this->field_name,
       'type' => $field_type,
       'settings' => array(
-        'vid' => $this->vocabulary->vid,
-        'parent' => '0',
-        'allowed_values' => array(),
+        'allowed_values' => array(
+          array(
+            'vid' => $this->vocabulary->vid,
+            'parent' => '0',
+          ),
+        ),
       )
     );
     field_create_field($this->field);
@@ -858,7 +864,6 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     $this->assertText($term->name, t('Term name is displayed'));
   }
 
-  // Test formatters.
   /**
    *
    */
