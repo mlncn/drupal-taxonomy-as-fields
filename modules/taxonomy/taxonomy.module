@@ -1984,7 +1984,7 @@ function taxonomy_allowed_values($field) {
   return $options;
 }
 
-/*
+/**
  * Implement hook_field_load().
  *
  * This preloads all taxonomy terms for a given object at once 

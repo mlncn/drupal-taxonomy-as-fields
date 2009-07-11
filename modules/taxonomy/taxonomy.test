@@ -728,6 +728,9 @@ class TaxonomyHooksTestCase extends TaxonomyWebTestCase {
   }
 }
 
+/**
+ * Tests for taxonomy term field and formatter.
+ */
 class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
   protected $instance;
   protected $vocabulary;
@@ -808,19 +811,12 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
    * Test widgets.
    */
   function testTermfieldWidgets() {
-    $this->_testTermfieldWidgets('term', 'options_select');
-  }
-
-  /**
-   * Helper function for testTermfieldWidgets().
-   */
-  function _testTermfieldWidgets($field_type, $widget_type) {
-    // Setup a field and instance
+    // Setup a field and instance.
     $entity_type = 'test_entity';
     $this->field_name = drupal_strtolower($this->randomName());
     $this->field = array(
       'field_name' => $this->field_name,
-      'type' => $field_type,
+      'type' => 'term',
       'settings' => array(
         'allowed_values' => array(
           array(
@@ -836,12 +832,12 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
       'bundle' => FIELD_TEST_BUNDLE,
       'label' => $this->randomName() . '_label',
       'widget' => array(
-        'type' => $widget_type,
+        'type' => 'options_select',
       )
     );
     field_create_instance($this->instance);
 
-    // create a term in the vocabulary
+    // Create a term in the vocabulary.
     $term = $this->createTerm($this->vocabulary);
 
     // Display creation form.
@@ -863,8 +859,4 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     $this->content = drupal_render($entity->content);
     $this->assertText($term->name, t('Term name is displayed'));
   }
-
-  /**
-   *
-   */
 }
