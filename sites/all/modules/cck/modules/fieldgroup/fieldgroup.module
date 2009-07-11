@@ -1,5 +1,5 @@
 <?php
-// $Id: fieldgroup.module,v 1.91 2009/06/25 00:30:37 yched Exp $
+// $Id: fieldgroup.module,v 1.92 2009/07/10 11:31:39 yched Exp $
 
 /**
  * @file
@@ -31,7 +31,7 @@ function fieldgroup_menu() {
     // Create tabs for all possible bundles.
     $bundles = field_info_bundles();
     foreach ($bundles as $bundle_name => $bundle_label) {
-      $admin_path = cck_bundle_admin_path($bundle_name);
+      $admin_path = _cck_bundle_admin_path($bundle_name);
       $items[$admin_path .'/groups/%'] = array(
         'title' => 'Edit group',
         'page callback' => 'drupal_get_form',
@@ -172,7 +172,7 @@ function fieldgroup_group_edit_form_submit($form, &$form_state) {
   $form_values = $form_state['values'];
   $bundle = $form['#bundle'];
   fieldgroup_save_group($bundle, $form_values);
-  $form_state['redirect'] = cck_bundle_admin_path($bundle) .'/fields';
+  $form_state['redirect'] = _cck_bundle_admin_path($bundle) .'/fields';
 }
 
 function fieldgroup_remove_group(&$form_state, $bundle, $group_name) {
@@ -191,7 +191,7 @@ function fieldgroup_remove_group(&$form_state, $bundle, $group_name) {
   return confirm_form($form,
                   t('Are you sure you want to remove the group %label?',
                   array('%label' => t($group['label']))),
-                  cck_bundle_admin_path($bundle) .'/fields', t('This action cannot be undone.'),
+                  _cck_bundle_admin_path($bundle) .'/fields', t('This action cannot be undone.'),
                   t('Remove'), t('Cancel'));
 }
 
@@ -201,7 +201,7 @@ function fieldgroup_remove_group_submit($form, &$form_state) {
   $group_name = $form['#group_name'];
   fieldgroup_delete($bundle, $group_name);
   drupal_set_message(t('The group %group_name has been removed.', array('%group_name' => $group_name)));
-  $form_state['redirect'] = cck_bundle_admin_path($bundle) .'/fields';
+  $form_state['redirect'] = _cck_bundle_admin_path($bundle) .'/fields';
 }
 
 /*

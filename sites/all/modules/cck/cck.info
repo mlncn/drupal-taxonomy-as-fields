@@ -1,4 +1,4 @@
-; $Id: cck.info,v 1.5 2009/02/03 19:53:47 karens Exp $
+; $Id: cck.info,v 1.6 2009/07/11 00:33:00 yched Exp $
 name = CCK Field UI
 description = Add custom fields to users or content types using a User Interface.
 package = CCK

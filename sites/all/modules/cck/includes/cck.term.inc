@@ -1,11 +1,10 @@
 <?php
-// $Id$
+// $Id: cck.term.inc,v 1.1 2009/07/11 00:33:00 yched Exp $
 
 /**
- * Implementation of hook_field_settings_form()
- * on behalf of core List module.
+ * Implementation of hook_field_settings_form()
+ * on behalf of core List module.
  */
-
 function taxonomy_field_settings_form($field, $instance) {
   // Get the right values for allowed_values_function, which is a core setting.
   $options = array();

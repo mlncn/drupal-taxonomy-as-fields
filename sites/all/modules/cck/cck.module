@@ -1,5 +1,5 @@
 <?php
-// $Id: cck.module,v 1.19 2009/07/02 20:31:05 yched Exp $
+// $Id: cck.module,v 1.20 2009/07/10 11:31:38 yched Exp $
 /**
  * @file
  * Allows administrators to associate custom fields to content types.
@@ -48,6 +48,7 @@ function cck_menu_alter(&$items) {
   $items['admin/build/types']['page callback'] = 'cck_types_overview';
   $items['admin/build/types']['file'] = 'cck.admin.inc';
   $items['admin/build/types']['file path'] = drupal_get_path('module', 'cck') .'/includes';
+  // TODO : same thing for admin/content/taxonomy
 }
 
 /**
@@ -86,101 +87,89 @@ function cck_menu() {
     'type' => MENU_LOCAL_TASK,
     'weight' => 2,
   );
-  // Create an 'Edit' tab for the user.
-  $items['admin/settings/user/edit'] = array(
-    'title' => 'Edit',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('user_admin_settings'),
-    'access arguments' => array('administer users'),
-    'type' => MENU_DEFAULT_LOCAL_TASK,
-  );
-
 
   // Make sure this doesn't fire until field_bundles is working,
   // and tables are updated, needed to avoid errors on initial installation.
   if (!defined('MAINTENANCE_MODE')) {
     // Create tabs for all possible bundles.
     foreach (field_info_fieldable_types() as $obj_type => $info) {
-      foreach ($info['bundles'] as $bundle_name => $bundle_label) {
-        $admin_path = cck_bundle_admin_path($bundle_name);
-        $items[$admin_path .'/fields'] = array(
-          'title' => 'Manage fields',
-          'page callback' => 'drupal_get_form',
-          'page arguments' => array('cck_field_overview_form', $bundle_name),
-          'access arguments' => array('administer content types'),
-          'type' => MENU_LOCAL_TASK,
-          'weight' => 1,
-        );
-        // A dummy function to trigger a page refresh so that
-        // field menus get rebuilt correctly when new fields are added.
-        $items[$admin_path .'/fields/refresh'] = array(
-          'title' => 'Refresh menu',
-          'page callback' => 'drupal_get_form',
-          'page arguments' => array('cck_field_menu_refresh', $bundle_name),
-          'access arguments' => array('administer content types'),
-          'type' => MENU_CALLBACK,
-          'weight' => 1,
-        );
-        $items[$admin_path .'/display'] = array(
-          'title' => 'Display fields',
-          'page callback' => 'drupal_get_form',
-          'page arguments' => array('cck_display_overview_form', $bundle_name),
-          'access arguments' => array('administer content types'),
-          'type' => MENU_LOCAL_TASK,
-          'weight' => 2,
-        );
+      foreach ($info['bundles'] as $bundle_name => $bundle_info) {
+        if (isset($bundle_info['admin'])) {
+          // Extract informations from the bundle description.
+          $path = $bundle_info['admin']['path'];
+          $bundle_arg = isset($bundle_info['admin']['bundle argument']) ? $bundle_info['admin']['bundle argument'] : $bundle_name;
+          $access = array_intersect_key($bundle_info['admin'], drupal_map_assoc(array('access callback', 'access arguments')));
 
-        // 'Display fields' tab and context secondary tabs.
-        $tabs = cck_build_modes($obj_type);
-        foreach ($tabs as $key => $tab) {
-          $items[$admin_path .'/display/'. $key] = array(
-            'title' => $tab['title'],
-            'page arguments' => array('cck_display_overview_form', $bundle_name, $key),
-            'access arguments' => array('administer content types'),
-            'type' => $key == 'basic' ? MENU_DEFAULT_LOCAL_TASK : MENU_LOCAL_TASK,
-            'weight' => $key == 'basic' ? 0 : 1,
-          );
-        }
+          $items[$path .'/fields'] = array(
+            'title' => 'Manage fields',
+            'page callback' => 'drupal_get_form',
+            'page arguments' => array('cck_field_overview_form', $obj_type, $bundle_arg),
+            'type' => MENU_LOCAL_TASK,
+            'weight' => 1,
+          ) + $access;
+          // A dummy function to trigger a page refresh so that
+          // field menus get rebuilt correctly when new fields are added.
+          $items[$path .'/fields/refresh'] = array(
+            'title' => 'Refresh menu',
+            'page callback' => 'drupal_get_form',
+            'page arguments' => array('cck_field_menu_refresh', $obj_type, $bundle_arg),
+            'type' => MENU_CALLBACK,
+            'weight' => 1,
+          ) + $access;
+          $items[$path .'/display'] = array(
+            'title' => 'Display fields',
+            'page callback' => 'drupal_get_form',
+            'page arguments' => array('cck_display_overview_form', $obj_type, $bundle_arg),
+            'type' => MENU_LOCAL_TASK,
+            'weight' => 2,
+          ) + $access;
 
-        // Add tabs for any instances that are already created.
-        $instances = field_info_instances($bundle_name);
-        foreach ($instances as $instance) {
-          $field_name = $instance['field_name'];
-          $items[$admin_path .'/fields/'. $field_name] = array(
-            'title' => $instance['label'],
-            'page callback' => 'drupal_get_form',
-            'page arguments' => array('cck_field_edit_form', $bundle_name, $field_name),
-            'access arguments' => array('administer content types'),
-            'type' => MENU_LOCAL_TASK,
-          );
-          $items[$admin_path .'/fields/'. $field_name .'/edit'] = array(
-            'title' => 'Configure instance settings',
-            'page callback' => 'drupal_get_form',
-            'page arguments' => array('cck_field_edit_form', $bundle_name, $field_name),
-            'access arguments' => array('administer content types'),
-            'type' => MENU_DEFAULT_LOCAL_TASK,
-          );
-          $items[$admin_path .'/fields/'. $field_name .'/field-settings'] = array(
-            'title' => 'Configure field settings',
-            'page callback' => 'drupal_get_form',
-            'page arguments' => array('cck_field_settings_form', $bundle_name, $field_name),
-            'access arguments' => array('administer content types'),
-            'type' => MENU_LOCAL_TASK,
-          );
-          $items[$admin_path .'/fields/'. $field_name .'/widget-type'] = array(
-            'title' => 'Change widget type',
-            'page callback' => 'drupal_get_form',
-            'page arguments' => array('cck_widget_type_form', $bundle_name, $field_name),
-            'access arguments' => array('administer content types'),
-            'type' => MENU_LOCAL_TASK,
-          );
-          $items[$admin_path .'/fields/'. $field_name .'/remove'] = array(
-            'title' => 'Remove instance',
-            'page callback' => 'drupal_get_form',
-            'page arguments' => array('cck_field_remove_form', $bundle_name, $field_name),
-            'access arguments' => array('administer content types'),
-            'type' => MENU_LOCAL_TASK,
-          );
+          // 'Display fields' tab and context secondary tabs.
+          $tabs = cck_build_modes($obj_type);
+          foreach ($tabs as $key => $tab) {
+            $items[$path .'/display/'. $key] = array(
+              'title' => $tab['title'],
+              'page arguments' => array('cck_display_overview_form', $obj_type, $bundle_arg, $key),
+              'type' => $key == 'basic' ? MENU_DEFAULT_LOCAL_TASK : MENU_LOCAL_TASK,
+              'weight' => $key == 'basic' ? 0 : 1,
+            ) + $access;
+          }
+
+          // Add tabs for any instances that are already created.
+          $instances = field_info_instances($bundle_name);
+          foreach ($instances as $instance) {
+            $field_name = $instance['field_name'];
+            $items[$path .'/fields/'. $field_name] = array(
+              'title' => $instance['label'],
+              'page callback' => 'drupal_get_form',
+              'page arguments' => array('cck_field_edit_form', $obj_type, $bundle_arg, $field_name),
+              'type' => MENU_LOCAL_TASK,
+            ) + $access;
+            $items[$path .'/fields/'. $field_name .'/edit'] = array(
+              'title' => 'Configure instance settings',
+              'page callback' => 'drupal_get_form',
+              'page arguments' => array('cck_field_edit_form', $obj_type, $bundle_arg, $field_name),
+              'type' => MENU_DEFAULT_LOCAL_TASK,
+            ) + $access;
+            $items[$path .'/fields/'. $field_name .'/field-settings'] = array(
+              'title' => 'Configure field settings',
+              'page callback' => 'drupal_get_form',
+              'page arguments' => array('cck_field_settings_form', $obj_type, $bundle_arg, $field_name),
+              'type' => MENU_LOCAL_TASK,
+            ) + $access;
+            $items[$path .'/fields/'. $field_name .'/widget-type'] = array(
+              'title' => 'Change widget type',
+              'page callback' => 'drupal_get_form',
+              'page arguments' => array('cck_widget_type_form', $obj_type, $bundle_arg, $field_name),
+              'type' => MENU_LOCAL_TASK,
+            ) + $access;
+            $items[$path .'/fields/'. $field_name .'/remove'] = array(
+              'title' => 'Remove instance',
+              'page callback' => 'drupal_get_form',
+              'page arguments' => array('cck_field_remove_form', $obj_type, $bundle_arg, $field_name),
+              'type' => MENU_LOCAL_TASK,
+            ) + $access;
+          }
         }
       }
     }
@@ -441,20 +430,20 @@ function cck_extra_field_values($bundle_name) {
   if (empty($info)) {
     $info = array();
     $bundles = field_info_bundles();
-    foreach ($bundles as $bundle => $bundle_label) {
+    foreach ($bundles as $name => $bundle_info) {
       // Gather information about non-CCK 'fields'.
-      $extra = module_invoke_all('cck_extra_fields', $bundle);
-      drupal_alter('cck_extra_fields', $extra, $bundle);
+      $extra = module_invoke_all('cck_extra_fields', $name);
+      drupal_alter('cck_extra_fields', $extra, $name);
 
       // Add saved weights.
-      foreach (variable_get('cck_extra_weights_'. $bundle, array()) as $key => $value) {
+      foreach (variable_get('cck_extra_weights_'. $name, array()) as $key => $value) {
         // Some stored entries might not exist anymore, for instance if uploads
         // have been disabled, or vocabularies removed...
         if (isset($extra[$key])) {
           $extra[$key]['weight'] = $value;
         }
       }
-      $info[$bundle] = $extra;
+      $info[$name] = $extra;
     }
   }
   if (array_key_exists($bundle_name, $info)) {
@@ -567,13 +556,10 @@ function cck_node_type($op, $info) {
 /**
  * Helper function to create the right administration path for a bundle.
  */
-function cck_bundle_admin_path($bundle_name) {
-  if ($bundle_name == 'user') {
-    return 'admin/user/settings';
-  }
-  else {
-    return 'admin/build/node-type/' . str_replace('_', '-', $bundle_name);
-  }
+function _cck_bundle_admin_path($bundle_name) {
+  $bundles = field_info_bundles();
+  $bundle_info = $bundles[$bundle_name];
+  return isset($bundle_info['admin']['real path']) ? $bundle_info['admin']['real path'] : $bundle_info['admin']['path'];
 }
 
 /**

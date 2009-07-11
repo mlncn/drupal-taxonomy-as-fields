@@ -1,5 +1,5 @@
 <?php
-// $Id: cck.admin.inc,v 1.22 2009/07/02 21:22:51 yched Exp $
+// $Id: cck.admin.inc,v 1.23 2009/07/10 11:31:38 yched Exp $
 
 /**
  * @file
@@ -74,10 +74,10 @@ function cck_fields_list() {
   foreach ($instances as $bundle => $info) {
     foreach ($info as $field_name => $instance) {
       $field = field_info_field($field_name);
+      $admin_path = _cck_bundle_admin_path($bundle);
       $rows[$field_name]['data'][0] = $field['locked'] ? t('@field_name (Locked)', array('@field_name' => $field_name)) : $field_name;
       $rows[$field_name]['data'][1] = t($field_types[$field['type']]['label']);
-      $admin_path = cck_bundle_admin_path($bundle);
-      $rows[$field_name]['data'][2][] = l($bundles[$bundle], $admin_path .'/fields');
+      $rows[$field_name]['data'][2][] = l($bundles[$bundle]['label'], $admin_path .'/fields');
       $rows[$field_name]['class'] = $field['locked'] ? 'menu-disabled' : '';
     }
   }
@@ -122,10 +122,11 @@ function cck_inactive_message($bundle) {
  * Allows fields to be reordered and nested in fieldgroups using
  * JS drag-n-drop. Non-field form elements can also be moved around.
  */
-function cck_field_overview_form(&$form_state, $bundle) {
+function cck_field_overview_form(&$form_state, $obj_type, $bundle) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
 
   cck_inactive_message($bundle);
-  $admin_path = cck_bundle_admin_path($bundle);
+  $admin_path = _cck_bundle_admin_path($bundle);
 
   // When displaying the form, make sure the list of fields
   // is up-to-date.
@@ -484,7 +485,7 @@ function _cck_field_overview_form_validate_add_existing($form, &$form_state) {
 function cck_field_overview_form_submit($form, &$form_state) {
   $form_values = $form_state['values'];
   $bundle = $form['#bundle'];
-  $admin_path = cck_bundle_admin_path($bundle);
+  $admin_path = _cck_bundle_admin_path($bundle);
 
   // Update field weights.
   $extra = array();
@@ -595,9 +596,11 @@ function cck_field_overview_form_submit($form, &$form_state) {
  * Form includes form widgets to select which fields appear for teaser, full node
  * and how the field labels should be rendered.
  */
-function cck_display_overview_form(&$form_state, $bundle, $contexts_selector = 'basic') {
+function cck_display_overview_form(&$form_state, $obj_type, $bundle, $contexts_selector = 'basic') {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   cck_inactive_message($bundle);
-  $admin_path = cck_bundle_admin_path($bundle);
+  $admin_path = _cck_bundle_admin_path($bundle);
 
   // Gather type information.
   $entity = field_info_bundle_entity($bundle);
@@ -851,7 +854,9 @@ function cck_field_has_data($field_name) {
 /**
  * Menu callback; presents the field settings edit page.
  */
-function cck_field_settings_form(&$form_state, $bundle, $field_name) {
+function cck_field_settings_form(&$form_state, $obj_type, $bundle, $field_name) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   $instance = field_info_field($field_name, $bundle);
   $field = field_info_field($field_name);
 
@@ -978,14 +983,16 @@ function cck_field_update_field($field) {
 /**
  * Menu callback; select a widget for the field.
  */
-function cck_widget_type_form(&$form_state, $bundle, $field_name) {
+function cck_widget_type_form(&$form_state, $obj_type, $bundle, $field_name) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   $instance = field_read_instance($field_name, $bundle);
   $field = field_read_field($field_name);
 
   $field_type = field_info_field_types($field['type']);
   $widget_type = field_info_widget_types($instance['widget']['type']);
   $bundles = field_info_bundles();
-  $bundle_label = $bundles[$bundle];
+  $bundle_label = $bundles[$bundle]['label'];
 
   $form = array();
   $form['basic'] = array(
@@ -1048,10 +1055,12 @@ function cck_widget_type_form_submit($form, &$form_state) {
 /**
  * Menu callback; present a form for removing a field from a content type.
  */
-function cck_field_remove_form(&$form_state, $bundle, $field_name) {
+function cck_field_remove_form(&$form_state, $obj_type, $bundle, $field_name) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   $field = field_info_field($field_name);
   $instance = field_info_instance($field_name, $bundle);
-  $admin_path = cck_bundle_admin_path($bundle);
+  $admin_path = _cck_bundle_admin_path($bundle);
 
   $form = array();
   $form['bundle'] = array(
@@ -1088,7 +1097,7 @@ function cck_field_remove_form_submit($form, &$form_state) {
   $instance = field_info_instance($form_values['field_name'], $form_values['bundle']);
   $bundles = field_info_bundles();
   $bundle = $form_values['bundle'];
-  $bundle_label = $bundles[$bundle];
+  $bundle_label = $bundles[$bundle]['label'];
 
   if ($field['locked']) {
     return;
@@ -1121,7 +1130,9 @@ function cck_field_remove_form_submit($form, &$form_state) {
 /**
  * Menu callback; presents the field instance edit page.
  */
-function cck_field_edit_form(&$form_state, $bundle, $field_name) {
+function cck_field_edit_form(&$form_state, $obj_type, $bundle, $field_name) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   $output = '';
   $instance = field_read_instance($field_name, $bundle);
   $field = field_read_field($field_name);
@@ -1147,9 +1158,9 @@ function cck_field_edit_form(&$form_state, $bundle, $field_name) {
   $form['instance'] = array(
     '#tree' => TRUE,
     '#type' => 'fieldset',
-    '#title' => t('%type settings', array('%type' => $bundles[$bundle])),
+    '#title' => t('%type settings', array('%type' => $bundles[$bundle]['label'])),
     '#description' => t('These settings apply only to the %field field when used in the %type type.', array(
-      '%field' => $instance['label'], '%type' => $bundles[$bundle])),
+      '%field' => $instance['label'], '%type' => $bundles[$bundle]['label'])),
   );
 
   // Build the non-configurable instance values.
@@ -1186,7 +1197,7 @@ function cck_field_edit_form(&$form_state, $bundle, $field_name) {
     'type' =>   array('#type' => 'value', '#value' => $instance['widget']['type']),
     'module' => array('#type' => 'value', '#value' => $widget_type['module']),
     'active' => array('#type' => 'value', '#value' => !empty($field['instance']['widget']['active']) ? 1 : 0),
-    );
+  );
 
   // Add additional field instance settings from the field module.
   $additions = module_invoke($field['module'], 'field_instance_settings_form', $field, $instance);
@@ -1223,7 +1234,7 @@ function cck_field_edit_form(&$form_state, $bundle, $field_name) {
     $form['instance']['default_value_function'] = array(
       '#type' => 'value',
       '#default_value' => 'cck_field_default_value',
-      );
+    );
 
     // We can't tell at the time we build the form if this is a programmed
     // form or not, so we always end up adding the default value widget
@@ -1499,7 +1510,7 @@ function cck_next_destination(&$form_state, $bundle) {
     return cck_get_destinations($destinations);
   }
   else {
-    $admin_path = cck_bundle_admin_path($bundle);
+    $admin_path = _cck_bundle_admin_path($bundle);
     return $admin_path .'/fields';
   }
 }
@@ -1509,7 +1520,9 @@ function cck_next_destination(&$form_state, $bundle) {
  * menu_rebuild() will work right when creating a new field
  * that creates a new menu item.
  */
-function cck_field_menu_refresh(&$form_state, $bundle) {
+function cck_field_menu_refresh(&$form_state, $obj_type, $bundle) {
+  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+
   menu_rebuild();
   $destinations = cck_next_destination($form_state, $bundle);
   if (is_array($destinations)) {
