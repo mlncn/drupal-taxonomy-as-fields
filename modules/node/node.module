@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1080 2009/07/07 13:51:58 dries Exp $
+// $Id: node.module,v 1.1082 2009/07/10 05:58:13 webchick Exp $
 
 /**
  * @file
@@ -124,17 +124,28 @@ function node_cron() {
 function node_fieldable_info() {
   $return = array(
     'node' => array(
-      'name' => t('Node'),
-      'id key' => 'nid',
-      'revision key' => 'vid',
-      'bundle key' => 'type',
+      'label' => t('Node'),
+      'object keys' => array(
+        'id' => 'nid',
+        'revision' => 'vid',
+        'bundle' => 'type',
+      ),
       // Node.module handles its own caching.
       // 'cacheable' => FALSE,
-      // Bundles must provide human readable name so
-      // we can create help and error messages about them.
-      'bundles' => node_type_get_names(),
+      'bundles' => array(),
     ),
   );
+  // Bundles must provide a human readable name so we can create help and error
+  // messages, and the path to attach Field admin pages to.
+  foreach (node_type_get_names() as $type => $name) {
+    $return['node']['bundles'][$type] = array(
+      'label' => $name,
+      'admin' => array(
+        'path' => 'admin/build/node-type/' . str_replace('_', '-', $type),
+        'access arguments' => array('administer content types'),
+      ),
+    );
+  }
   return $return;
 }
 
@@ -1294,6 +1305,10 @@ function node_permission() {
       'title' => t('Delete revisions'),
       'description' => t('Delete content revisions.'),
     ),
+    'view own unpublished content' => array(
+      'title' => t('View own unpublished content'),
+      'description' => t('View unpublished content created by the user'),
+    ),
   );
 
   foreach (node_type_get_types() as $type) {
@@ -2271,17 +2286,22 @@ function node_access($op, $node, $account = NULL) {
     return $access;
   }
 
+  // Check if authors can view their own unpublished nodes.
+  if ($op == 'view' && !$node->status && user_access('view own unpublished content', $account) && $account->uid == $node->uid && $account->uid != 0) {
+    return TRUE;
+  }
+
   // If the module did not override the access rights, use those set in the
   // node_access table.
-  if ($op != 'create' && $node->nid && $node->status) {
+  if ($op != 'create' && $node->nid) {
     $query = db_select('node_access');
     $query->addExpression('COUNT(*)');
-    $query
-      ->condition(db_or()
-        ->condition('nid', 0)
-        ->condition('nid', $node->nid)
-      )
-      ->condition('grant_' . $op, 1, '>=');
+    $query->condition('grant_' . $op, 1, '>=');
+    $nids = db_or()->condition('nid', $node->nid);
+    if ($node->status) {
+      $nids->condition('nid', 0);
+    }
+    $query->condition($nids);
 
     $grants = db_or();
     foreach (node_access_grants($op, $account) as $realm => $gids) {
@@ -2298,11 +2318,6 @@ function node_access($op, $node, $account = NULL) {
     return $query
       ->execute()
       ->fetchField();
-  }
-
-  // Let authors view their own nodes.
-  if ($op == 'view' && $account->uid == $node->uid && $account->uid != 0) {
-    return TRUE;
   }
 
   return FALSE;
