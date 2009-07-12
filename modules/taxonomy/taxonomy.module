@@ -2072,3 +2072,44 @@ function _taxonomy_clean_field_cache($term) {
 function taxonomy_term_title($term) {
   return check_plain($term->name);
 }
+
+/**
+ * Helper functions to find fields that use a vocabulary.
+ *
+ * @param $vid
+ *   A vocabulary ID.
+ * @param $tid
+ *   A term ID.
+ * @return
+ *   An array of field names.
+ */
+function _taxonomy_get_fields($vid, $tid = 0) {
+  $field_names = array();
+
+  // Load info for all taxonomy term fields.
+  $fields = field_read_fields(array('type' => 'term'));
+  foreach ($fields as $field_name => $field) {
+
+    // Assemble an array of vocabulary IDs that are used in this field.
+    foreach ($field['settings']['allowed_values'] as $tree) {
+      $field_names[$tree['vid']][$tree['parent']] = $field_name;
+    }
+  }
+
+  if (array_key_exists($vid, $field_names)) {
+    $return = array($field_names[$vid][0]);
+  }
+  else {
+    return array();
+  }
+
+  if ($tid) {
+    $parents = taxonomy_get_parents_all($tid);
+    foreach ($parents as $parent) {
+      if (array_key_exists($parent->tid, $field_names[$vid])) {
+        $return = array_merge($return, $field_names[$vid][$parent->tid]);
+      }
+    }
+  }
+  return $return;
+}
