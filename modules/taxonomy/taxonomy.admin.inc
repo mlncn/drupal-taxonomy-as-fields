@@ -133,6 +133,7 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#description' => t('The unique machine readable name for this vocabulary, used for theme templates, can only contain lowercase letters, numbers and underscores.'),
     '#required' => TRUE,
   );
+  // TODO Help text should be associated with the field or instance.
   $form['help'] = array(
     '#type' => 'textfield',
     '#title' => t('Help text'),
@@ -145,27 +146,22 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#title' => t('Description'),
     '#default_value' => $edit['description'],
   );
-  if (module_exists('term')) {
-    $edit['nodes'] = array();
-    if (array_key_exists('vid', $edit)) {
-      $instances = array();
-      foreach (field_read_fields(array('field_name' => $edit['machine_name'], 'module' => 'term')) as $field) {
-        if ($field['settings']['vid'] == $edit['vid']) {
-          $fields[] = $field['field_name'];
-          $instances = array_merge(field_read_instances(array('field_name' => $fields)), $instances);
-        }
-      }
+  // TODO This shouldn't be called nodes, because it's fields and bundles.
+  $edit['nodes'] = array();
+  if (array_key_exists('vid', $edit)) {
+    $nodes = array();
+    $field_names = _taxonomy_get_fields($edit['vid']);
+    foreach ($field_names as $field_name) {
+      $instances = field_read_instances(array('field_name' => $field_name));
+      $nodes[$field_name]['data'] = $field_name;
       foreach ($instances as $instance) {
-        $edit['nodes'][] = $instance['bundle'];
+        $nodes[$field_name]['children'][] = $instance['bundle'];
       }
     }
-    $form['nodes'] = array(
-      '#type' => 'checkboxes',
-      '#title' => t('Apply to content types'),
-      '#default_value' => $edit['nodes'],
-      '#options' => array_map('check_plain', node_type_get_names()),
-    );
   }
+  $form['nodes'] = array(
+    '#markup' => theme('item_list', $nodes, 'Used in fields'),
+  );
   $form['settings'] = array(
     '#type' => 'fieldset',
     '#title' => t('Settings'),
@@ -176,18 +172,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#title' => t('Tags'),
     '#default_value' => $edit['tags'],
     '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
-  );
-  $form['settings']['multiple'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Multiple select'),
-    '#default_value' => $edit['multiple'],
-    '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
-  );
-  $form['settings']['required'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Required'),
-    '#default_value' => $edit['required'],
-    '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
   );
 
   // @TODO - what?  this *disables* multiple parents, and there's no UI way to turn it on!?!
