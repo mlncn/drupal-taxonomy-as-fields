@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.18 2009/07/10 05:58:13 webchick Exp $
+// $Id: field.api.php,v 1.20 2009/07/11 14:25:40 dries Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -77,8 +77,8 @@ function hook_fieldable_info() {
     $return['taxonomy_term']['bundles'][$vocabulary->machine_name] = array(
       'label' => $vocabulary->name,
       'admin' => array(
-        'path' => 'admin/content/taxonomy/%taxonomy_vocabulary',
-        'real path' => 'admin/content/taxonomy/' . $vocabulary->vid,
+        'path' => 'admin/build/taxonomy/%taxonomy_vocabulary',
+        'real path' => 'admin/build/taxonomy/' . $vocabulary->vid,
         'bundle argument' => 3,
         'access arguments' => array('administer taxonomy'),
       ),
@@ -368,9 +368,6 @@ function hook_field_validate($obj_type, $object, $field, $instance, $items, &$er
 /**
  * Define custom presave behavior for this module's field types.
  *
- * TODO: The behavior of this hook is going to change (see
- * field_attach_presave()).
- *
  * @param $obj_type
  *   The type of $object.
  * @param $object
@@ -507,8 +504,7 @@ function hook_field_prepare_translation($obj_type, $object, $field, $instance, $
  * Field API will call this function as many times as needed.
  *
  * @param $form
- *   The entire form array, $form['#node'] holds node information.
- *   TODO: Not #node any more.
+ *   The entire form array.
  * @param $form_state
  *   The form_state, $form_state['values'][$field['field_name']]
  *   holds the field's form values.
