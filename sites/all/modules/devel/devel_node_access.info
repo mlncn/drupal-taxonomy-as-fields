@@ -1,5 +1,0 @@
-; $Id: devel_node_access.info,v 1.9 2008/05/17 03:50:22 weitzman Exp $
-name = Devel node access
-description = Developer blocks and page illustrating relevant node_access records.
-package = Development
-core = 7.x

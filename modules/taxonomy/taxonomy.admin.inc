@@ -12,15 +12,20 @@
  * @ingroup forms
  * @see taxonomy_overview_vocabularies_submit()
  * @see theme_taxonomy_overview_vocabularies()
- * @todo this function displays list of node types where a vocabulary applies. removal of taxonomy_vocabulary_node_type table
- *  means this has to be done differently.
  */
 function taxonomy_overview_vocabularies() {
   $vocabularies = taxonomy_get_vocabularies();
   $form = array('#tree' => TRUE);
   foreach ($vocabularies as $vocabulary) {
+    $types = array();
+    foreach ($vocabulary->nodes as $type) {
+      $node_type = node_type_get_name($type);
+      $types[] = $node_type ? check_plain($node_type) : check_plain($type);
+    }
     $form[$vocabulary->vid]['#vocabulary'] = $vocabulary;
     $form[$vocabulary->vid]['name'] = array('#markup' => check_plain($vocabulary->name));
+    $form[$vocabulary->vid]['types'] = array('#markup' => implode(', ', $types));
+    $form[$vocabulary->vid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $vocabulary->weight);
     $form[$vocabulary->vid]['edit'] = array('#markup' => l(t('edit vocabulary'), "admin/build/taxonomy/$vocabulary->vid"));
     $form[$vocabulary->vid]['list'] = array('#markup' => l(t('list terms'), "admin/build/taxonomy/$vocabulary->vid/list"));
     $form[$vocabulary->vid]['add'] = array('#markup' => l(t('add terms'), "admin/build/taxonomy/$vocabulary->vid/add"));
@@ -30,6 +35,9 @@ function taxonomy_overview_vocabularies() {
   // vocabulary exists.
   if (count($vocabularies) > 1) {
     $form['submit'] = array('#type' => 'submit', '#value' => t('Save'));
+  }
+  elseif (isset($vocabulary)) {
+    unset($form[$vocabulary->vid]['weight']);
   }
   return $form;
 }
@@ -41,7 +49,8 @@ function taxonomy_overview_vocabularies() {
  */
 function taxonomy_overview_vocabularies_submit($form, &$form_state) {
   foreach ($form_state['values'] as $vid => $vocabulary) {
-    if (is_numeric($vid)) {
+    if (is_numeric($vid) && $form[$vid]['#vocabulary']->weight != $form_state['values'][$vid]['weight']) {
+      $form[$vid]['#vocabulary']->weight = $form_state['values'][$vid]['weight'];
       taxonomy_vocabulary_save($form[$vid]['#vocabulary']);
     }
   }
@@ -62,6 +71,11 @@ function theme_taxonomy_overview_vocabularies($form) {
 
       $row = array();
       $row[] = drupal_render($vocabulary['name']);
+      $row[] = drupal_render($vocabulary['types']);
+      if (isset($vocabulary['weight'])) {
+        $vocabulary['weight']['#attributes']['class'] = 'vocabulary-weight';
+        $row[] = drupal_render($vocabulary['weight']);
+      }
       $row[] = drupal_render($vocabulary['edit']);
       $row[] = drupal_render($vocabulary['list']);
       $row[] = drupal_render($vocabulary['add']);
@@ -73,21 +87,13 @@ function theme_taxonomy_overview_vocabularies($form) {
     $rows[] = array(array('data' => t('No vocabularies available. <a href="@link">Add vocabulary</a>.', array('@link' => url('admin/build/taxonomy/add'))), 'colspan' => '5'));
   }
 
-  $header = array(t('Vocabulary name'));
+  $header = array(t('Vocabulary name'), t('Content types'));
+  if (isset($form['submit'])) {
+    $header[] = t('Weight');
+    drupal_add_tabledrag('taxonomy', 'order', 'sibling', 'vocabulary-weight');
+  }
   $header[] = array('data' => t('Operations'), 'colspan' => '3');
   return theme('table', $header, $rows, array('id' => 'taxonomy')) . drupal_render_children($form);
-}
-
-
-/**
- * Take a user-entered name and make it machine-safe.
- *
- * Replace spaces and all unknown characters with underscores and lowercase.
- *
- * @TODO get this into common.inc
- */
-function drupal_system_string($string, $replacement = '_') {
-  return preg_replace('/[^a-z0-9]+/', $replacement, strtolower($string));
 }
 
 /**
@@ -106,11 +112,13 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     'machine_name' => '',
     'description' => '',
     'help' => '',
+    'nodes' => array(),
     'hierarchy' => 0,
     'relations' => 0,
     'tags' => 0,
     'multiple' => 0,
     'required' => 0,
+    'weight' => 0,
   );
   $form['#vocabulary'] = (object) $edit;
   // Check whether we need a deletion confirmation form.
@@ -145,27 +153,12 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#title' => t('Description'),
     '#default_value' => $edit['description'],
   );
-  if (module_exists('term')) {
-    $edit['nodes'] = array();
-    if (array_key_exists('vid', $edit)) {
-      $instances = array();
-      foreach (field_read_fields(array('field_name' => $edit['machine_name'], 'module' => 'term')) as $field) {
-        if ($field['settings']['vid'] == $edit['vid']) {
-          $fields[] = $field['field_name'];
-          $instances = array_merge(field_read_instances(array('field_name' => $fields)), $instances);
-        }
-      }
-      foreach ($instances as $instance) {
-        $edit['nodes'][] = $instance['bundle'];
-      }
-    }
-    $form['nodes'] = array(
-      '#type' => 'checkboxes',
-      '#title' => t('Apply to content types'),
-      '#default_value' => $edit['nodes'],
-      '#options' => array_map('check_plain', node_type_get_names()),
-    );
-  }
+  $form['nodes'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Apply to content types'),
+    '#default_value' => $edit['nodes'],
+    '#options' => array_map('check_plain', node_type_get_names()),
+  );
   $form['settings'] = array(
     '#type' => 'fieldset',
     '#title' => t('Settings'),
@@ -189,8 +182,6 @@ function taxonomy_form_vocabulary(&$form_state, $edit = array()) {
     '#default_value' => $edit['required'],
     '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
   );
-
-  // @TODO - what?  this *disables* multiple parents, and there's no UI way to turn it on!?!
   // Set the hierarchy to "multiple parents" by default. This simplifies the
   // vocabulary form and standardizes the term form.
   $form['hierarchy'] = array(
@@ -261,36 +252,6 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
       drupal_set_message(t('Updated vocabulary %name.', array('%name' => $vocabulary->name)));
       watchdog('taxonomy', 'Updated vocabulary %name.', array('%name' => $vocabulary->name), WATCHDOG_NOTICE, l(t('edit'), 'admin/build/taxonomy/' . $vocabulary->vid));
       break;
-  }
-  if (module_exists('term')) {
-    if (!field_read_field($vocabulary->machine_name)) {
-      $field = array(
-        'field_name' => $vocabulary->machine_name,
-        'module' => 'term',
-        'type' => 'term',
-        'cardinality' => ($vocabulary->multiple ? FIELD_CARDINALITY_UNLIMITED : 1),
-        'settings' => array(
-          'vid' => $vocabulary->vid,
-        ),
-      );
-      field_create_field($field);
-    }
-    $instance = array(
-      'field_name' => $vocabulary->machine_name,
-      'bundle' => '',
-      'label' => $vocabulary->name,
-      'description' => $vocabulary->description,
-      'required' => $vocabulary->required,
-      'widget' => array(
-        'type' => 'options_select',
-      ),
-    );
-    foreach ($vocabulary->nodes as $node_type) {
-      $instance['bundle'] = $node_type;
-      if (!field_read_instance($vocabulary->machine_name, $node_type)) {
-        field_create_instance($instance);
-      }
-    }
   }
 
   $form_state['vid'] = $vocabulary->vid;

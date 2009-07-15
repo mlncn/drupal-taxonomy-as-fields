@@ -1,6 +1,0 @@
-; $Id: user_reference.info,v 1.6 2009/03/21 21:57:42 karens Exp $
-name = User Reference
-description = Defines a field type for referencing a user from a node.
-files[]=user_reference.module
-package = CCK
-core = 7.x

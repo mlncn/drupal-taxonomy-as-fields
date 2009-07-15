@@ -1,8 +1,0 @@
-CCK for D7
-------------------------------------------
-
-This is now the home of the contrib UI for
-the Fields in Core patch for D7, compatible
-with the D7 version of core.
-
-Mostly working but still under development.
