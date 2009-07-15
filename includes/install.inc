@@ -1,5 +1,5 @@
 <?php
-// $Id: install.inc,v 1.94 2009/06/28 03:56:43 webchick Exp $
+// $Id: install.inc,v 1.96 2009/07/15 02:08:41 webchick Exp $
 
 /**
  * Indicates that a module has not been installed yet.
@@ -422,24 +422,6 @@ function drupal_get_install_files($module_list = array()) {
   return $installs;
 }
 
-/**
- * Get a list of modules required by an installation profile.
- *
- * @param profile
- *   Name of profile.
- * @param locale
- *   Name of locale used (if any).
- * @return
- *   The list of modules to install.
- */
-function drupal_get_profile_modules($profile, $locale = 'en') {
-  $profile_file = "./profiles/$profile/$profile.profile";
-  require_once($profile_file);
-
-  // Get a list of modules required by this profile.
-  $function = $profile . '_profile_modules';
-  return array_merge(drupal_required_modules(), $function(), ($locale != 'en' && !empty($locale) ? array('locale') : array()));
-}
 
 /**
  * Verify an install profile for installation.
@@ -460,8 +442,8 @@ function drupal_verify_profile($profile, $locale) {
   if (!isset($profile) || !file_exists($profile_file)) {
     install_no_profile_error();
   }
+  $info = install_profile_info($profile);
 
-  $module_list = drupal_get_profile_modules($profile, $locale);
 
   // Get a list of modules that exist in Drupal's assorted subdirectories.
   $present_modules = array();
@@ -470,7 +452,7 @@ function drupal_verify_profile($profile, $locale) {
   }
 
   // Verify that all of the profile's required modules are present.
-  $missing_modules = array_diff($module_list, $present_modules);
+  $missing_modules = array_diff($info['dependencies'], $present_modules);
 
   $requirements = array();
 
@@ -548,7 +530,7 @@ function _drupal_install_module($module) {
  * Because we have no registry yet, we need to manually include the
  * necessary database include files.
  */
-function drupal_install_init_database() {
+function drupal_install_initialize_database() {
   static $included = FALSE;
 
   if (!$included) {
@@ -573,7 +555,7 @@ function drupal_install_init_database() {
 function drupal_install_system() {
   $system_path = dirname(drupal_get_filename('module', 'system', NULL));
   require_once DRUPAL_ROOT . '/' . $system_path . '/system.install';
-  drupal_install_init_database();
+  drupal_install_initialize_database();
   module_invoke('system', 'install');
 
   $system_versions = drupal_get_schema_versions('system');
@@ -924,14 +906,10 @@ function drupal_check_profile($profile) {
     install_no_profile_error();
   }
 
-  require_once $profile_file;
-
-  // Get a list of modules required by this profile.
-  $function = $profile . '_profile_modules';
-  $module_list = array_unique(array_merge(drupal_required_modules(), $function()));
+  $info = install_profile_info($profile);
 
   // Get a list of all .install files.
-  $installs = drupal_get_install_files($module_list);
+  $installs = drupal_get_install_files($info['dependencies']);
 
   // Collect requirement testing results
   $requirements = array();
@@ -996,3 +974,26 @@ function drupal_check_module($module) {
   }
   return TRUE;
 }
+
+/**
+ * Retrieve info about an install profile from its .info file.
+ */
+function install_profile_info($profile, $locale = 'en') {
+  $cache =& drupal_static('install_profile_info', array(), TRUE);
+  // Set defaults for module info.
+  $defaults = array(
+    'dependencies' => array(),
+    'tasks' => array(),
+    'description' => '',
+    'version' => NULL,
+    'php' => DRUPAL_MINIMUM_PHP,
+  );
+  $info = drupal_parse_info_file(sprintf('profiles/%s/%s.info', $profile, $profile)) + $defaults;
+  $info['dependencies'] = array_unique(array_merge(
+    drupal_required_modules(), 
+    $info['dependencies'], 
+    ($locale != 'en' && !empty($locale) ? array('locale') : array()))
+  );
+  return $info;
+}
+

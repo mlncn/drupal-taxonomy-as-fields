@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.125 2009/07/11 06:14:48 dries Exp $
+// $Id: drupal_web_test_case.php,v 1.127 2009/07/15 02:08:41 webchick Exp $
 
 /**
  * Base class for Drupal tests.
@@ -1033,10 +1033,13 @@ class DrupalWebTestCase extends DrupalTestCase {
 
     $this->preloadRegistry();
 
+    // Include the default profile
+    require_once("./profiles/default/default.profile");
+    $profile_details = install_profile_info('default', 'en');
+
     // Add the specified modules to the list of modules in the default profile.
     // Install the modules specified by the default profile.
-    $core_modules = drupal_get_profile_modules('default', 'en');
-    drupal_install_modules($core_modules, TRUE);
+    drupal_install_modules($profile_details['dependencies'], TRUE);
 
     node_type_clear();
 
@@ -1120,7 +1123,7 @@ class DrupalWebTestCase extends DrupalTestCase {
   protected function refreshVariables() {
     global $conf;
     cache_clear_all('variables', 'cache');
-    $conf = variable_init();
+    $conf = variable_initialize();
   }
 
   /**
