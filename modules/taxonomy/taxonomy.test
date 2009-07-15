@@ -756,9 +756,11 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
    * Test term field validation.
    */
   function testTermFieldValidation() {
+    $this->field_name = drupal_strtolower($this->randomName());
+
     // Create a field with settings to validate.
     $this->field = array(
-      'field_name' => drupal_strtolower($this->randomName()),
+      'field_name' => $this->field_name,
       'type' => 'term',
       'settings' => array(
         'allowed_values' => array(
@@ -771,7 +773,7 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     );
     field_create_field($this->field);
     $this->instance = array(
-      'field_name' => $this->field['field_name'],
+      'field_name' => $this->field_name,
       'bundle' => FIELD_TEST_BUNDLE,
       'widget' => array(
         'type' => 'options_select',
@@ -787,18 +789,18 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
     // Test valid and invalid values with field_attach_validate().
     $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
     $term = $this->createTerm($this->vocabulary);
-    $entity->{$this->field['field_name']}[0]['value'] = $term->tid;
+    $entity->{$this->field_name}[0]['value'] = $term->tid;
     field_attach_validate('test_entity', $entity);
     try {
-      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] == $term->tid, t('Correct term does not cause validation error'));
+      $this->assertTrue($entity->{$this->field_name}[0]['value'] == $term->tid, t('Correct term does not cause validation error'));
     }
     catch (FieldValidationException $e) {
-      $this->assertTrue($entity->{$this->field['field_name']}[0]['value'] != $term->tid, t('Term from wrong vocabulary does not cause validation error'));
+      $this->assertTrue($entity->{$this->field_name}[0]['value'] != $term->tid, t('Term from wrong vocabulary does not cause validation error'));
     }
 
     $entity = field_test_create_stub_entity(0, 0, FIELD_TEST_BUNDLE);
     $bad_term = $this->createTerm($this->createVocabulary());
-    $entity->{$this->field['field_name']}[0]['value'] = $bad_term->tid;
+    $entity->{$this->field_name}[0]['value'] = $bad_term->tid;
     try {
       field_attach_validate('test_entity', $entity);
     }
@@ -810,7 +812,7 @@ class TaxonomyFieldTestCase extends TaxonomyWebTestCase {
   /**
    * Test widgets.
    */
-  function testTermfieldWidgets() {
+  function testTermFieldWidgets() {
     // Setup a field and instance.
     $entity_type = 'test_entity';
     $this->field_name = drupal_strtolower($this->randomName());
