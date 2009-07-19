@@ -1,0 +1,5 @@
+; $Id: xmlrpc_example.info,v 1.3 2008/09/13 16:49:48 heyrocker Exp $
+name = XMLRPC Example
+description = This is an example of how to implement XML-RPC callbacks by implementing a validation suite.
+package = Example modules
+core = 7.x

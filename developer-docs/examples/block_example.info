@@ -1,0 +1,5 @@
+; $Id: block_example.info,v 1.3 2008/09/13 16:49:48 heyrocker Exp $
+name = Block Example
+description = An example outlining how a module can define blocks.
+package = Example modules
+core = 7.x

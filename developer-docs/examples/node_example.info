@@ -1,0 +1,5 @@
+; $Id: node_example.info,v 1.4 2008/09/13 16:49:48 heyrocker Exp $
+name = Node Example
+description = An example module showing how define a custom content type.
+package = Example modules
+core = 7.x

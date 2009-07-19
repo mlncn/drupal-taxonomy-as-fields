@@ -1,0 +1,5 @@
+; $Id: example_element.info,v 1.3 2008/09/13 16:49:48 heyrocker Exp $
+name = Element Example
+description = An example demonstrating how a module can define custom form elements.
+package = Example modules
+core = 7.x

@@ -1,0 +1,6 @@
+; $Id: trigger_example.info,v 1.2 2008/09/13 16:49:48 heyrocker Exp $
+name = Trigger example module
+description = An example showing how a module can provide triggers that can have actions associated with them.
+package = Example modules
+core = 7.x
+dependencies[] = trigger

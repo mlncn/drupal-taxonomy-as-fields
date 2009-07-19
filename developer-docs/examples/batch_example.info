@@ -1,0 +1,5 @@
+; $Id: batch_example.info,v 1.4 2008/09/13 16:49:48 heyrocker Exp $
+name = Batch example module
+description = An example outlining how a module can define batch operations.
+package = Example modules
+core = 7.x

@@ -1,0 +1,4 @@
+; $Id: scaffolding_example.info,v 1.3 2009/01/12 06:26:33 mikeyp Exp $
+name = Scaffolding
+description = Provides example scaffolding for a module that maintains its own database table, and exposes an editing interface for the module's data.
+core = 6.x
