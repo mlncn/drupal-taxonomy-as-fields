@@ -1,5 +1,5 @@
 <?php
-// $Id: database.inc,v 1.62 2009/07/14 10:22:17 dries Exp $
+// $Id: database.inc,v 1.65 2009/07/22 04:45:35 dries Exp $
 
 /**
  * @file
@@ -1347,9 +1347,10 @@ abstract class Database {
       }
 
       // We need to pass around the simpletest database prefix in the request
-      // and we put that in the user_agent header.
-      if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/^simpletest\d+$/", $_SERVER['HTTP_USER_AGENT'])) {     
-        $db_prefix .= $_SERVER['HTTP_USER_AGENT'];
+      // and we put that in the user_agent header. The header HMAC was already
+      // validated in bootstrap.inc.
+      if (isset($_SERVER['HTTP_USER_AGENT']) && preg_match("/^(simpletest\d+);/", $_SERVER['HTTP_USER_AGENT'], $matches)) {
+        $db_prefix .= $matches[1];
       }
       return $new_connection;
     }
@@ -1411,6 +1412,19 @@ class ExplicitTransactionsNotSupportedException extends Exception { }
  * throw this exception and set an appropriately descriptive message.
  */
 class InvalidMergeQueryException extends Exception {}
+
+/**
+ * Exception thrown if an insert query specifies a field twice.
+ *
+ * It is not allowed to specify a field as default and insert field, this
+ * exception is thrown if that is the case.
+ */
+class FieldsOverlapException extends Exception {}
+
+/**
+ * Exception thrown if an insert query doesn't specify insert or default fields.
+ */
+class NoFieldsException extends Exception {}
 
 /**
  * A wrapper class for creating and managing database transactions.
@@ -2455,7 +2469,7 @@ function _db_error_page($error = '') {
 function db_ignore_slave() {
   $connection_info = Database::getConnectionInfo();
   // Only set ignore_slave_server if there are slave servers
-  // being used, which is assumed if there are more than one.    
+  // being used, which is assumed if there are more than one.
   if (count($connection_info) > 1) {
     // Five minutes is long enough to allow the slave to break and resume
     // interrupted replication without causing problems on the Drupal site
