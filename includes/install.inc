@@ -1,5 +1,5 @@
 <?php
-// $Id: install.inc,v 1.98 2009/07/20 18:51:31 dries Exp $
+// $Id: install.inc,v 1.103 2009/07/30 10:16:48 dries Exp $
 
 /**
  * Indicates that a module has not been installed yet.
@@ -165,7 +165,8 @@ function drupal_set_installed_schema_version($module, $version) {
  *   The name defined in the profile's _profile_details() hook.
  */
 function drupal_install_profile_name() {
-  global $profile;
+  global $install_state;
+  $profile = $install_state['parameters']['profile'];
   static $name = NULL;
 
   if (!isset($name)) {
@@ -190,7 +191,6 @@ function drupal_install_profile_name() {
  *   The auto-detected $base_url that should be configured in settings.php
  */
 function drupal_detect_baseurl($file = 'install.php') {
-  global $profile;
   $proto = $_SERVER['HTTPS'] ? 'https://' : 'http://';
   $host = $_SERVER['SERVER_NAME'];
   $port = ($_SERVER['SERVER_PORT'] == 80 ? '' : ':' . $_SERVER['SERVER_PORT']);
@@ -214,7 +214,7 @@ function drupal_detect_database_types() {
   // without modifying the installer.
   // Because we have no registry yet, we need to also include the install.inc
   // file for the driver explicitly.
-
+  require_once DRUPAL_ROOT . '/includes/database/database.inc';
   foreach (file_scan_directory(DRUPAL_ROOT . '/includes/database', '/^[a-z]*$/i', array('recurse' => FALSE)) as $file) {
     include_once "{$file->filepath}/install.inc";
     include_once "{$file->filepath}/database.inc";
@@ -222,7 +222,7 @@ function drupal_detect_database_types() {
   }
 
   foreach ($drivers as $driver => $file) {
-    $class = 'DatabaseInstaller_' . $driver;
+    $class = 'DatabaseTasks_' . $driver;
     $installer = new $class();
     if ($installer->installable()) {
       $databases[$driver] = $installer->name();
@@ -239,95 +239,166 @@ function drupal_detect_database_types() {
   return $databases;
 }
 
-abstract class DatabaseInstaller {
-  protected $success = array();
-  protected $tests = array(
-    'testCreate' => array(
-      'query' => 'CREATE TABLE drupal_install_test (id int NULL)',
-      'success' => 'CREATE',
-      'message' => 'Failed to create a test table on your %name database server with the command %query. %name reports the following message: %error.<ul><li>Are you sure the configured username has the necessary %name permissions to create tables in the database?</li></ul>For more help, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.',
-      'fatal' => TRUE,
+/**
+ * Database installer structure.
+ *
+ * Defines basic Drupal requirements for databases.
+ */
+abstract class DatabaseTasks {
+
+  /**
+   * Structure that describes each task to run.
+   *
+   * @var array
+   *
+   * Each value of the tasks array is an associative array defining the function
+   * to call (optional) and any arguments to be passed to the function.
+   */
+  protected $tasks = array(
+    array(
+      'arguments'   => array(
+        'CREATE TABLE drupal_install_test (id int NULL)',
+        'Drupal can use CREATE TABLE database commands.',
+        'Failed to <strong>CREATE</strong> a test table on your %name database server with the command %query. %name reports the following message: %error.<p>Are you sure the configured username has the necessary %name permissions to create tables in the database?</p>',
+        TRUE,
+      ),
     ),
-    'testInsert' => array(
-      'query' => 'INSERT INTO drupal_install_test (id) VALUES (1)',
-      'success' => 'INSERT',
-      'message' => 'Failed to insert a value into a test table on your %name database server. We tried inserting a value with the command %query and %name reported the following error: %error.',
+    array(
+      'arguments'   => array(
+        'INSERT INTO drupal_install_test (id) VALUES (1)',
+        'Drupal can use INSERT database commands.',
+        'Failed to <strong>INSERT</strong> a value into a test table on your %name database server. We tried inserting a value with the command %query and %name reported the following error: %error.',
+      ),
     ),
-    'testUpdate' => array(
-      'query' => 'UPDATE drupal_install_test SET id = 2',
-      'success' => 'UPDATE',
-      'message' => 'Failed to update a value in a test table on your %name database server. We tried updating a value with the command %query and %name reported the following error: %error.',
+    array(
+      'arguments'   => array(
+        'UPDATE drupal_install_test SET id = 2',
+        'Drupal can use UPDATE database commands.',
+        'Failed to <strong>UPDATE</strong> a value in a test table on your %name database server. We tried updating a value with the command %query and %name reported the following error: %error.',
+      ),
     ),
-    'testDelete' => array(
-      'query' => 'DELETE FROM drupal_install_test',
-      'success' => 'DELETE',
-      'message' => 'Failed to delete a value from a test table on your %name database server. We tried deleting a value with the command %query and %name reported the following error: %error.',
+    array(
+      'arguments'   => array(
+        'DELETE FROM drupal_install_test',
+        'Drupal can use DELETE database commands.',
+        'Failed to <strong>DELETE</strong> a value from a test table on your %name database server. We tried deleting a value with the command %query and %name reported the following error: %error.',
+      ),
     ),
-    'testDrop' => array(
-      'query' => 'DROP TABLE drupal_install_test',
-      'success' => 'DELETE',
-      'message' => 'Failed to drop a test table from your %name database server. We tried dropping a table with the command %query and %name reported the following error %error.',
+    array(
+      'arguments'   => array(
+        'DROP TABLE drupal_install_test',
+        'Drupal can use DROP TABLE database commands.',
+        'Failed to <strong>DROP</strong> a test table from your %name database server. We tried dropping a table with the command %query and %name reported the following error %error.',
+      ),
     ),
   );
-  public $error = FALSE;
+  /**
+   * Results from tasks.
+   *
+   * @var array
+   */
+  protected $results = array();
 
+  /**
+   * Ensure the PDO driver is supported by the version of PHP in use.
+   */
   protected function hasPdoDriver() {
     return in_array($this->pdoDriver, PDO::getAvailableDrivers());
   }
 
+  /**
+   * Assert test as failed.
+   */
+  protected function fail($message) {
+    $this->results[$message] = FALSE;
+  }
+
+  /**
+   * Assert test as a pass.
+   */
+  protected function pass($message) {
+    $this->results[$message] = TRUE;
+  }
+
+  /**
+   * Check whether Drupal is installable on the database.
+   */
   public function installable() {
-    return $this->hasPdoDriver();
+    return $this->hasPdoDriver() && empty($this->error);
   }
 
   abstract public function name();
 
-  public function test() {
-    $return = $this->testConnect();
-    if ($return === FALSE) {
-      return FALSE;
-    }
-    foreach ($this->tests as $test) {
-      $return = $this->runTestQuery($test['query'], $test['success'], $test['message'], !empty($test['fatal']));
-      if ($return === FALSE) {
-        return FALSE;
+  /**
+   * Run database tasks and tests to see if Drupal can run on the database.
+   */
+  public function runTasks() {
+    // We need to establish a connection before we can run tests.
+    if ($this->connect()) {
+      foreach ($this->tasks as $task) {
+        if (!isset($task['function'])) {
+          $task['function'] = 'runTestQuery';
+        }
+        if (method_exists($this, $task['function'])) {
+          // Returning false is fatal. No other tasks can run.
+          if (FALSE === call_user_func_array(array($this, $task['function']), $task['arguments'])) {
+            break;
+          }
+        }
+        else {
+          throw new DatabaseTaskException(st("Failed to run all tasks against the database server. The task %task wasn't found.", array('%task' => $task['function'])));
+        }
       }
     }
-    return $this->success;
+    // Check for failed results and compile message
+    $message = '';
+    foreach ($this->results as $result => $success) {
+      if (!$success) {
+        $message .= '<p class="error">' . $result  . '</p>';
+      }
+    }
+    if (!empty($message)) {
+      $message = '<p>In order for Drupal to work, and to continue with the installation process, you must resolve all issues reported below. For more help with configuring your database server, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what any of this means you should probably contact your hosting provider.</p>' . $message;
+      throw new DatabaseTaskException($message);
+    }
   }
 
   /**
    * Check if we can connect to the database.
-   *
-   * @return
-   *  FALSE on failure.
    */
-  protected function testConnect() {
+  protected function connect() {
     try {
       // This doesn't actually test the connection.
       db_set_active();
       // Now actually do a check.
       Database::getConnection();
-      $this->success[] = 'CONNECT';
+      $this->pass('Drupal can CONNECT to the database ok.');
     }
     catch (Exception $e) {
-      drupal_set_message(st('Failed to connect to your %name database server. %name reports the following message: <strong>%error</strong>.<ul><li>Are you sure that you have typed the correct database hostname?</li><li>Are you sure that the database server is running?</li><li>Are you sure you have the correct database name?</li><li>Are you sure you have the correct username and password?</li></ul>For more help, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.', array('%error' => $e->getMessage(), '%name' => $this->name())), 'error');
+      $this->fail(st('Failed to connect to your %name database server. %name reports the following message: %error.<ul><li>Are you sure you have the correct username and password?</li><li>Are you sure that you have typed the correct database hostname?</li><li>Are you sure that the database server is running?</li></ul>For more help, see the <a href="http://drupal.org/node/258">Installation and upgrading handbook</a>. If you are unsure what these terms mean you should probably contact your hosting provider.', array('%error' => $e->getMessage(), '%name' => $this->name())));
       return FALSE;
     }
+    return TRUE;
   }
 
-  protected function runTestQuery($query, $success, $message, $fatal = FALSE) {
+  /**
+   * Run SQL tests to ensure the database can execute commands with the current user.
+   */
+  protected function runTestQuery($query, $pass, $fail, $fatal = FALSE) {
     try {
       db_query($query);
-      $this->success[] = $success;
+      $this->pass(st($pass));
     }
     catch (Exception $e) {
-      drupal_set_message(st($message, array('%query' => $query, '%error' => $e->getMessage(), '%name' => $this->name())), 'error');
-      $this->error = TRUE;
-      if ($fatal) {
-        return FALSE;
-      }
+      $this->fail(st($fail, array('%query' => $query, '%error' => $e->getMessage(), '%name' => $this->name())));
+      return !$fatal;
     }
   }
+}
+/**
+ * @class Exception class used to throw error if the DatabaseInstaller fails.
+ */
+class DatabaseTaskException extends Exception {
 }
 
 /**
@@ -400,11 +471,11 @@ function drupal_rewrite_settings($settings = array(), $prefix = '') {
 
     $fp = fopen(DRUPAL_ROOT . '/' . $settings_file, 'w');
     if ($fp && fwrite($fp, $buffer) === FALSE) {
-      drupal_set_message(st('Failed to modify %settings, please verify the file permissions.', array('%settings' => $settings_file)), 'error');
+      throw new Exception(st('Failed to modify %settings, please verify the file permissions.', array('%settings' => $settings_file)));
     }
   }
   else {
-    drupal_set_message(st('Failed to open %settings, please verify the file permissions.', array('%settings' => $default_settings)), 'error');
+    throw new Exception(st('Failed to open %settings, please verify the file permissions.', array('%settings' => $default_settings)));
   }
 }
 
@@ -426,24 +497,24 @@ function drupal_get_install_files($module_list = array()) {
 /**
  * Verify an install profile for installation.
  *
- * @param $profile
- *   Name of install profile to verify.
- * @param $locale
- *   Name of locale used (if any).
+ * @param $install_state
+ *   An array of information about the current installation state.
  * @return
  *   The list of modules to install.
  */
-function drupal_verify_profile($profile, $locale) {
+function drupal_verify_profile($install_state) {
+  $profile = $install_state['parameters']['profile'];
+  $locale = $install_state['parameters']['locale'];
+
   include_once DRUPAL_ROOT . '/includes/file.inc';
   include_once DRUPAL_ROOT . '/includes/common.inc';
 
   $profile_file = DRUPAL_ROOT . "/profiles/$profile/$profile.profile";
 
   if (!isset($profile) || !file_exists($profile_file)) {
-    install_no_profile_error();
+    throw new Exception(install_no_profile_error());
   }
-  $info = install_profile_info($profile);
-
+  $info = $install_state['profile_info'];
 
   // Get a list of modules that exist in Drupal's assorted subdirectories.
   $present_modules = array();
@@ -606,7 +677,6 @@ function drupal_uninstall_modules($module_list = array()) {
         }
         $paths[$index] = implode('/', $parts);
       }
-      $placeholders = implode(', ', array_fill(0, count($paths), "'%s'"));
 
       $result = db_select('menu_links')
         ->fields('menu_links')
@@ -856,16 +926,18 @@ function install_goto($path) {
  */
 function st($string, $args = array()) {
   static $locale_strings = NULL;
-  global $profile, $install_locale;
+  global $install_state;
 
   if (!isset($locale_strings)) {
     $locale_strings = array();
-    $filename = 'profiles/' . $profile . '/translations/' . $install_locale . '.po';
+    if (isset($install_state['parameters']['profile']) && isset($install_state['parameters']['locale'])) {
+    $filename = 'profiles/' . $install_state['parameters']['profile'] . '/translations/' . $install_state['parameters']['locale'] . '.po';
     if (file_exists(DRUPAL_ROOT . '/' . $filename)) {
       require_once DRUPAL_ROOT . '/includes/locale.inc';
       $file = (object) array('filepath' => $filename);
       _locale_import_read_po('mem-store', $file);
       $locale_strings = _locale_import_one_string('mem-report');
+    }
     }
   }
 
@@ -903,7 +975,7 @@ function drupal_check_profile($profile) {
   $profile_file = DRUPAL_ROOT . "/profiles/$profile/$profile.profile";
 
   if (!isset($profile) || !file_exists($profile_file)) {
-    install_no_profile_error();
+    throw new Exception(install_no_profile_error());
   }
 
   $info = install_profile_info($profile);
@@ -982,8 +1054,6 @@ function drupal_check_module($module) {
  * - name: The real name of the install profile for display purposes.
  * - description: A brief description of the profile.
  * - dependencies: An array of shortnames of other modules this install profile requires.
- * - tasks: An associative array of tasks and the page title of each task that need to be 
- *   completed for installation.
  *
  * Example of .info file:
  * @verbatim
@@ -1007,15 +1077,14 @@ function install_profile_info($profile, $locale = 'en') {
     // Set defaults for module info.
     $defaults = array(
       'dependencies' => array(),
-      'tasks' => array(),
       'description' => '',
       'version' => NULL,
       'php' => DRUPAL_MINIMUM_PHP,
     );
     $info = drupal_parse_info_file("profiles/$profile/$profile.info") + $defaults;
     $info['dependencies'] = array_unique(array_merge(
-      drupal_required_modules(), 
-      $info['dependencies'], 
+      drupal_required_modules(),
+      $info['dependencies'],
       ($locale != 'en' && !empty($locale) ? array('locale') : array()))
     );
     $cache[$profile] = $info;
@@ -1023,3 +1092,17 @@ function install_profile_info($profile, $locale = 'en') {
   return $cache[$profile];
 }
 
+/**
+ * Ensures the environment for a Drupal database on a predefined connection.
+ *
+ * This will run tasks that check that Drupal can perform all of the functions
+ * on a database, that Drupal needs. Tasks include simple checks like CREATE
+ * TABLE to database specfic functions like stored procedures and client
+ * encoding.
+ */
+function db_run_tasks($driver) {
+  $task_class = 'DatabaseTasks_' . $driver;
+  $DatabaseTasks = new $task_class();
+  $DatabaseTasks->runTasks();
+  return true;
+}

@@ -1,5 +1,5 @@
 <?php
-// $Id: database.inc,v 1.65 2009/07/22 04:45:35 dries Exp $
+// $Id: database.inc,v 1.69 2009/07/30 10:16:48 dries Exp $
 
 /**
  * @file
@@ -891,7 +891,7 @@ abstract class DatabaseConnection extends PDO {
       }
 
       // Reset any scheduled rollback
-      $this->willRollBack = FALSE;
+      $this->willRollback = FALSE;
     }
   }
 
@@ -912,7 +912,7 @@ abstract class DatabaseConnection extends PDO {
     --$this->transactionLayers;
 
     if ($this->transactionLayers == 0 && $this->supportsTransactions()) {
-      if ($this->willRollBack) {
+      if ($this->willRollback) {
         parent::rollBack();
       }
       else {
@@ -2494,10 +2494,6 @@ function db_fetch_object(DatabaseStatementInterface $statement) {
   return $statement->fetch(PDO::FETCH_OBJ);
 }
 
-function db_fetch_array(DatabaseStatementInterface $statement) {
-  return $statement->fetch(PDO::FETCH_ASSOC);
-}
-
 function db_result(DatabaseStatementInterface $statement) {
   return $statement->fetchField();
 }
@@ -2509,7 +2505,7 @@ function db_result(DatabaseStatementInterface $statement) {
  */
 function _db_check_install_needed() {
   global $databases;
-  if (empty($databases) && !function_exists('install_main')) {
+  if (empty($databases) && !drupal_installation_attempted()) {
     include_once DRUPAL_ROOT . '/includes/install.inc';
     install_goto('install.php');
   }
@@ -2559,21 +2555,6 @@ function _db_query_process_args($query, $args, $options) {
   }
 
   return array($query, $args, $options);
-}
-
-
-/**
- * Returns the last insert id.
- *
- * @todo Remove this function when all queries have been ported to db_insert().
- * @param $table
- *   The name of the table you inserted into.
- * @param $field
- *   The name of the autoincrement field.
- */
-function db_last_insert_id($table, $field) {
-  $sequence_name = Database::getConnection()->makeSequenceName($table, $field);
-  return Database::getConnection()->lastInsertId($sequence_name);
 }
 
 /**

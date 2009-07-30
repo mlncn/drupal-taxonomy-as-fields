@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.938 2009/07/22 04:45:35 dries Exp $
+// $Id: common.inc,v 1.949 2009/07/30 19:57:09 dries Exp $
 
 /**
  * @file
@@ -38,6 +38,21 @@ define('SAVED_UPDATED', 2);
  * Return status for saving which deleted an existing item.
  */
 define('SAVED_DELETED', 3);
+
+/**
+ * The default weight of system CSS files added to the page.
+ */
+define('CSS_SYSTEM', -100);
+
+/**
+ * The default weight of CSS files added to the page.
+ */
+define('CSS_DEFAULT', 0);
+
+/**
+ * The default weight of theme CSS files added to the page.
+ */
+define('CSS_THEME', 100);
 
 /**
  * The weight of JavaScript libraries, settings or jQuery plugins being
@@ -85,7 +100,7 @@ function drupal_add_region_content($region = NULL, $data = NULL) {
  *   A specified region to fetch content for. If NULL, all regions will be
  *   returned.
  * @param $delimiter
- *   Content to be inserted between exploded array elements.
+ *   Content to be inserted between imploded array elements.
  */
 function drupal_get_region_content($region = NULL, $delimiter = ' ') {
   $content = drupal_add_region_content();
@@ -289,7 +304,7 @@ function drupal_get_destination() {
  * destination in either the $_REQUEST-array (i.e. by using
  * the query string of an URI) This is used to direct the user back to
  * the proper page after completing a form. For example, after editing
- * a post on the 'admin/content/node'-page or after having logged on using the
+ * a post on the 'admin/content'-page or after having logged on using the
  * 'user login'-block in a sidebar. The function drupal_get_destination()
  * can be used to help set the destination URL.
  *
@@ -362,6 +377,11 @@ function drupal_not_found() {
 
   watchdog('page not found', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
 
+  // Keep old path for reference, and to allow forms to redirect to it.
+  if (!isset($_REQUEST['destination'])) {
+    $_REQUEST['destination'] = $_GET['q'];
+  }
+
   $path = drupal_get_normal_path(variable_get('site_404', ''));
   if ($path && $path != $_GET['q']) {
     // Custom 404 handler. Set the active item in case there are tabs to
@@ -389,8 +409,12 @@ function drupal_not_found() {
  */
 function drupal_access_denied() {
   drupal_set_header('403 Forbidden');
-
   watchdog('access denied', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
+
+  // Keep old path for reference, and to allow forms to redirect to it.
+  if (!isset($_REQUEST['destination'])) {
+    $_REQUEST['destination'] = $_GET['q'];
+  }
 
   $path = drupal_get_normal_path(variable_get('site_403', ''));
   if ($path && $path != $_GET['q']) {
@@ -1979,7 +2003,7 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
  * Generate a URL from a Drupal menu path. Will also pass-through existing URLs.
  *
  * @param $path
- *   The Drupal path being linked to, such as "admin/content/node", or an
+ *   The Drupal path being linked to, such as "admin/content", or an
  *   existing URL like "http://drupal.org/". The special path
  *   '<front>' may also be given and will generate the site's base URL.
  * @param $options
@@ -2131,14 +2155,14 @@ function url($path = NULL, array $options = array()) {
  * @return
  *   An HTML string ready for insertion in a tag.
  */
-function drupal_attributes($attributes = array()) {
-  foreach ($attributes as $attribute => $data) {
+function drupal_attributes(array $attributes = array()) {
+  foreach ($attributes as $attribute => &$data) {
     if (is_array($data)) {
       $data = implode(' ', $data);
     }
-    $items[] = $attribute . '="' . check_plain($data) . '"';
+    $data = $attribute . '="' . check_plain($data) . '"';
   }
-  return isset($items) ? ' ' . implode(' ', $items) : '';
+  return $attributes ? ' ' . implode(' ', $attributes) : '';
 }
 
 /**
@@ -2151,10 +2175,10 @@ function drupal_attributes($attributes = array()) {
  * @param $text
  *   The text to be enclosed with the anchor tag.
  * @param $path
- *   The Drupal path being linked to, such as "admin/content/node". Can be an
+ *   The Drupal path being linked to, such as "admin/content". Can be an
  *   external or internal URL.
  *     - If you provide the full URL, it will be considered an external URL.
- *     - If you provide only the path (e.g. "admin/content/node"), it is
+ *     - If you provide only the path (e.g. "admin/content"), it is
  *       considered an internal link. In this case, it must be a system URL
  *       as the url() function will generate the alias.
  *     - If you provide '<front>', it generates a link to the site's
@@ -2319,7 +2343,7 @@ function drupal_add_link($attributes) {
  * @param $data
  *   (optional) The stylesheet data to be added, depending on what is passed
  *   through to the $options['type'] parameter:
- *   - 'module' or 'theme': The path to the CSS file relative to the base_path(),
+ *   - 'file': The path to the CSS file relative to the base_path(),
  *     e.g., "modules/devel/devel.css".
  *
  *     Modules should always prefix the names of their CSS files with the
@@ -2336,15 +2360,28 @@ function drupal_add_link($attributes) {
  *     directory. This CSS file should contain overrides for properties which
  *     should be reversed or otherwise different in a right-to-left display.
  *   - 'inline': A string of CSS that should be placed in the given scope. Note
- *     that it is better practice to use 'module' or 'theme' stylesheets, rather
- *     than 'inline' as the CSS would then be aggregated and cached.
+ *     that it is better practice to use 'file' stylesheets, rather than 'inline'
+ *     as the CSS would then be aggregated and cached.
  *
  * @param $options
  *   (optional) A string defining the 'type' of CSS that is being added in the
- *   $data parameter ('module', 'theme' or 'inline'), or an associative array of
- *   additional options, with the following keys:
- *   - 'type': The type of stylesheet that is being added. Types are: 'module',
- *     'theme' or 'inline'. Defaults to 'module'.
+ *   $data parameter ('file'/'inline'), or an array which can have any or all of
+ *   the following keys:
+ *   - 'type': The type of stylesheet being added. Available options are 'file'
+ *     or 'inline'. Defaults to 'file'.
+ *   - 'weight': The weight of the stylesheet specifies the order in which the
+ *     CSS will appear when presented on the page.
+ *
+ *       Available constants are:
+ *       - CSS_SYSTEM: Any system-layer CSS.
+ *       - CSS_DEFAULT: Any module-layer CSS.
+ *       - CSS_THEME: Any theme-layer CSS.
+ *
+ *       If you need to embed a CSS file before any other module's stylesheets,
+ *       for example, you would use CSS_DEFAULT - 1. Note that inline CSS is
+ *       simply appended to the end of the specified scope (region), so they
+ *       always come last.
+ *
  *   - 'media': The media type for the stylesheet, e.g., all, print, screen.
  *     Defaults to 'all'.
  *   - 'preprocess': Allows the CSS to be aggregated and compressed if the
@@ -2376,7 +2413,6 @@ function drupal_add_link($attributes) {
  */
 function drupal_add_css($data = NULL, $options = NULL) {
   $css = &drupal_static(__FUNCTION__, array());
-  global $language;
 
   // Construct the options, taking the defaults into consideration.
   if (isset($options)) {
@@ -2392,25 +2428,26 @@ function drupal_add_css($data = NULL, $options = NULL) {
   // to the browser differently.
   if (isset($data)) {
     $options += array(
-      'type' => 'module',
+      'type' => 'file',
+      'weight' => CSS_DEFAULT,
       'media' => 'all',
-      'preprocess' => TRUE
+      'preprocess' => TRUE,
+      'data' => $data,
     );
-    $media = $options['media'];
-    $type = $options['type'];
 
-    // This check is necessary to ensure proper cascading of styles and is faster than an asort().
-    if (!isset($css[$media])) {
-      $css[$media] = array('module' => array(), 'theme' => array(), 'inline' => array());
-    }
-    $css[$media][$type][$data] = $options['preprocess'];
+    // Always add a tiny value to the weight, to conserve the insertion order.
+    $options['weight'] += count($css) / 1000;
 
-    // If the current language is RTL, add the CSS file with RTL overrides.
-    if ($type != 'inline' && $language->direction == LANGUAGE_RTL) {
-      $rtl_path = str_replace('.css', '-rtl.css', $data);
-      if (file_exists($rtl_path)) {
-        $css[$media][$type][$rtl_path] = $options['preprocess'];
-      }
+    // Add the data to the CSS array depending on the type.
+    switch ($options['type']) {
+      case 'file':
+        $css[$data] = $options;
+        break;
+      case 'inline':
+        // For inline stylesheets, we don't want to use the $data as the array
+        // key as $data could be a very long string of CSS.
+        $css[] = $options;
+        break;
     }
   }
 
@@ -2444,9 +2481,6 @@ function drupal_get_css($css = NULL) {
   if (!isset($css)) {
     $css = drupal_add_css();
   }
-  $no_module_preprocess = '';
-  $no_theme_preprocess = '';
-  $no_inline_preprocess = '';
 
   $preprocess_css = (variable_get('preprocess_css', FALSE) && (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update'));
   $directory = file_directory_path();
@@ -2458,76 +2492,82 @@ function drupal_get_css($css = NULL) {
   // URL changed.
   $query_string = '?' . substr(variable_get('css_js_query_string', '0'), 0, 1);
 
-  foreach ($css as $media => $types) {
-    // If CSS preprocessing is off, we still need to output the styles.
-    // Additionally, go through any remaining styles if CSS preprocessing is on and output the non-cached ones.
-    foreach ($types as $type => $information) {
-      if ($type == 'module') {
-        // Setup theme overrides for module styles.
-        $theme_styles = array();
-        foreach (array_keys($css[$media]['theme']) as $theme_style) {
-          $theme_styles[] = basename($theme_style);
-        }
-      }
-      foreach ($types[$type] as $data => $preprocess) {
-        // If the theme supplies its own style using the name of the module style, skip its inclusion.
-        // This includes any RTL styles associated with its main LTR counterpart.
-        if ($type == 'module' && in_array(str_replace('-rtl.css', '.css', basename($data)), $theme_styles)) {
-          // Unset the file to prevent its inclusion when CSS aggregation is enabled.
-          unset($types[$type][$data]);
-          continue;
-        }
-        // Include inline stylesheets.
-        if ($type == 'inline') {
-          $no_inline_preprocess .= drupal_load_stylesheet_content($data, $preprocess);
-        }
-        // Only include the stylesheet if it exists.
-        elseif (file_exists($data)) {
-          if (!$preprocess || !($is_writable && $preprocess_css)) {
-            // If a CSS file is not to be preprocessed and it's a module CSS file, it needs to *always* appear at the *top*,
-            // regardless of whether preprocessing is on or off.
-            if (!$preprocess && $type == 'module') {
-              $no_module_preprocess .= '<link type="text/css" rel="stylesheet" media="' . $media . '" href="' . base_path() . $data . $query_string . '" />' . "\n";
-            }
-            // If a CSS file is not to be preprocessed and it's a theme CSS file, it needs to *always* appear at the *bottom*,
-            // regardless of whether preprocessing is on or off.
-            elseif (!$preprocess && $type == 'theme') {
-              $no_theme_preprocess .= '<link type="text/css" rel="stylesheet" media="' . $media . '" href="' . base_path() . $data . $query_string . '" />' . "\n";
-            }
-            else {
-              $output .= '<link type="text/css" rel="stylesheet" media="' . $media . '" href="' . base_path() . $data . $query_string . '" />' . "\n";
-            }
-          }
-        }
-      }
-    }
+  // Allow modules to alter the css items.
+  drupal_alter('css', $css);
 
-    if ($is_writable && $preprocess_css) {
+  // Sort css items according to their weights.
+  uasort($css, 'drupal_sort_weight');
+
+  // Remove the overriden CSS files. Later CSS files override former ones.
+  $previous_item = array();
+  foreach ($css as $key => $item) {
+    if ($item['type'] == 'file') {
+      $basename = basename($item['data']);
+      if (isset($previous_item[$basename])) {
+        // Remove the previous item that shared the same base name.
+        unset($css[$previous_item[$basename]]);
+      }
+      $previous_item[$basename] = $key;
+    }
+  }
+
+  // If CSS preprocessing is off, we still need to output the styles.
+  // Additionally, go through any remaining styles if CSS preprocessing is on and output the non-cached ones.
+  $rendered_css = array();
+  $inline_css = '';
+  $preprocess_items = array();
+  foreach ($css as $data => $item) {
+    // Loop through each of the stylesheets, including them appropriately based
+    // on their type.
+    switch ($item['type']) {
+      case 'file':
+        // Depending on whether aggregation is desired, include the file.
+        if (!$item['preprocess'] || !($is_writable && $preprocess_css)) {
+          $rendered_css[] = '<link type="text/css" rel="stylesheet" media="' . $item['media'] . '" href="' . base_path() . $item['data'] . $query_string . '" />';
+        }
+        else {
+          $preprocess_items[$item['media']][] = $item;
+          // Mark the position of the preprocess element,
+          // it should be at the position of the first preprocessed file.
+          $rendered_css['preprocess'] = '';
+        }
+        break;
+      case 'inline':
+        // Include inline stylesheets.
+        $inline_css .= drupal_load_stylesheet_content($item['data'], $item['preprocess']);
+        break;
+    }
+  }
+
+  if (!empty($preprocess_items)) {
+    foreach ($preprocess_items as $media => $items) {
       // Prefix filename to prevent blocking by firewalls which reject files
       // starting with "ad*".
-      $filename = 'css_' . md5(serialize($types) . $query_string) . '.css';
-      $preprocess_file = drupal_build_css_cache($types, $filename);
-      $output .= '<link type="text/css" rel="stylesheet" media="' . $media . '" href="' . base_path() . $preprocess_file . '" />' . "\n";
+      $filename = 'css_' . md5(serialize($items) . $query_string) . '.css';
+      $preprocess_file = drupal_build_css_cache($items, $filename);
+      $rendered_css['preprocess'] .= '<link type="text/css" rel="stylesheet" media="' . $media . '" href="' . base_path() . $preprocess_file . '" />' . "\n";
     }
   }
-  if (!empty($no_inline_preprocess)) {
-    $no_inline_preprocess = '<style type="text/css">' . $no_inline_preprocess . '</style>';
+  // Enclose the inline CSS with the style tag if required.
+  if (!empty($inline_css)) {
+    $inline_css = "\n" . '<style type="text/css">' . $inline_css .'</style>';
   }
-  return $no_module_preprocess . $output . $no_theme_preprocess . $no_inline_preprocess;
+
+  // Output all the CSS files with the inline stylesheets showing up last.
+  return implode("\n", $rendered_css) . $inline_css;
 }
 
 /**
  * Aggregate and optimize CSS files, putting them in the files directory.
  *
- * @param $types
- *   An array of types of CSS files (e.g., screen, print) to aggregate and
- *   compress into one file.
+ * @param $css
+ *   An array of CSS files to aggregate and compress into one file.
  * @param $filename
  *   The name of the aggregate CSS file.
  * @return
  *   The name of the CSS file.
  */
-function drupal_build_css_cache($types, $filename) {
+function drupal_build_css_cache($css, $filename) {
   $data = '';
 
   // Create the css/ within the files folder.
@@ -2536,19 +2576,15 @@ function drupal_build_css_cache($types, $filename) {
 
   if (!file_exists($csspath . '/' . $filename)) {
     // Build aggregate CSS file.
-    foreach ($types as $type => $css) {
-      // Only 'module' or 'theme' stylesheets can be aggregated.
-      if ($type == 'module' || $type == 'theme') {
-        foreach ($css as $stylesheet => $cache) {
-          if ($cache) {
-            $contents = drupal_load_stylesheet($stylesheet, TRUE);
-            // Return the path to where this CSS file originated from.
-            $base = base_path() . dirname($stylesheet) . '/';
-            _drupal_build_css_path(NULL, $base);
-            // Prefix all paths within this CSS file, ignoring external and absolute paths.
-            $data .= preg_replace_callback('/url\([\'"]?(?![a-z]+:|\/+)([^\'")]+)[\'"]?\)/i', '_drupal_build_css_path', $contents);
-          }
-        }
+    foreach ($css as $stylesheet) {
+      // Only 'file' stylesheets can be aggregated.
+      if ($stylesheet['type'] == 'file') {
+        $contents = drupal_load_stylesheet($stylesheet['data'], TRUE);
+        // Return the path to where this CSS file originated from.
+        $base = base_path() . dirname($stylesheet['data']) . '/';
+        _drupal_build_css_path(NULL, $base);
+        // Prefix all paths within this CSS file, ignoring external and absolute paths.
+        $data .= preg_replace_callback('/url\([\'"]?(?![a-z]+:|\/+)([^\'")]+)[\'"]?\)/i', '_drupal_build_css_path', $contents);
       }
     }
 
@@ -3434,6 +3470,14 @@ function _drupal_bootstrap_full() {
   set_error_handler('_drupal_error_handler');
   set_exception_handler('_drupal_exception_handler');
 
+  if (isset($_SERVER['HTTP_USER_AGENT']) && strpos($_SERVER['HTTP_USER_AGENT'], 'simpletest') !== FALSE) {
+    // Valid SimpleTest user-agent, log fatal errors to test specific file
+    // directory. The user-agent is validated in DRUPAL_BOOTSTRAP_DATABASE
+    // phase so as long as it is a SimpleTest user-agent it is valid.
+    ini_set('log_errors', 1);
+    ini_set('error_log', file_directory_path() . '/error.log');
+  }
+
   // Emit the correct charset HTTP header.
   drupal_set_header('Content-Type', 'text/html; charset=utf-8');
   // Detect string handling method
@@ -3442,7 +3486,8 @@ function _drupal_bootstrap_full() {
   fix_gpc_magic();
   // Load all enabled modules
   module_load_all();
-
+  // Make sure all stream wrappers are registered.
+  file_get_stream_wrappers();
   // Let all modules take action before menu system handles the request
   // We do not want this while running update.php.
   if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {
@@ -3597,15 +3642,18 @@ function drupal_cron_cleanup() {
  *   An array of file objects of the specified type.
  */
 function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1) {
-  global $profile;
+  global $install_state;
   $config = conf_path();
 
   // When this function is called during Drupal's initial installation process,
   // the name of the profile that's about to be installed is stored in the global
-  // $profile variable. At all other times, the standard Drupal systems variable
+  // installation state. At all other times, the standard Drupal systems variable
   // table contains the name of the current profile, and we can call variable_get()
   // to determine what one is active.
-  if (!isset($profile)) {
+  if (isset($install_state['parameters']['profile'])) {
+    $profile = $install_state['parameters']['profile'];
+  }
+  else {
     $profile = variable_get('install_profile', 'default');
   }
   $searchdir = array($directory);
@@ -3978,6 +4026,8 @@ function element_info($type) {
         $cache[$element_type]['#type'] = $element_type;
       }
     }
+    // Allow modules to alter the element type defaults.
+    drupal_alter('element_info', $cache);
   }
 
   return $cache[$type];
@@ -4116,7 +4166,7 @@ function drupal_common_theme() {
       'arguments' => array('links' => NULL),
     ),
     'table' => array(
-      'arguments' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL),
+      'arguments' => array('header' => NULL, 'rows' => NULL, 'attributes' => array(), 'caption' => NULL, 'colgroups' => array(), 'sticky' => TRUE),
     ),
     'table_select_header_cell' => array(
       'arguments' => array(),
@@ -4138,9 +4188,6 @@ function drupal_common_theme() {
     ),
     'more_link' => array(
       'arguments' => array('url' => NULL, 'title' => NULL)
-    ),
-    'closure' => array(
-      'arguments' => array('main' => 0),
     ),
     'blocks' => array(
       'arguments' => array('region' => NULL),
