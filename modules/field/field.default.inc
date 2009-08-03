@@ -1,5 +1,5 @@
 <?php
-// $Id: field.default.inc,v 1.10 2009/07/11 00:56:45 webchick Exp $
+// $Id: field.default.inc,v 1.12 2009/08/02 11:24:21 dries Exp $
 
 /**
  * @file
@@ -103,6 +103,8 @@ function field_default_insert($obj_type, $object, $field, $instance, &$items) {
  *       '#bundle' => $bundle_name,
  *       '#formatter' => $formatter_name,
  *       '#settings' => $formatter_settings,
+ *       '#object' => $object,
+ *       '#object_type' => $obj_type,
  *     ),
  *   );
  */
@@ -110,14 +112,9 @@ function field_default_view($obj_type, $object, $field, $instance, $items, $buil
   list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
 
   $addition = array();
+  $display = $instance['display'][$build_mode];
 
-  // If we don't have specific settings for the current build_mode, we use the
-  // (required) 'full' build_mode.
-  $display = isset($instance['display'][$build_mode]) ? $instance['display'][$build_mode] : $instance['display']['full'];
-  // Ensure we have a valid formatter and formatter settings.
-  $display = _field_get_formatter($display, $field);
-
-  if ($display['type'] && $display['type'] !== 'hidden') {
+  if ($display['type'] !== 'hidden') {
     $theme = 'field_formatter_' . $display['type'];
     $single = (field_behaviors_formatter('multiple values', $display) == FIELD_BEHAVIOR_DEFAULT);
 
@@ -172,6 +169,7 @@ function field_default_view($obj_type, $object, $field, $instance, $items, $buil
 
     $addition = array($field['field_name'] => $element);
   }
+
   return $addition;
 }
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: default.profile,v 1.58 2009/07/31 19:44:21 dries Exp $
+// $Id: default.profile,v 1.62 2009/08/03 03:04:34 webchick Exp $
 
 /**
  * Implement hook_profile_tasks().
@@ -40,7 +40,7 @@ function default_profile_site_setup(&$install_state) {
       'theme' => 'garland',
       'status' => 1,
       'weight' => 0,
-      'region' => 'left',
+      'region' => 'sidebar_first',
       'pages' => '',
       'cache' => -1,
     ),
@@ -50,7 +50,7 @@ function default_profile_site_setup(&$install_state) {
       'theme' => 'garland',
       'status' => 1,
       'weight' => 0,
-      'region' => 'left',
+      'region' => 'sidebar_first',
       'pages' => '',
       'cache' => -1,
     ),
@@ -60,7 +60,7 @@ function default_profile_site_setup(&$install_state) {
       'theme' => 'garland',
       'status' => 1,
       'weight' => 1,
-      'region' => 'left',
+      'region' => 'sidebar_first',
       'pages' => '',
       'cache' => -1,
     ),
@@ -180,7 +180,7 @@ function default_profile_site_setup(&$install_state) {
 
   // Create a default vocabulary named "Tags", enabled for the 'article' content type.
   $description = st('Use tags to group articles on similar topics into categories.');
-  $help = st('Enter a comma-separated list of words.');
+  $help = st('Enter a comma-separated list of words to describe your content.');
 
   $vid = db_insert('taxonomy_vocabulary')->fields(array(
     'name' => 'Tags',
