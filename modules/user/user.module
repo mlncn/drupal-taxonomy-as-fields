@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.1015 2009/07/31 19:01:03 dries Exp $
+// $Id: user.module,v 1.1017 2009/08/04 06:38:57 webchick Exp $
 
 /**
  * @file
@@ -723,7 +723,7 @@ function user_access($string, $account = NULL, $reset = FALSE) {
     $perm = array();
   }
 
-  if (is_null($account)) {
+  if (!isset($account)) {
     $account = $user;
   }
 
@@ -867,7 +867,7 @@ function user_search($op = 'search', $keys = NULL, $skip_access_check = FALSE) {
 function user_elements() {
   return array(
     'user_profile_category' => array(
-      '#theme_wrapper' => 'user_profile_category'
+      '#theme_wrappers' => array('user_profile_category')
     ),
     'user_profile_item' => array(
       '#theme' => 'user_profile_item'
