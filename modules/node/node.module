@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1091 2009/08/04 06:44:48 webchick Exp $
+// $Id: node.module,v 1.1093 2009/08/06 05:05:59 webchick Exp $
 
 /**
  * @file
@@ -1225,11 +1225,11 @@ function template_preprocess_node(&$variables) {
   // Display post information only on certain node types.
   if (variable_get('node_submitted_' . $node->type, TRUE)) {
     $variables['submitted'] = theme('node_submitted', $node);
-    $variables['picture'] = theme_get_setting('toggle_node_user_picture') ? theme('user_picture', $node) : '';
+    $variables['user_picture'] = theme_get_setting('toggle_node_user_picture') ? theme('user_picture', $node) : '';
   }
   else {
     $variables['submitted'] = '';
-    $variables['picture'] = '';
+    $variables['user_picture'] = '';
   }
 
   // Gather node classes.
@@ -2652,10 +2652,9 @@ function node_access_rebuild($batch_mode = FALSE) {
       batch_set($batch);
     }
     else {
-      // If not in 'safe mode', increase the maximum execution time.
-      if (!ini_get('safe_mode')) {
-        set_time_limit(240);
-      }
+      // Try to allocate enough time to rebuild node grants
+      drupal_set_time_limit(240);
+
       $nids = db_query("SELECT nid FROM {node}")->fetchCol();
       foreach ($nids as $nid) {
         $node = node_load($nid, NULL, TRUE);

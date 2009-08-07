@@ -6,7 +6,6 @@ D/scripts////
 D/sites////
 D/themes////
 /.htaccess/1.103/Sun Jun 21 18:46:09 2009//
-/CHANGELOG.txt/1.324/Wed Aug  5 06:58:46 2009//
 /COPYRIGHT.txt/1.4/Fri Jun 12 07:15:24 2009//
 /INSTALL.mysql.txt/1.11/Fri Jun 12 07:15:24 2009//
 /INSTALL.pgsql.txt/1.8/Wed Aug  5 06:55:23 2009//
@@ -21,3 +20,4 @@ D/themes////
 /robots.txt/1.13/Fri Jun 12 07:15:27 2009//
 /update.php/1.294/Wed Aug  5 06:55:29 2009//
 /xmlrpc.php/1.17/Fri Jun 12 07:15:28 2009//
+/CHANGELOG.txt/1.325/Fri Aug  7 05:48:07 2009//
