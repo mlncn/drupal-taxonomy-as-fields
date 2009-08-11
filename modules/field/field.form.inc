@@ -38,11 +38,16 @@ function field_default_form($obj_type, $object, $field, $instance, $items, &$for
   );
 
   // Populate widgets with default values if we're creating a new object.
-  if (empty($items) && empty($id) && !empty($instance['default_value_function'])) {
+  if (empty($items) && empty($id)) {
     $items = array();
-    $function = $instance['default_value_function'];
-    if (drupal_function_exists($function)) {
-      $items = $function($obj_type, $object, $field, $instance);
+    if (!empty($instance['default_value_function'])) {
+      $function = $instance['default_value_function'];
+      if (drupal_function_exists($function)) {
+        $items = $function($obj_type, $object, $field, $instance);
+      }
+    }
+    elseif (!empty($instance['settings']['default_value'])) {
+      $default_value = $instance['settings']['default_value'];
     }
   }
 

@@ -1,0 +1,17 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Install, update and uninstall functions for the Field UI module.
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function field_ui_uninstall() {
+  db_delete('variable')
+    ->condition('name', 'field_extra_weights_%', 'LIKE')
+    ->execute();
+}
+

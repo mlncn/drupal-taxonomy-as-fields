@@ -28,28 +28,28 @@ function list_field_info() {
     'list' => array(
       'label' => t('List'),
       'description' => t('This field stores numeric keys from key/value lists of allowed values where the key is a simple alias for the position of the value, i.e. 0|First option, 1|Second option, 2|Third option.'),
-      'settings' => array('allowed_values_function' => ''),
+      'settings' => array('allowed_values' => '', 'allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'list_default',
     ),
     'list_boolean' => array(
       'label' => t('Boolean'),
       'description' => t('This field stores simple on/off or yes/no options.'),
-      'settings' => array('allowed_values_function' => ''),
+      'settings' => array('allowed_values' => '', 'allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'list_default',
     ),
     'list_number' => array(
       'label' => t('List (numeric)'),
       'description' => t('This field stores keys from key/value lists of allowed numbers where the stored numeric key has significance and must be preserved, i.e. \'Lifetime in days\': 1|1 day, 7|1 week, 31|1 month.'),
-      'settings' => array('allowed_values_function' => ''),
+      'settings' => array('allowed_values' => '', 'allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'list_default',
     ),
     'list_text' => array(
       'label' => t('List (text)'),
       'description' => t('This field stores keys from key/value lists of allowed values where the stored key has significance and must be a varchar, i.e. \'US States\': IL|Illinois, IA|Iowa, IN|Indiana'),
-      'settings' => array('allowed_values_function' => ''),
+      'settings' => array('allowed_values' => '', 'allowed_values_function' => ''),
       'default_widget' => 'options_select',
       'default_formatter' => 'list_default',
     ),
@@ -95,6 +95,102 @@ function list_field_schema($field) {
       'value' => array('value'),
     ),
   );
+}
+
+/**
+ * Implement hook_field_settings_form().
+ */
+function list_field_settings_form($field, $instance) {
+  $field_type = $field['type'];
+
+  $settings = $field['settings'];
+  $form['allowed_values'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Allowed values list'),
+    '#default_value' => $settings['allowed_values'],
+    '#required' => FALSE,
+    '#rows' => 10,
+    '#description' => '<p>' . t('The possible values this field can contain. Enter one value per line, in the format key|label. The key is the value that will be stored in the database, and must be a %type value. The label is optional, and the key will be used as the label if no label is specified.') . '</p>',
+    '#access' => empty($settings['allowed_values_function']),
+  );
+
+  // Alter the description for allowed values slightly depending
+  // on the type of widget.
+  if ($instance['widget']['type'] == 'options_onoff') {
+    $form['allowed_values']['#description'] .= '<p>' . t("For a 'single on/off checkbox' widget, define the 'off' value first, then the 'on' value in the <strong>Allowed values</strong> section. Note that the checkbox will be labeled with the label of the 'on' value.") . '</p>';
+  }
+  elseif ($instance['widget']['type'] == 'options_buttons') {
+    $form['allowed_values']['#description'] .= '<p>' . t("The 'checkboxes/radio buttons' widget will display checkboxes if the <em>Number of values</em> option is greater than 1 for this field, otherwise radios will be displayed.") . '</p>';
+  }
+
+  $form['allowed_values']['#description'] .= t('Allowed HTML tags in labels: @tags', array('%type' => $field['type'] == 'list_text' ? 'text' : 'numeric', '@tags' => _field_filter_xss_display_allowed_tags()));
+
+  $form['allowed_values_function'] = array(
+    '#type' => 'value',
+    '#value' => $settings['allowed_values_function'],
+  );
+  $form['allowed_values_function_display'] = array(
+    '#type' => 'item',
+    '#title' => t('Allowed values list'),
+    '#markup' => t('The value of this field is being determined by the %function function and may not be changed.', array('%function' => $settings['allowed_values_function'])),
+    '#access' => !empty($settings['allowed_values_function']),
+  );
+
+  return $form;
+}
+
+/**
+ * Create an array of the allowed values for this field.
+ *
+ * @todo Rework to create a method of selecting pluggable allowed values lists.
+ */
+function list_allowed_values($field) {
+  $allowed_values = drupal_static(__FUNCTION__, array());
+
+  if (isset($allowed_values[$field['field_name']])) {
+    return $allowed_values[$field['field_name']];
+  }
+
+  $allowed_values[$field['field_name']] = array();
+
+  $function = $field['settings']['allowed_values_function'];
+  if (!empty($function) && drupal_function_exists($function)) {
+    $allowed_values[$field['field_name']] = $function($field);
+  }
+  elseif (!empty($field['settings']['allowed_values'])) {
+    $allowed_values[$field['field_name']] = list_allowed_values_list($field);
+  }
+
+  return $allowed_values[$field['field_name']];
+}
+
+/**
+ *  Create an array of the allowed values for this field.
+ *
+ *  Explode a string with keys and labels separated
+ *  with '|' and with each new value on its own line.
+ *
+ * @todo Should we abstract this out of list.module?
+ */
+function list_allowed_values_list($field) {
+  $allowed_values[$field['field_name']] = array();
+
+  $list = $field['settings']['allowed_values'];
+  $list = explode("\n", $list);
+  $list = array_map('trim', $list);
+  $list = array_filter($list, 'strlen');
+  foreach ($list as $opt) {
+    // Sanitize the user input with a permissive filter.
+    $opt = field_filter_xss($opt);
+    if (strpos($opt, '|') !== FALSE) {
+      list($key, $value) = explode('|', $opt);
+      $allowed_values[$field['field_name']][$key] = (isset($value) && $value !=='') ? $value : $key;
+    }
+    else {
+      $allowed_values[$field['field_name']][$opt] = $opt;
+    }
+  }
+  return $allowed_values[$field['field_name']];
 }
 
 /**
@@ -160,30 +256,4 @@ function theme_field_formatter_list_default($element) {
  */
 function theme_field_formatter_list_key($element) {
   return $element['#item']['safe'];
-}
-
-/**
- *  Create an array of the allowed values for this field.
- *
- *  Call the allowed_values_function to retrieve the allowed
- *  values array.
- *
- *  TODO Rework this to create a method of selecting plugable allowed values lists.
- */
-function list_allowed_values($field) {
-  static $allowed_values;
-
-  if (isset($allowed_values[$field['field_name']])) {
-    return $allowed_values[$field['field_name']];
-  }
-
-  $allowed_values[$field['field_name']] = array();
-
-  if (isset($field['settings']['allowed_values_function'])) {
-    $function = $field['settings']['allowed_values_function'];
-    if (drupal_function_exists($function)) {
-      $allowed_values[$field['field_name']] = $function($field);
-    }
-  }
-  return $allowed_values[$field['field_name']];
 }

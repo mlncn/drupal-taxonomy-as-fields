@@ -886,6 +886,11 @@ function field_attach_view($obj_type, $object, $build_mode = 'full') {
 
   $output = _field_invoke_default('view', $obj_type, $object, $build_mode);
 
+  // Add custom weight handling.
+  list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  $object->content['#pre_render'][] = 'field_alter_extra_weights';
+  $object->content['#extra_fields'] = field_ui_extra_field_values($bundle);
+
   // Let other modules make changes after rendering the view.
   drupal_alter('field_attach_view', $output, $obj_type, $object, $build_mode);
 

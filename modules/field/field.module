@@ -266,14 +266,15 @@ function field_associate_fields($module) {
  */
 function field_set_empty($field, $items) {
   // Filter out empty values.
-  $filtered = array();
   $function = $field['module'] . '_field_is_empty';
-  foreach ((array) $items as $delta => $item) {
-    if (!$function($item, $field)) {
-      $filtered[] = $item;
+  if (drupal_function_exists($function)) {
+    foreach ((array) $items as $delta => $item) {
+      if ($function($item, $field)) {
+        unset($items[$delta]);
+      }
     }
   }
-  return $filtered;
+  return $items;
 }
 
 /**
@@ -321,7 +322,7 @@ function _field_sort_items_value_helper($a, $b) {
  * Registry of available build modes.
  */
 function field_build_modes($obj_type) {
-  static $info;
+  $info = &drupal_static(__FUNCTION__, array());
 
   if (!isset($info[$obj_type])) {
     $info[$obj_type] = module_invoke_all('field_build_modes', $obj_type);
@@ -338,6 +339,7 @@ function field_cache_clear($rebuild_schema = FALSE) {
 
   module_load_include('inc', 'field', 'field.info');
   _field_info_collate_types(TRUE);
+  drupal_static_reset('field_build_modes');
   _field_info_collate_fields(TRUE);
 
   // Refresh the schema to pick up new information.

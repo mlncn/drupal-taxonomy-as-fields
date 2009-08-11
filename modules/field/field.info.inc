@@ -76,6 +76,9 @@ function _field_info_collate_types($reset = FALSE) {
             'settings' => array(),
             'instance_settings' => array(),
           );
+          $field_info['instance_settings'] += array(
+            'default_value' => NULL,
+          );
           $info['field types'][$name] = $field_info;
           $info['field types'][$name]['module'] = $module;
         }

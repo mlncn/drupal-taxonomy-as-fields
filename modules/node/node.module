@@ -149,7 +149,6 @@ function node_fieldable_info() {
   return $return;
 }
 
-
 /**
  * Implement hook_field_build_modes().
  */
@@ -171,6 +170,99 @@ function node_field_build_modes($obj_type) {
     }
   }
   return $modes;
+}
+
+/**
+ * Implement hook_field_ui_extra_fields().
+ */
+function node_field_ui_extra_fields($bundle) {
+  $extra = array();
+  if ($type = node_type_get_type($bundle)) {
+    if ($type->has_title) {
+      $extra['title'] = array(
+        'label' => $type->title_label,
+        'description' => t('Node module element.'),
+        'weight' => -5
+      );
+    }
+    $extra['revision_information'] = array(
+      'label' => t('Revision information'),
+      'description' => t('Node module form.'),
+      'weight' => 20
+    );
+    $extra['author'] = array(
+      'label' => t('Authoring information'),
+      'description' => t('Node module form.'),
+      'weight' => 20
+    );
+    $extra['options'] = array(
+      'label' => t('Publishing options'),
+      'description' => t('Node module form.'),
+      'weight' => 25
+    );
+    if (module_exists('comment') && variable_get("comment_$bundle", 2) != 0) {
+      $extra['comment_settings'] = array(
+        'label' => t('Comment settings'),
+        'description' => t('Comment module form.'),
+        'weight' => 30
+      );
+    }
+    if (module_exists('locale') && variable_get("language_content_type_$bundle", 0)) {
+      $extra['language'] = array(
+        'label' => t('Language'),
+        'description' => t('Locale module element.'),
+        'weight' => 0
+      );
+    }
+    if (module_exists('menu')) {
+      $extra['menu'] = array(
+        'label' => t('Menu settings'),
+        'description' => t('Menu module element.'),
+        'weight' => -2
+      );
+    }
+    if (module_exists('taxonomy') && taxonomy_get_vocabularies($bundle)) {
+      $extra['taxonomy'] = array(
+        'label' => t('Taxonomy'),
+        'description' => t('Taxonomy module element.'),
+        'weight' => -3
+      );
+    }
+    if (module_exists('book')) {
+      $extra['book'] = array(
+        'label' => t('Book'),
+        'description' => t('Book module element.'),
+        'weight' => 10
+      );
+    }
+    if ($bundle == 'poll' && module_exists('poll')) {
+      $extra['title'] = array(
+        'label' => t('Poll title'),
+        'description' => t('Poll module title.'),
+        'weight' => -5
+      );
+      $extra['choice_wrapper'] = array(
+        'label' => t('Poll choices'),
+        'description' => t('Poll module choices.'),
+        'weight' => -4
+      );
+      $extra['settings'] = array(
+        'label' => t('Poll settings'),
+        'description' => t('Poll module settings.'),
+        'weight' => -3
+      );
+    }
+    if (module_exists('upload') && variable_get("upload_$bundle", TRUE)) {
+      $extra['attachments'] = array(
+        'label' => t('File attachments'),
+        'description' => t('Upload module element.'),
+        'weight' => 30,
+        'view' => 'files'
+      );
+    }
+  }
+
+  return $extra;
 }
 
 /**
