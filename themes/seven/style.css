@@ -1,4 +1,4 @@
-/* $Id: style.css,v 1.4 2009/08/07 20:35:42 webchick Exp $ */
+/* $Id: style.css,v 1.6 2009/08/08 19:19:21 webchick Exp $ */
 
 /**
  * Generic elements
@@ -273,15 +273,7 @@ ul.secondary li.active a.active {
   position: relative;
 }
 
-#footer {
-  text-align: right;
-  border-top: 1px solid #ccc;
-  padding: 5px;
-  font-size: 12px;
-}
-
 #block-system-main {
-  min-height: 180px;
   padding: 20px 0;
   background: #fff;
   color: #333;
@@ -688,6 +680,11 @@ a.node-admin-add-content {
   padding-left: 15px;
   background: url(images/add.png) no-repeat 0 center;
   line-height: 30px;
+}
+
+/* Update status */
+.versions table.version {
+  border: none;
 }
 
 /* Overlay theming */
