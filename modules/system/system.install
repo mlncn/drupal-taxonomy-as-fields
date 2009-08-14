@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.365 2009/08/08 20:52:32 webchick Exp $
+// $Id: system.install,v 1.367 2009/08/12 23:51:19 webchick Exp $
 
 /**
  * @file
@@ -283,7 +283,7 @@ function system_requirements($phase) {
       $requirements['update status'] = array(
         'value' => $t('Not enabled'),
         'severity' => REQUIREMENT_WARNING,
-        'description' => $t('Update notifications are not enabled. It is <strong>highly recommended</strong> that you enable the update status module from the <a href="@module">module administration page</a> in order to stay up-to-date on new releases. For more information please read the <a href="@update">Update status handbook page</a>.', array('@update' => 'http://drupal.org/handbook/modules/update', '@module' => url('admin/structure/modules'))),
+        'description' => $t('Update notifications are not enabled. It is <strong>highly recommended</strong> that you enable the update status module from the <a href="@module">module administration page</a> in order to stay up-to-date on new releases. For more information please read the <a href="@update">Update status handbook page</a>.', array('@update' => 'http://drupal.org/handbook/modules/update', '@module' => url('admin/config/modules'))),
       );
     }
     else {
@@ -472,8 +472,6 @@ function system_install() {
 
   // Set the default input format to Filtered HTML.
   variable_set('filter_default_format', $filtered_html_format);
-
-  variable_set('node_options_forum', array(0 => 'status'));
 
   $cron_key = md5(mt_rand());
 

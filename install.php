@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.190 2009/07/30 19:32:19 dries Exp $
+// $Id: install.php,v 1.192 2009/08/12 12:39:18 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -674,7 +674,7 @@ function install_display_output($output, $install_state) {
     // Let the theming function know when every step of the installation has
     // been completed.
     $active_task = $install_state['installation_finished'] ? NULL : $install_state['active_task'];
-    drupal_add_region_content('left', theme_task_list(install_tasks_to_display($install_state), $active_task));
+    drupal_add_region_content('sidebar_first', theme_task_list(install_tasks_to_display($install_state), $active_task));
   }
   print theme($install_state['database_tables_exist'] ? 'maintenance_page' : 'install_page', $output);
   exit;
@@ -1405,7 +1405,9 @@ function install_finished(&$install_state) {
     $messages = drupal_set_message();
     $output = '<p>' . st('Congratulations, @drupal has been successfully installed.', array('@drupal' => drupal_install_profile_name())) . '</p>';
     $output .= '<p>' . (isset($messages['error']) ? st('Please review the messages above before continuing on to <a href="@url">your new site</a>.', array('@url' => url(''))) : st('You may now visit <a href="@url">your new site</a>.', array('@url' => url('')))) . '</p>';
-    $output .= '<p>' . st('For more information on configuring Drupal, please refer to the <a href="@help">help section</a>.', array('@help' => url('admin/help'))) . '</p>';
+    if (module_exists('help')) {
+      $output .= '<p>' . st('For more information on configuring Drupal, please refer to the <a href="@help">help section</a>.', array('@help' => url('admin/help'))) . '</p>';
+    }
 
     // Rebuild menu and registry to get content type links registered by the
     // profile, and possibly any other menu items created through the tasks.

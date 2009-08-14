@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.46 2009/07/31 19:01:03 dries Exp $
+// $Id: user.pages.inc,v 1.48 2009/08/12 12:36:05 dries Exp $
 
 /**
  * @file
@@ -136,7 +136,7 @@ function user_logout() {
 
   watchdog('user', 'Session closed for %name.', array('%name' => $user->name));
 
-  module_invoke_all('user_logout', NULL, $user);
+  module_invoke_all('user_logout', $user);
 
   // Destroy the current session, and reset $user to the anonymous user.
   session_destroy();
@@ -411,7 +411,7 @@ function user_cancel_confirm_form_submit($form, &$form_state) {
     user_cancel($form_state['values'], $account->uid, $form_state['values']['user_cancel_method']);
 
     if (!isset($_REQUEST['destination'])) {
-      $form_state['redirect'] = 'admin/user';
+      $form_state['redirect'] = 'admin/people';
     }
   }
   else {

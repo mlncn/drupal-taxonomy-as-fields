@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.169 2009/08/05 19:40:55 webchick Exp $
+// $Id: system.admin.inc,v 1.174 2009/08/13 03:03:04 webchick Exp $
 
 /**
  * @file
@@ -59,6 +59,51 @@ function system_main_admin_page($arg = NULL) {
   }
 }
 
+/**
+ * Menu callback; Provide the administration overview page.
+ */
+function system_admin_config_page() {
+  // Check for status report errors.
+  if (system_status(TRUE) && user_access('administer site configuration')) {
+    drupal_set_message(t('One or more problems were detected with your Drupal installation. Check the <a href="@status">status report</a> for more information.', array('@status' => url('admin/reports/status'))), 'error');
+  }
+  $blocks = array();
+  if ($admin = db_query("SELECT menu_name, mlid FROM {menu_links} WHERE link_path = 'admin/config' AND module = 'system'")->fetchAssoc()) {
+    $result = db_query("
+      SELECT m.*, ml.*
+      FROM {menu_links} ml
+      INNER JOIN {menu_router} m ON ml.router_path = m.path
+      WHERE ml.link_path != 'admin/help' AND menu_name = :menu_name AND ml.plid = :mlid AND hidden = 0", $admin, array('fetch' => PDO::FETCH_ASSOC));
+    foreach ($result as $item) {
+      _menu_link_translate($item);
+      if (!$item['access']) {
+        continue;
+      }
+      // The link 'description' either derived from the hook_menu 'description'
+      // or entered by the user via menu module is saved as the title attribute.
+      if (!empty($item['localized_options']['attributes']['title'])) {
+        $item['description'] = $item['localized_options']['attributes']['title'];
+      }
+      $block = $item;
+      $block['content'] = '';
+      if ($item['block_callback'] && function_exists($item['block_callback'])) {
+        $function = $item['block_callback'];
+        $block['content'] .= $function();
+      }
+      $block['content'] .= theme('admin_block_content', system_admin_menu_block($item));
+      // Prepare for sorting as in function _menu_tree_check_access().
+      // The weight is offset so it is always positive, with a uniform 5-digits.
+      $blocks[(50000 + $item['weight']) . ' ' . $item['title'] . ' ' . $item['mlid']] = $block;
+    }
+  }
+  if ($blocks) {
+    ksort($blocks);
+    return theme('admin_page', $blocks);
+  }
+  else {
+    return t('You do not have any administrative items.');
+  }
+}
 
 /**
  * Provide a single block from the administration menu as a page.
@@ -615,27 +660,18 @@ function system_modules($form_state = array()) {
       }
       else {
         $requires_name = $files[$requires]->info['name'];
-        if ($v) {
-          $requires_name .= $v['original_version'];
-          $current_version = str_replace(DRUPAL_CORE_COMPATIBILITY . '-', '', $files[$requires]->info['version']);
-          foreach ($v['versions'] as $required_version) {
-            if ((isset($required_version['op']) && !version_compare($current_version, $required_version['version'], $required_version['op'])) ||
-                (isset($required_version['preg']) && !preg_match($required_version['preg'], $current_version))) {
-              $extra['requires'][$requires] = t('@module (<span class="admin-missing">incompatible with</span> version @version)', array(
-                '@module' => $requires_name,
-                '@version' => $files[$requires]->info['version'],
-              ));
-              $extra['disabled'] = TRUE;
-            }
-          }
+        if ($incompatible_version = drupal_check_incompatibility($v, str_replace(DRUPAL_CORE_COMPATIBILITY . '-', '', $files[$requires]->info['version']))) {
+          $extra['requires'][$requires] = t('@module (<span class="admin-missing">incompatible with</span> version @version)', array(
+            '@module' => $requires_name . $incompatible_version,
+            '@version' => $files[$requires]->info['version'],
+          ));
+          $extra['disabled'] = TRUE;
         }
-        if (!isset($extra['requires'][$requires])) {
-          if ($files[$requires]->status) {
-            $extra['requires'][$requires] = t('@module (<span class="admin-enabled">enabled</span>)', array('@module' => $requires_name));
-          }
-          else {
-            $extra['requires'][$requires] = t('@module (<span class="admin-disabled">disabled</span>)', array('@module' => $requires_name));
-          }
+        elseif ($files[$requires]->status) {
+          $extra['requires'][$requires] = t('@module (<span class="admin-enabled">enabled</span>)', array('@module' => $requires_name));
+        }
+        else {
+          $extra['requires'][$requires] = t('@module (<span class="admin-disabled">disabled</span>)', array('@module' => $requires_name));
         }
       }
     }
@@ -684,7 +720,7 @@ function system_modules($form_state = array()) {
     '#type' => 'submit',
     '#value' => t('Save configuration'),
   );
-  $form['#action'] = url('admin/structure/modules/list/confirm');
+  $form['#action'] = url('admin/config/modules/list/confirm');
 
   return $form;
 }
@@ -806,7 +842,7 @@ function system_modules_confirm_form($modules, $storage) {
     $form = confirm_form(
       $form,
       t('Some required modules must be enabled'),
-      'admin/structure/modules',
+      'admin/config/modules',
       t('Would you like to continue with enabling the above?'),
       t('Continue'),
       t('Cancel'));
@@ -956,7 +992,7 @@ function system_modules_submit($form, &$form_state) {
   drupal_clear_css_cache();
   drupal_clear_js_cache();
 
-  $form_state['redirect'] = 'admin/structure/modules';
+  $form_state['redirect'] = 'admin/config/modules';
 
   // Notify locale module about module changes, so translations can be
   // imported. This might start a batch, and only return to the redirect
@@ -1022,7 +1058,7 @@ function system_modules_uninstall($form_state = NULL) {
       '#type' => 'submit',
       '#value' => t('Uninstall'),
     );
-    $form['#action'] = url('admin/structure/modules/uninstall/confirm');
+    $form['#action'] = url('admin/config/modules/uninstall/confirm');
   }
   else {
     $form['modules'] = array();
@@ -1063,7 +1099,7 @@ function system_modules_uninstall_confirm_form($storage) {
     $form = confirm_form(
       $form,
       t('Confirm uninstall'),
-      'admin/structure/modules/uninstall',
+      'admin/config/modules/uninstall',
       t('Would you like to continue with uninstalling the above?'),
       t('Uninstall'),
       t('Cancel'));
@@ -1078,7 +1114,7 @@ function system_modules_uninstall_validate($form, &$form_state) {
   // Form submitted, but no modules selected.
   if (!count(array_filter($form_state['values']['uninstall']))) {
     drupal_set_message(t('No modules selected.'), 'error');
-    drupal_goto('admin/structure/modules/uninstall');
+    drupal_goto('admin/config/modules/uninstall');
   }
 }
 
@@ -1096,7 +1132,7 @@ function system_modules_uninstall_submit($form, &$form_state) {
     drupal_set_message(t('The selected modules have been uninstalled.'));
 
     unset($form_state['storage']);
-    $form_state['redirect'] = 'admin/structure/modules/uninstall';
+    $form_state['redirect'] = 'admin/config/modules/uninstall';
   }
   else {
     $form_state['storage'] = $form_state['values'];
@@ -1121,8 +1157,8 @@ function system_ip_blocking() {
   $build['system_ip_blocking_form'] = drupal_get_form('system_ip_blocking_form');
 
   $build['system_ip_blocking_table'] = array(
-    '#theme' => 'table', 
-    '#header' => $header, 
+    '#theme' => 'table',
+    '#header' => $header,
     '#rows' => $rows,
   );
 
@@ -1313,85 +1349,99 @@ function system_logging_settings() {
  * @see system_settings_form()
  */
 function system_performance_settings() {
-
-  $description = '<p>' . t("The normal page cache mode is suitable for most sites and does not cause any side effects. The aggressive page cache mode causes Drupal to skip the loading (boot) and unloading (exit) of enabled modules when serving a cached page. This results in an additional performance boost but can cause unwanted side effects.") . '</p>';
-
-  $problem_modules = array_unique(array_merge(module_implements('boot'), module_implements('exit')));
-  sort($problem_modules);
-
-  if (count($problem_modules) > 0) {
-    $description .= '<p>' . t('<strong class="error">The following enabled modules are incompatible with aggressive page caching mode and will not function properly: %modules</strong>', array('%modules' => implode(', ', $problem_modules))) . '.</p>';
-  }
-  else {
-    $description .= '<p>' . t('<strong class="ok">Currently, all enabled modules are compatible with the aggressive page caching policy.</strong> Please note, if you use aggressive page caching and enable new modules, you will need to check this setting again to ensure compatibility.') . '</p>';
-  }
-  $form['page_cache'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Page cache'),
-    '#description' => t('Enabling the page cache will offer a significant performance boost. Drupal can store and send compressed cached pages requested by <em>anonymous</em> users. By caching a web page, Drupal does not have to construct the page each time it is viewed.'),
-    '#weight' => -1,
-  );
-
-  $form['page_cache']['cache'] = array(
-    '#type' => 'radios',
-    '#title' => t('Page caching mode'),
-    '#default_value' => variable_get('cache', CACHE_DISABLED),
-    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Normal (recommended for production sites, no side effects)'), CACHE_AGGRESSIVE => t('Aggressive (experts only, possible side effects)')),
-    '#description' => $description
-  );
-
-  $period = drupal_map_assoc(array(0, 60, 180, 300, 600, 900, 1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
-  $period[0] = '<' . t('none') . '>';
-  $form['page_cache']['cache_lifetime'] = array(
-    '#type' => 'select',
-    '#title' => t('Minimum cache lifetime'),
-    '#default_value' => variable_get('cache_lifetime', 0),
-    '#options' => $period,
-    '#description' => t('On high-traffic sites, it may be necessary to enforce a minimum cache lifetime. The minimum cache lifetime is the minimum amount of time that will elapse before the cache is emptied and recreated, and is applied to both page and block caches. A larger minimum cache lifetime offers better performance, but users will not see new content for a longer period of time.')
-  );
-  $form['page_cache']['page_compression'] = array(
-    '#type' => 'radios',
-    '#title' => t('Page compression'),
-    '#default_value' => variable_get('page_compression', TRUE),
-    '#options' => array(t('Disabled'), t('Enabled')),
-    '#description' => t("By default, Drupal compresses the pages it caches in order to save bandwidth and improve download times. This option should be disabled when using a webserver that performs compression."),
-  );
-
-  $form['bandwidth_optimizations'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Bandwidth optimizations'),
-    '#description' => '<p>' . t('Drupal can automatically optimize external resources like CSS and JavaScript, which can reduce both the size and number of requests made to your website. CSS files can be aggregated and compressed into a single file, while JavaScript files are aggregated (but not compressed). These optional optimizations may reduce server load, bandwidth requirements, and page loading times.') . '</p><p>' . t('These options are disabled if you have not set up your files directory, or if your download method is set to private.') . '</p>'
-  );
-
-  $directory = file_directory_path();
-  $is_writable = is_dir($directory) && is_writable($directory) && (variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC) == FILE_DOWNLOADS_PUBLIC);
-  $form['bandwidth_optimizations']['preprocess_css'] = array(
-    '#type' => 'radios',
-    '#title' => t('Optimize CSS files'),
-    '#default_value' => intval(variable_get('preprocess_css', 0) && $is_writable),
-    '#disabled' => !$is_writable,
-    '#options' => array(t('Disabled'), t('Enabled')),
-    '#description' => t('This option can interfere with theme development and should only be enabled in a production environment.'),
-  );
-  $form['bandwidth_optimizations']['preprocess_js'] = array(
-    '#type' => 'radios',
-    '#title' => t('Optimize JavaScript files'),
-    '#default_value' => intval(variable_get('preprocess_js', 0) && $is_writable),
-    '#disabled' => !$is_writable,
-    '#options' => array(t('Disabled'), t('Enabled')),
-    '#description' => t('This option can interfere with module development and should only be enabled in a production environment.'),
-  );
+  drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
 
   $form['clear_cache'] = array(
     '#type' => 'fieldset',
-    '#title' => t('Clear cached data'),
-    '#description' => t('Caching data improves performance, but may cause problems while troubleshooting new modules, themes, or translations, if outdated information has been cached. To refresh all cached data on your site, click the button below. <em>Warning: high-traffic sites will experience performance slowdowns while cached data is rebuilt.</em>'),
+    '#title' => t('Clear cache'),
   );
 
   $form['clear_cache']['clear'] = array(
     '#type' => 'submit',
-    '#value' => t('Clear cached data'),
+    '#value' => t('Clear all caches'),
     '#submit' => array('system_clear_cache_submit'),
+  );
+
+  $form['caching'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Caching'),
+  );
+
+  $cache = variable_get('cache', CACHE_DISABLED);
+  $js_hide = $cache != CACHE_AGGRESSIVE ? 'js-hide' : '';
+  $problem_modules = array_unique(array_merge(module_implements('boot'), module_implements('exit')));
+  if (count($problem_modules) > 0) {
+    $module_names = array();
+    foreach ($problem_modules as $module) {
+      $info = drupal_parse_info_file(drupal_get_path('module', $module) . "/$module.info");
+      $module_names[] = $info['name'];
+    }
+    sort($module_names);
+    $message = format_plural(count($module_names), '%module may cause issues when using aggressive caching.', '%modules may cause issues when using aggressive caching.', array('%module' => $module_names[0], '%modules' => implode(', ', $module_names)));
+    $description = ' <strong id="cache-error" class="error ' . $js_hide . '">' . $message . '</strong>';
+  }
+  else {
+    $description = ' <strong class="' . $js_hide . '">' . t('Note: if you use aggressive page caching and enable new modules, you will need to check this setting again to ensure compatibility.') . '</strong>';
+  }
+  $form['caching']['cache'] = array(
+    '#type' => 'radios',
+    '#title' => t('Page cache for anonymous users'),
+    '#default_value' => $cache,
+    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Normal (recommended)'), CACHE_AGGRESSIVE => t('Aggressive (possible issues)')),
+    '#description' => t('Aggressive caching prevents modules from being loaded if the requested page can be retrieved from the cache. This may cause issues if you use modules that need to be loaded every request i.e. for writing data like statistics.') . $description,
+  );
+  $period = drupal_map_assoc(array(0, 60, 180, 300, 600, 900, 1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
+  $period[0] = '<' . t('none') . '>';
+  $form['caching']['cache_lifetime'] = array(
+    '#type' => 'select',
+    '#title' => t('Minimum cache lifetime'),
+    '#default_value' => variable_get('cache_lifetime', 0),
+    '#options' => $period,
+    '#description' => t('The minimum amount of time that will elapse before the caches are recreated.')
+  );
+
+  $directory = file_directory_path();
+  $is_writable = is_dir($directory) && is_writable($directory);
+  $public_downloads = (variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC) == FILE_DOWNLOADS_PUBLIC);
+  $disabled = !$is_writable && !$public_downloads;
+  $disabled_message = '';
+  if(!$is_writable && !$public_downloads) {
+    $disabled_message = ' ' . t('<strong class="error">Please <a href="!file-system">set up</a> the files directory and set the download method to public to make these optimizations available.</strong>', array('!file-system' => url('admin/settings/file-system')));
+  }
+  elseif(!$is_writable) {
+    $disabled_message = ' ' . t('<strong class="error">Please set up the <a href="!file-system">files directory</a> to make these optimizations available.</strong>', array('!file-system' => url('admin/settings/file-system')));
+  }
+  elseif(!$public_downloads) {
+    $disabled_message = ' ' . t('<strong class="error">Please set the <a href="!file-system">download method</a> to public to make these optimizations available.</strong>', array('!file-system' => url('admin/settings/file-system')));
+  }
+  $form['bandwidth_optimization'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Bandwidth optimization'),
+    '#description' => t('External resources  can be optimized automatically, which can reduce both the size and number of requests made to your website.') . $disabled_message,
+  );
+
+  // Do not allow Drupal to gzip pages if the server alredy does that.
+  if (strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') === FALSE) {
+    $js_hide = $cache == CACHE_DISABLED ? ' class="js-hide"' : '';
+    $form['bandwidth_optimization']['page_compression'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Compress cached pages.'),
+      '#default_value' => variable_get('page_compression', TRUE),
+      '#prefix' => '<div id="page-compression-wrapper"' . $js_hide . '>',
+      '#suffix' => '</div>',
+    );
+  }
+  $form['bandwidth_optimization']['preprocess_css'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Aggregate and compress CSS files into one file.'),
+    '#default_value' => intval(variable_get('preprocess_css', 0) && $is_writable),
+    '#disabled' => $disabled,
+  );
+  $form['bandwidth_optimization']['preprocess_js'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Aggregate JavaScript files into one file.'),
+    '#default_value' => intval(variable_get('preprocess_js', 0) && $is_writable),
+    '#disabled' => $disabled,
   );
 
   $form['#submit'][] = 'drupal_clear_css_cache';

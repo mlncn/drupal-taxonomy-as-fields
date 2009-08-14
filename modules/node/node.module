@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1095 2009/08/08 22:52:59 webchick Exp $
+// $Id: node.module,v 1.1098 2009/08/13 02:16:35 webchick Exp $
 
 /**
  * @file
@@ -431,7 +431,7 @@ function node_type_save($info) {
       field_attach_rename_bundle($type->old_type, $type->type);
     }
     node_configure_fields($type);
-    module_invoke_all('node_type', 'update', $type);
+    module_invoke_all('node_type_update', $type);
     return SAVED_UPDATED;
   }
   else {
@@ -442,7 +442,7 @@ function node_type_save($info) {
 
     field_attach_create_bundle($type->type);
     node_configure_fields($type);
-    module_invoke_all('node_type', 'insert', $type);
+    module_invoke_all('node_type_insert', $type);
     return SAVED_NEW;
   }
 }
@@ -517,7 +517,7 @@ function node_type_delete($type) {
   db_delete('node_type')
     ->condition('type', $type)
     ->execute();
-  module_invoke_all('node_type', 'delete', $info);
+  module_invoke_all('node_type_delete', $info);
 }
 
 /**
@@ -1982,15 +1982,18 @@ function node_page_default() {
     drupal_set_title('');
   }
   else {
-    drupal_set_title(t('Welcome to @site-name', array('@site-name' => variable_get('site_name', 'Drupal'))));
+    drupal_set_title(t('Welcome to @site-name', array('@site-name' => variable_get('site_name', 'Drupal'))), PASS_THROUGH);
 
     $default_message = '<p>' . t('No front page content has been created yet.') . '</p>';
 
-    if (user_access('access administration pages')) {
-      $default_links = array (
-        l(t('Create content'), 'node/add'),
-        l(t('Change the default front page'), 'admin/settings/site-information'),
-      );
+    $default_links = array();
+    if (_node_add_access()) {
+      $default_links[] = l(t('Create content'), 'node/add');
+    }
+    if (user_access('administer site configuration')) {
+      $default_links[] = l(t('Change the default front page'), 'admin/settings/site-information');
+    }
+    if (!empty($default_links)) {
       $default_message .= theme('item_list', $default_links);
     }
 
@@ -2614,7 +2617,7 @@ function node_access_needs_rebuild($rebuild = NULL) {
  *   large number of nodes).
  *   hook_update_N and any form submit handler are safe contexts to use the
  *   'batch mode'. Less decidable cases (such as calls from hook_user,
- *   hook_taxonomy, hook_node_type...) might consider using the non-batch mode.
+ *   hook_taxonomy, etc...) might consider using the non-batch mode.
  */
 function node_access_rebuild($batch_mode = FALSE) {
   db_delete('node_access')->execute();

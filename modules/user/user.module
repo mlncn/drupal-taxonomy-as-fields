@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.1019 2009/08/08 20:52:33 webchick Exp $
+// $Id: user.module,v 1.1021 2009/08/12 12:36:05 dries Exp $
 
 /**
  * @file
@@ -23,10 +23,10 @@ define('EMAIL_MAX_LENGTH', 64);
  * We cannot use module_invoke() for this, because the arguments need to
  * be passed by reference.
  */
-function user_module_invoke($type, &$array, &$user, $category = NULL) {
+function user_module_invoke($type, &$edit, $account, $category = NULL) {
   foreach (module_implements('user_' . $type) as $module) {
     $function = $module . '_user_' . $type;
-    $function($array, $user, $category);
+    $function($edit, $account, $category);
   }
 }
 
@@ -878,7 +878,7 @@ function user_elements() {
 /**
  * Implement hook_user_view().
  */
-function user_user_view(&$edit, &$account, $category = NULL) {
+function user_user_view($account) {
   $account->content['user_picture'] = array(
     '#markup' => theme('user_picture', $account),
     '#weight' => -10,
@@ -902,7 +902,7 @@ function user_user_view(&$edit, &$account, $category = NULL) {
 /**
  * Implement hook_user_form.
  */
-function user_user_form(&$edit, &$account, $category = NULL) {
+function user_user_form(&$edit, $account, $category) {
   if ($category == 'account') {
     $form_state = array();
     return user_edit_form($form_state, (isset($account->uid) ? $account->uid : FALSE), $edit);
@@ -912,7 +912,7 @@ function user_user_form(&$edit, &$account, $category = NULL) {
 /**
  * Implement hook_user_validate().
  */
-function user_user_validate(&$edit, &$account, $category = NULL) {
+function user_user_validate(&$edit, $account, $category) {
   if ($category == 'account') {
     $uid = isset($account->uid) ? $account->uid : FALSE;
     // Validate the username when: new user account; or user is editing own account and can change username; or an admin user.
@@ -953,7 +953,7 @@ function user_user_validate(&$edit, &$account, $category = NULL) {
 /**
  * Implement hook_user_submit().
  */
-function user_user_submit(&$edit, &$account, $category = NULL) {
+function user_user_submit(&$edit, $account, $category) {
   if ($category == 'account') {
     if (!empty($edit['picture_upload'])) {
       $edit['picture'] = $edit['picture_upload'];
@@ -1314,19 +1314,19 @@ function user_menu() {
   );
 
   // User administration pages.
-  $items['admin/user'] = array(
-    'title' => 'Users',
+  $items['admin/people'] = array(
+    'title' => 'People',
     'page callback' => 'user_admin',
     'page arguments' => array('list'),
     'access arguments' => array('administer users'),
     'weight' => -4,
   );
-  $items['admin/user/list'] = array(
+  $items['admin/people/list'] = array(
     'title' => 'List',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -10,
   );
-  $items['admin/user/create'] = array(
+  $items['admin/people/create'] = array(
     'title' => 'Add user',
     'page arguments' => array('create'),
     'access arguments' => array('administer users'),
@@ -2065,19 +2065,14 @@ function _user_cancel($edit, $account, $method) {
  * @return
  *   A structured array containing the individual elements of the profile.
  */
-function user_build_content(&$account) {
-  $edit = NULL;
+function user_build_content($account) {
   $account->content = array();
 
   // Build fields content.
   // TODO D7 : figure out where exactly this needs to go
   $account->content += field_attach_view('user', $account);
 
-  user_module_invoke('view', $edit, $account);
-
-  // Allow modules to modify the fully-built profile.
-  drupal_alter('profile', $account);
-
+  module_invoke_all('user_view', $account);
   return $account->content;
 }
 
@@ -2376,7 +2371,7 @@ function user_multiple_cancel_confirm(&$form_state) {
 
   return confirm_form($form,
                       t('Are you sure you want to cancel these user accounts?'),
-                      'admin/user', t('This action cannot be undone.'),
+                      'admin/people', t('This action cannot be undone.'),
                       t('Cancel accounts'), t('Cancel'));
 }
 
@@ -2403,7 +2398,7 @@ function user_multiple_cancel_confirm_submit($form, &$form_state) {
       }
     }
   }
-  $form_state['redirect'] = 'admin/user';
+  $form_state['redirect'] = 'admin/people';
   return;
 }
 
@@ -2420,7 +2415,7 @@ function user_help($path, $arg) {
       $output .= '<p>' . t('A visitor accessing your website is assigned a unique ID, or session ID, which is stored in a cookie. The cookie does not contain personal information, but acts as a key to retrieve information from your site. Users should have cookies enabled in their web browser when using your site.') . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@user">User module</a>.', array('@user' => 'http://drupal.org/handbook/modules/user/')) . '</p>';
       return $output;
-    case 'admin/user/create':
+    case 'admin/people/create':
       return '<p>' . t("This web page allows administrators to register new users. Users' e-mail addresses and usernames must be unique.") . '</p>';
     case 'admin/settings/permissions':
       return '<p>' . t('Permissions let you control what users can do and see on your site. You can define a specific set of permissions for each role. (See the <a href="@role">Roles</a> page to create a role). Two important roles to consider are Authenticated Users and Administrators. Any permissions granted to the Authenticated Users role will be given to any user who can log into your site.  You can make any role the Administrator role for the site, meaning this will be granted all new permissions automatically. You can do this on the <a href="@settings">User Settings</a> page. You should be careful to ensure that only trusted users are given this access and level of control of your site.', array('@role' => url('admin/settings/roles'), '@settings' => url('admin/settings/user'))) . '</p>';
@@ -2430,7 +2425,7 @@ function user_help($path, $arg) {
       <li>Anonymous user: this role is used for users that don\'t have a user account or that are not authenticated.</li>
       <li>Authenticated user: this role is automatically granted to all logged in users.</li>
       </ul>', array('@permissions' => url('admin/settings/permissions')));
-    case 'admin/user/search':
+    case 'admin/people/search':
       return '<p>' . t('Enter a simple pattern ("*" may be used as a wildcard match) to search for a username or e-mail address. For example, one may search for "br" and Drupal might return "brian", "brad", and "brenda@example.com".') . '</p>';
   }
 }
@@ -2929,7 +2924,7 @@ function user_register() {
      '#title' => t('Notify user of new account')
     );
     // Redirect back to page which initiated the create request;
-    // usually admin/user/create.
+    // usually admin/people/create.
     $form['destination'] = array('#type' => 'hidden', '#value' => $_GET['q']);
   }
 

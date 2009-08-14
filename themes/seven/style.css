@@ -1,4 +1,4 @@
-/* $Id: style.css,v 1.6 2009/08/08 19:19:21 webchick Exp $ */
+/* $Id: style.css,v 1.9 2009/08/12 23:51:19 webchick Exp $ */
 
 /**
  * Generic elements
@@ -232,7 +232,8 @@ ul.secondary {
   float: none;
   clear: both;
   font-size: 12px;
-  padding: 5px 20px 4px;
+  text-align: right;
+  padding: 5px 10px 4px;
   line-height: 20px;
   overflow: hidden;
   border-bottom: 1px solid #ccc;
@@ -240,7 +241,6 @@ ul.secondary {
 }
 
 ul.secondary li {
-  float: right;
   padding-left: 10px;
 }
 
@@ -443,12 +443,33 @@ table tr.selected td {
 /* Fieldsets & Form items */
 fieldset {
   border: 1px solid #ccc;
-  padding: 9px;
+  padding: 30px 13px 13px 14px;
   margin: 0 0 10px;
+}
+
+fieldset legend span,
+fieldset legend a {
+  position: absolute;
+  margin-top: 9px;
+}
+
+fieldset legend a span {
+  position: relative;
+  margin-top: 0;
 }
 
 fieldset.collapsed {
   background: transparent;
+}
+
+html.js fieldset.collapsed legend,
+html.js fieldset.collapsed legend * {
+  display: block;
+}
+html.js fieldset.collapsed {
+  border-width: 1px;
+  margin-bottom: 10px;
+  padding: 13px;
 }
 
 fieldset fieldset {
@@ -637,7 +658,7 @@ div.admin-panel {
   display: block;
 }
 
-/* admin/content/node and admin/user/user */
+/* admin/content and admin/people */
 #block-system-main dl.multiselect,
 #block-system-main dl.multiselect dt,
 #block-system-main dl.multiselect dd {

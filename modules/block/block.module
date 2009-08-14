@@ -1,5 +1,5 @@
 <?php
-// $Id: block.module,v 1.354 2009/08/04 06:38:56 webchick Exp $
+// $Id: block.module,v 1.358 2009/08/12 12:36:03 dries Exp $
 
 /**
  * @file
@@ -237,7 +237,6 @@ function block_page_alter($page) {
 
   // Populate all block regions
   $all_regions = system_region_list($theme);
-  $visible_regions = system_region_list($theme, REGIONS_VISIBLE);
 
   // Load all region content assigned via blocks.
   foreach (array_keys($all_regions) as $region) {
@@ -250,12 +249,15 @@ function block_page_alter($page) {
 
       // Append region description if we are rendering the block admin page.
       $item = menu_get_item();
-      if ($item['path'] == 'admin/structure/block' && isset($visible_regions[$region])) {
-        $description = '<div class="block-region">' . $all_regions[$region] . '</div>';
-        $page[$region]['block_description'] = array(
-          '#markup' => $description,
-          '#weight' => 15,
-        );
+      if ($item['path'] == 'admin/structure/block') {
+        $visible_regions = system_region_list($theme, REGIONS_VISIBLE);
+        if (isset($visible_regions[$region])) {
+          $description = '<div class="block-region">' . $all_regions[$region] . '</div>';
+          $page[$region]['block_description'] = array(
+            '#markup' => $description,
+            '#weight' => 15,
+          );
+        }
       }
     }
   }
@@ -419,7 +421,7 @@ function block_box_save($edit, $delta) {
 /**
  * Implement hook_user_form().
  */
-function block_user_form(&$edit, &$account, $category = NULL) {
+function block_user_form(&$edit, $account, $category) {
   if ($category == 'account') {
     $rids = array_keys($account->roles);
     $result = db_query("SELECT DISTINCT b.* FROM {block} b LEFT JOIN {block_role} r ON b.module = r.module AND b.delta = r.delta WHERE b.status = 1 AND b.custom <> 0 AND (r.rid IN (:rids) OR r.rid IS NULL) ORDER BY b.weight, b.module", array(':rids' => $rids));
@@ -452,44 +454,11 @@ function block_user_form(&$edit, &$account, $category = NULL) {
 /**
  * Implement hook_user_validate().
  */
-function block_user_validate(&$edit, &$account, $category = NULL) {
+function block_user_validate(&$edit, $account, $category) {
   if (empty($edit['block'])) {
     $edit['block'] = array();
   }
   return $edit;
-}
-
-/**
- * Implement hook_form_FORM_ID_alter().
- */
-function block_form_system_performance_settings_alter(&$form, &$form_state) {
-
-  // Add the block cache fieldset on the performance settings page.
-  $form['block_cache'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Block cache'),
-    '#description' => t('Enabling the block cache can offer a performance increase for all users by preventing blocks from being reconstructed on each page load. If the page cache is also enabled, performance increases from enabling the block cache will mainly benefit authenticated users.'),
-    '#weight' => 0,
-  );
-
-  $form['block_cache']['block_cache'] = array(
-    '#type' => 'radios',
-    '#title' => t('Block cache'),
-    '#default_value' => variable_get('block_cache', CACHE_DISABLED),
-    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Enabled (recommended)')),
-    '#disabled' => count(module_implements('node_grants')),
-    '#description' => t('Note that block caching is inactive when modules defining content access restrictions are enabled.'),
-  );
-
-  // Check if the "Who's online" block is enabled.
-  $online_block_enabled = db_query_range("SELECT 1 FROM {block} b WHERE module = 'user' AND delta = 'online' AND status = 1", array(), 0, 1)->fetchField();
-
-  // If the "Who's online" block is enabled, append some descriptive text to
-  // the end of the form description.
-  if ($online_block_enabled) {
-    $form['page_cache']['cache']['#description'] .=  '<p>' . t('When caching is enabled, anonymous user sessions are only saved to the database when needed, so the "Who\'s online" block does not display the number of anonymous users.') . '</p>';
-  }
-
 }
 
 /**
@@ -514,7 +483,7 @@ function block_system_themes_form_submit(&$form, &$form_state) {
         }
       }
     }
-    if ($form_state['values']['admin_theme'] && $form_state['values']['admin_theme'] != variable_get('admin_theme', 0)) {
+    if ($form_state['values']['admin_theme'] && $form_state['values']['admin_theme'] !== variable_get('admin_theme', 0)) {
       // If we're changing themes, make sure the theme has its blocks initialized.
       $has_blocks = (bool) db_query_range('SELECT 1 FROM {block} WHERE theme = :theme', array(':theme' => $form_state['values']['admin_theme']), 0, 1)->fetchField();
       if (!$has_blocks) {

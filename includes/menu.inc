@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.331 2009/07/30 10:16:48 dries Exp $
+// $Id: menu.inc,v 1.333 2009/08/11 17:26:33 webchick Exp $
 
 /**
  * @file
@@ -865,7 +865,7 @@ function menu_tree_all_data($menu_name, $item = NULL) {
     // If the tree data was not in the cache, $data will be NULL.
     if (!isset($data)) {
       // Build and run the query, and build the tree.
-      $query = db_select('menu_links', 'ml');
+      $query = db_select('menu_links', 'ml', array('fetch' => PDO::FETCH_ASSOC));
       $query->leftJoin('menu_router', 'm', 'm.path = ml.router_path');
       $query->fields('ml');
       $query->fields('m', array(
@@ -1035,7 +1035,7 @@ function menu_tree_page_data($menu_name) {
         // Select the links from the table, and recursively build the tree. We
         // LEFT JOIN since there is no match in {menu_router} for an external
         // link.
-        $query = db_select('menu_links', 'ml');
+        $query = db_select('menu_links', 'ml', array('fetch' => PDO::FETCH_ASSOC));
         $query->leftJoin('menu_router', 'm', 'm.path = ml.router_path');
         $query->fields('ml');
         $query->fields('m', array(
@@ -1188,7 +1188,6 @@ function _menu_tree_data($result, $parents, $depth, $previous_element = '') {
   $remnant = NULL;
   $tree = array();
   foreach ($result as $item) {
-    $item = is_object($item) ? get_object_vars($item) : $item;
     // We need to determine if we're on the path to root so we can later build
     // the correct active trail and breadcrumb.
     $item['in_active_trail'] = in_array($item['mlid'], $parents);
@@ -2746,8 +2745,8 @@ function _menu_site_is_offline() {
       // Ensure that the offline message is displayed only once [allowing for
       // page redirects], and specifically suppress its display on the site
       // maintenance page.
-      if (drupal_get_normal_path($_GET['q']) != 'admin/settings/maintenance-mode') {
-        drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/settings/maintenance-mode'))), 'status', FALSE);
+      if (drupal_get_normal_path($_GET['q']) != 'admin/config/development/maintenance') {
+        drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/config/development/maintenance'))), 'status', FALSE);
       }
     }
     else {

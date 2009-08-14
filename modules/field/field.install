@@ -1,5 +1,5 @@
 <?php
-// $Id: field.install,v 1.9 2009/05/28 10:05:32 dries Exp $
+// $Id: field.install,v 1.11 2009/08/13 01:50:00 webchick Exp $
 
 /**
  * @file
@@ -116,11 +116,6 @@ function field_schema() {
         'not null' => TRUE,
         'serialize' => TRUE,
       ),
-      'weight' => array(
-        'type' => 'int',
-        'not null' => TRUE,
-        'default' => 0,
-      ),
       'deleted' => array(
         'type' => 'int',
         'size' => 'tiny',
@@ -129,10 +124,9 @@ function field_schema() {
       ),
     ),
     'primary key' => array('id'),
-    'unique keys' => array(
-      'field_id_bundle' => array('field_id', 'bundle'),
-    ),
     'indexes' => array(
+      // used by field_delete_instance()
+      'field_name_bundle' => array('field_name', 'bundle'),
       // used by field_read_instances()
       'widget_active_deleted' => array('widget_active', 'deleted'),
       // used by field_modules_disabled()
