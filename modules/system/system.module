@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.745 2009/08/14 14:00:14 webchick Exp $
+// $Id: system.module,v 1.748 2009/08/15 15:57:44 dries Exp $
 
 /**
  * @file
@@ -579,7 +579,6 @@ function system_menu() {
   );
   $items['admin/config/config'] = array(
     'title' => 'Configuration',
-    'access callback' => array('user_access'),
     'access arguments' => array('administer site configuration'),
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -10,
@@ -589,7 +588,6 @@ function system_menu() {
     'description' => 'Enable or disable add-on modules for your site.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('system_modules'),
-    'access callback' => array('user_access'),
     'access arguments' => array('administer site configuration'),
     'type' => MENU_LOCAL_TASK,
     'weight' => 10,
@@ -1582,7 +1580,7 @@ function system_admin_menu_block($item) {
     }
     // Prepare for sorting as in function _menu_tree_check_access().
     // The weight is offset so it is always positive, with a uniform 5-digits.
-    $content[(50000 + $link['weight']) . ' ' . $link['title'] . ' ' . $link['mlid']] = $link;
+    $content[(50000 + $link['weight']) . ' ' . drupal_strtolower($link['title']) . ' ' . $link['mlid']] = $link;
   }
   ksort($content);
   $cache[$item['mlid']] = $content;
@@ -2052,8 +2050,6 @@ function system_settings_form($form, $automatic_defaults = TRUE) {
  * add an array_filter value to your form.
  */
 function system_settings_form_submit($form, &$form_state) {
-  $op = isset($form_state['values']['op']) ? $form_state['values']['op'] : '';
-
   // Exclude unnecessary elements.
   unset($form_state['values']['submit'], $form_state['values']['reset'], $form_state['values']['form_id'], $form_state['values']['op'], $form_state['values']['form_token'], $form_state['values']['form_build_id']);
 

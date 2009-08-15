@@ -1,5 +1,5 @@
 <?php
-// $Id: simpletest.pages.inc,v 1.12 2009/08/13 11:31:26 dries Exp $
+// $Id: simpletest.pages.inc,v 1.14 2009/08/15 17:52:53 webchick Exp $
 
 /**
  * @file
@@ -226,6 +226,7 @@ function simpletest_result_form(&$form_state, $test_id) {
     '#pass' => 0,
     '#fail' => 0,
     '#exception' => 0,
+    '#debug' => 0,
   );
 
   // Cycle through each test group.
@@ -264,14 +265,14 @@ function simpletest_result_form(&$form_state, $test_id) {
       $form['result']['summary']['#' . $assertion->status]++;
     }
     $form['result']['results'][$group]['table'] = array(
-      '#theme' => 'table', 
-      '#header' => $header, 
+      '#theme' => 'table',
+      '#header' => $header,
       '#rows' => $rows,
     );
 
     // Set summary information.
     $group_summary['#ok'] = $group_summary['#fail'] + $group_summary['#exception'] == 0;
-    $form['result']['results'][$group]['#collapsed'] = $group_summary['#ok'];
+    $form['result']['results'][$group]['#collapsed'] = $group_summary['#ok'] && !$group_summary['#debug'];
 
     // Store test group (class) as for use in filter.
     $filter[$group_summary['#ok'] ? 'pass' : 'fail'][] = $group;
@@ -404,6 +405,7 @@ function simpletest_result_status_image($status) {
       'pass' => theme('image', 'misc/watchdog-ok.png'),
       'fail' => theme('image', 'misc/watchdog-error.png'),
       'exception' => theme('image', 'misc/watchdog-warning.png'),
+      'debug' => theme('image', 'misc/watchdog-warning.png'),
     );
   }
   if (isset($map[$status])) {
@@ -431,7 +433,7 @@ function simpletest_settings_form(&$form_state) {
   $form['general']['simpletest_verbose'] = array(
     '#type' => 'checkbox',
     '#title' => t('Provide verbose information when running tests'),
-    '#description' => t('The verbose data will be printed along with the standard assertions. Useful for debugging.'),
+    '#description' => t('The verbose data will be printed along with the standard assertions and is useful for debugging. The verbose data will be erased between each test suite run. The verbose data output is very detailed and should only be used when debugging.'),
     '#default_value' => variable_get('simpletest_verbose', FALSE),
   );
 

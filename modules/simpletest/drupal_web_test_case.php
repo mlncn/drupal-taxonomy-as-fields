@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.134 2009/08/05 15:58:35 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.136 2009/08/15 17:52:53 webchick Exp $
 
 /**
  * Base class for Drupal tests.
@@ -42,6 +42,7 @@ abstract class DrupalTestCase {
     '#pass' => 0,
     '#fail' => 0,
     '#exception' => 0,
+    '#debug' => 0,
   );
 
   /**
@@ -376,6 +377,12 @@ abstract class DrupalTestCase {
    *   FALSE.
    */
   protected function error($message = '', $group = 'Other', array $caller = NULL) {
+    if ($group == 'User notice') {
+      // Since 'User notice' is set by trigger_error() which is used for debug
+      // set the message to a status of 'debug'.
+      return $this->assert('debug', $message, 'Debug', $caller);
+    }
+
     return $this->assert('exception', $message, $group, $caller);
   }
 
@@ -384,7 +391,7 @@ abstract class DrupalTestCase {
    */
   public function run() {
     // Initialize verbose debugging.
-    simpletest_verbose(NULL, file_directory_path());
+    simpletest_verbose(NULL, file_directory_path(), get_class($this));
 
     // HTTP auth settings (<username>:<password>) for the simpletest browser
     // when sending requests to the test site.
@@ -2483,7 +2490,7 @@ class DrupalWebTestCase extends DrupalTestCase {
    */
   protected function verbose($message) {
     if ($id = simpletest_verbose($message)) {
-      $this->pass(l(t('Verbose message'), $this->originalFileDirectory . '/simpletest/verbose.html', array('fragment' => $id)), 'Debug');
+      $this->pass(l(t('Verbose message'), $this->originalFileDirectory . '/simpletest/verbose/' . get_class($this) . '-' . $id . '.html', array('attributes' => array('target' => '_blank'))), 'Debug');
     }
   }
 }
@@ -2515,13 +2522,15 @@ function drupal_mail_wrapper($message) {
  *   The verbose message to be stored.
  * @param $original_file_directory
  *   The original file directory, before it was changed for testing purposes.
+ * @param $test_class
+ *   The active test case class.
  * @return
  *   The ID of the message to be placed in related assertion messages.
  * @see DrupalTestCase->originalFileDirectory
  * @see DrupalWebTestCase->verbose()
  */
-function simpletest_verbose($message, $original_file_directory = NULL) {
-  static $file_directory = NULL, $id = 0;
+function simpletest_verbose($message, $original_file_directory = NULL, $test_class = NULL) {
+  static $file_directory = NULL, $class = NULL, $id = 1;
   $verbose = &drupal_static(__FUNCTION__);
 
   // Will pass first time during setup phase, and when verbose is TRUE.
@@ -2530,21 +2539,18 @@ function simpletest_verbose($message, $original_file_directory = NULL) {
   }
 
   if ($message && $file_directory) {
-    $message = '<hr /><a id="' . $id . '" href="#' . $id . '">ID #' . $id . '</a><hr />' . $message;
-    file_put_contents($file_directory . '/simpletest/verbose.html', $message, FILE_APPEND);
+    $message = '<hr />ID #' . $id . ' (<a href="' . $class . '-' . ($id - 1) . '.html">Previous</a> | <a href="' . $class . '-' . ($id + 1) . '.html">Next</a>)<hr />' . $message;
+    file_put_contents($file_directory . "/simpletest/verbose/$class-$id.html", $message, FILE_APPEND);
     return $id++;
   }
 
   if ($original_file_directory) {
     $file_directory = $original_file_directory;
+    $class = $test_class;
     $verbose = variable_get('simpletest_verbose', FALSE);
 
-    // Clear out the previous log.
-    $message = t('Starting verbose log at @time.', array('@time' => format_date(time()))) . "\n";
-    $directory = $file_directory . '/simpletest';
-    if (file_check_directory($directory, FILE_CREATE_DIRECTORY)) {
-      file_put_contents($directory . '/verbose.html', $message);
-    }
+    $directory = $file_directory . '/simpletest/verbose';
+    return file_check_directory($directory, FILE_CREATE_DIRECTORY);
   }
   return FALSE;
 }
