@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.177 2009/08/16 11:31:27 dries Exp $
+// $Id: system.admin.inc,v 1.179 2009/08/16 23:20:43 webchick Exp $
 
 /**
  * @file
@@ -1363,27 +1363,11 @@ function system_performance_settings() {
   );
 
   $cache = variable_get('cache', CACHE_DISABLED);
-  $js_hide = $cache != CACHE_AGGRESSIVE ? 'js-hide' : '';
-  $problem_modules = array_unique(array_merge(module_implements('boot'), module_implements('exit')));
-  if (count($problem_modules) > 0) {
-    $module_names = array();
-    foreach ($problem_modules as $module) {
-      $info = drupal_parse_info_file(drupal_get_path('module', $module) . "/$module.info");
-      $module_names[] = $info['name'];
-    }
-    sort($module_names);
-    $message = format_plural(count($module_names), '%module may cause issues when using aggressive caching.', '%modules may cause issues when using aggressive caching.', array('%module' => $module_names[0], '%modules' => implode(', ', $module_names)));
-    $description = ' <strong id="cache-error" class="error ' . $js_hide . '">' . $message . '</strong>';
-  }
-  else {
-    $description = ' <strong class="' . $js_hide . '">' . t('Note: if you use aggressive page caching and enable new modules, you will need to check this setting again to ensure compatibility.') . '</strong>';
-  }
   $form['caching']['cache'] = array(
     '#type' => 'radios',
     '#title' => t('Page cache for anonymous users'),
     '#default_value' => $cache,
-    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Normal (recommended)'), CACHE_AGGRESSIVE => t('Aggressive (possible issues)')),
-    '#description' => t('Aggressive caching prevents modules from being loaded if the requested page can be retrieved from the cache. This may cause issues if you use modules that need to be loaded every request i.e. for writing data like statistics.') . $description,
+    '#options' => array(CACHE_DISABLED => t('Disabled'), CACHE_NORMAL => t('Normal (recommended)')),
   );
   $period = drupal_map_assoc(array(0, 60, 180, 300, 600, 900, 1800, 2700, 3600, 10800, 21600, 32400, 43200, 86400), 'format_interval');
   $period[0] = '<' . t('none') . '>';

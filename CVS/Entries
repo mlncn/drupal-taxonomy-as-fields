@@ -5,7 +5,6 @@ D/profiles////
 D/scripts////
 D/sites////
 D/themes////
-/COPYRIGHT.txt/1.4/Fri Jun 12 07:15:24 2009//
 /INSTALL.mysql.txt/1.11/Fri Jun 12 07:15:24 2009//
 /INSTALL.pgsql.txt/1.8/Fri Aug  7 05:58:20 2009//
 /INSTALL.sqlite.txt/1.1/Fri Jun 12 07:15:24 2009//
@@ -20,4 +19,5 @@ D/themes////
 /UPGRADE.txt/1.15/Fri Aug 14 05:08:40 2009//
 /install.php/1.192/Fri Aug 14 05:08:40 2009//
 /update.php/1.296/Fri Aug 14 05:08:40 2009//
-/.htaccess/1.104/Sun Aug 16 17:51:57 2009//
+/.htaccess/1.104/Sun Aug 16 17:59:33 2009//
+/COPYRIGHT.txt/1.5/Mon Aug 17 16:10:24 2009//
