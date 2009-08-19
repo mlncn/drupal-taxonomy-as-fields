@@ -3,7 +3,6 @@
 /comment-wrapper.tpl.php/1.7/Fri Aug  7 05:58:21 2009//
 /comment.admin.inc/1.30/Fri Aug  7 05:58:21 2009//
 /comment.css/1.5/Fri Jun 12 07:15:25 2009//
-/comment.info/1.10/Sat Jun 13 03:10:53 2009//
 /comment.install/1.44/Tue Aug 11 21:17:14 2009//
 /comment.js/1.11/Fri Jun 12 07:15:25 2009//
 /comment.pages.inc/1.24/Fri Aug  7 05:58:21 2009//
@@ -11,4 +10,6 @@
 /comment.tpl.php/1.10/Fri Aug  7 05:58:21 2009//
 /comment.api.php/1.11/Wed Aug 19 08:26:49 2009//
 /comment.module/1.753/Wed Aug 19 08:26:49 2009//
+/comment.info/1.11/Wed Aug 19 22:59:37 2009//
+/comment.tokens.inc/1.1/Wed Aug 19 20:19:36 2009//
 D

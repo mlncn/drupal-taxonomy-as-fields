@@ -1,6 +1,5 @@
 /taxonomy.api.php/1.7/Fri Jun 12 07:15:26 2009//
 /taxonomy.css/1.5/Fri Jun 12 07:15:26 2009//
-/taxonomy.info/1.9/Sat Jun 13 03:11:54 2009//
 /taxonomy.js/1.6/Fri Jun 12 07:15:26 2009//
 /vocabulary.js/1.1/Fri Jun 12 19:29:04 2009//
 /taxonomy.admin.inc/1.64/Wed Aug 19 12:08:14 2009//
@@ -8,4 +7,6 @@
 /taxonomy.module/1.497/Wed Aug 19 13:55:52 2009//
 /taxonomy.pages.inc/1.32/Wed Aug 19 12:08:14 2009//
 /taxonomy.test/1.43/Wed Aug 19 12:08:14 2009//
+/taxonomy.info/1.10/Wed Aug 19 22:59:37 2009//
+/taxonomy.tokens.inc/1.1/Wed Aug 19 20:19:37 2009//
 D
