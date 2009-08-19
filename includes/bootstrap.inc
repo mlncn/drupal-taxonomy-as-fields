@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.295 2009/08/16 23:20:43 webchick Exp $
+// $Id: bootstrap.inc,v 1.297 2009/08/17 20:32:29 dries Exp $
 
 /**
  * @file
@@ -656,8 +656,8 @@ function drupal_get_filename($type, $name, $filename = NULL) {
 
       if (drupal_function_exists('drupal_system_listing')) {
         $matches = drupal_system_listing($mask, $dir, 'name', 0);
-        if (!empty($matches[$name]->filepath)) {
-          $files[$type][$name] = $matches[$name]->filepath;
+        if (!empty($matches[$name]->uri)) {
+          $files[$type][$name] = $matches[$name]->uri;
         }
       }
     }
@@ -1513,6 +1513,9 @@ function _drupal_bootstrap($phase) {
       }
 
       // Prepare for non-cached page workflow.
+      require_once DRUPAL_ROOT . '/' . variable_get('lock_inc', 'includes/lock.inc');
+      lock_initialize();
+
       if ($_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
         ob_start();
         drupal_page_header();
