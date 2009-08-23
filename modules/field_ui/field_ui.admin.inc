@@ -1,5 +1,5 @@
 <?php
-// $Id: field_ui.admin.inc,v 1.1 2009/08/19 13:31:13 webchick Exp $
+// $Id: field_ui.admin.inc,v 1.4 2009/08/22 14:34:20 webchick Exp $
 
 /**
  * @file
@@ -22,7 +22,7 @@ function field_ui_fields_list() {
       $rows[$field_name]['data'][0] = $field['locked'] ? t('@field_name (Locked)', array('@field_name' => $field_name)) : $field_name;
       $rows[$field_name]['data'][1] = t($field_types[$field['type']]['label']);
       $rows[$field_name]['data'][2][] = l($bundles[$bundle]['label'], $admin_path . '/fields');
-      $rows[$field_name]['class'] = $field['locked'] ? 'menu-disabled' : '';
+      $rows[$field_name]['class'] = $field['locked'] ? array('menu-disabled') : array('');
     }
   }
   foreach ($rows as $field_name => $cell) {
@@ -298,19 +298,19 @@ function template_preprocess_field_ui_field_overview_form(&$vars) {
     $row = new stdClass();
 
     // Add target classes for the tabledrag behavior.
-    $element['weight']['#attributes']['class'] = 'field-weight';
-    $element['hidden_name']['#attributes']['class'] = 'field-name';
+    $element['weight']['#attributes']['class'][] = 'field-weight';
+    $element['hidden_name']['#attributes']['class'][] = 'field-name';
     // Add target classes for the update selects behavior.
     switch ($element['#row_type']) {
       case 'add_new_field':
-        $element['type']['#attributes']['class'] = 'field-type-select';
-        $element['widget_type']['#attributes']['class'] = 'widget-type-select';
+        $element['type']['#attributes']['class'][] = 'field-type-select';
+        $element['widget_type']['#attributes']['class'][] = 'widget-type-select';
         break;
 
       case 'add_existing_field':
-        $element['field_name']['#attributes']['class'] = 'field-select';
-        $element['widget_type']['#attributes']['class'] = 'widget-type-select';
-        $element['label']['#attributes']['class'] = 'label-textfield';
+        $element['field_name']['#attributes']['class'][] = 'field-select';
+        $element['widget_type']['#attributes']['class'][] = 'widget-type-select';
+        $element['label']['#attributes']['class'][] = 'label-textfield';
         break;
     }
     foreach (element_children($element) as $child) {
@@ -496,7 +496,6 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
       field_create_field($field);
       field_create_instance($instance);
 
-      $destinations[] = $admin_path . '/fields/refresh';
       $destinations[] = $admin_path . '/fields/' . $field['field_name'] . '/field-settings';
       $destinations[] = $admin_path . '/fields/' . $field['field_name'] . '/edit';
 
@@ -528,7 +527,6 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
 
       try {
         field_create_instance($instance);
-        $destinations[] = $admin_path . '/fields/refresh';
         $destinations[] = $admin_path . '/fields/' . $instance['field_name'] . '/edit';
         // Store new field information for any additional submit handlers.
         $form_state['fields_added']['_add_existing_field'] = $instance['field_name'];
@@ -999,11 +997,7 @@ function field_ui_field_delete_form_submit($form, &$form_state) {
   }
 
   $admin_path = _field_ui_bundle_admin_path($bundle);
-  $destinations = array(
-    $admin_path . '/fields/refresh',
-    $admin_path . '/fields',
-  );
-  $form_state['redirect'] = field_ui_get_destinations($destinations);
+  $form_state['redirect'] = field_ui_get_destinations(array($admin_path . '/fields'));
 }
 
 /**
@@ -1213,7 +1207,7 @@ function field_ui_default_value_widget($field, $instance, &$form, &$form_state) 
   );
   drupal_function_exists('field_default_form');
   // @todo Allow multiple values (requires more work on 'add more' JS handler).
-  $widget_form = field_default_form(NULL, NULL, $field, $instance, $items, $form, $form_state, 0);
+  $widget_form = field_default_form(NULL, NULL, $field, $instance, FIELD_LANGUAGE_NONE, $items, $form, $form_state, 0);
   $form['instance']['default_value_widget'] += $widget_form;
   $form['#fields'][$field['field_name']]['form_path'] = array(
     'instance',
@@ -1329,24 +1323,6 @@ function field_ui_next_destination($bundle) {
   }
   $admin_path = _field_ui_bundle_admin_path($bundle);
   return $admin_path . '/fields';
-}
-
-/**
- * Menu callback; rebuild the menu after adding new fields.
- *
- * Dummy function to force a page refresh so menu_rebuild() will work right
- * when creating a new field that creates a new menu item.
- */
-function field_ui_field_menu_refresh($obj_type, $bundle) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
-
-  menu_rebuild();
-  $destinations = field_ui_next_destination($bundle);
-  if (is_array($destinations)) {
-    $path = array_shift($destinations);
-    drupal_goto($path, $destinations);
-  }
-  drupal_goto($destinations);
 }
 
 /**

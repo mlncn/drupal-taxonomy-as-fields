@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.194 2009/08/18 11:03:12 dries Exp $
+// $Id: install.php,v 1.196 2009/08/22 14:34:17 webchick Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -733,6 +733,11 @@ function install_system_module(&$install_state) {
     // variable_set() can be used now that system.module is installed and
     // Drupal is bootstrapped.
     $modules = $install_state['profile_info']['dependencies'];
+
+    // The install profile is also a module, which needs to be installed
+    // after all the dependencies have been installed.
+    $modules[] = drupal_get_profile();
+
     variable_set('install_profile_modules', array_diff($modules, array('system')));
     $install_state['database_tables_exist'] = TRUE;
 }
@@ -1424,7 +1429,14 @@ function install_finished(&$install_state) {
     _drupal_flush_css_js();
 
     // Remember the profile which was used.
-    variable_set('install_profile', $install_state['parameters']['profile']);
+    variable_set('install_profile', drupal_get_profile());
+
+    // Install profiles are always loaded last
+    db_update('system')
+      ->fields(array('weight' => 1000))
+      ->condition('type', 'module')
+      ->condition('name', drupal_get_profile())
+      ->execute();
 
     // Cache a fully-built schema.
     drupal_get_schema(NULL, TRUE);
@@ -1549,7 +1561,7 @@ function _install_configure_form(&$form_state, &$install_state) {
     '#description' => st('Spaces are allowed; punctuation is not allowed except for periods, hyphens, and underscores.'),
     '#required' => TRUE,
     '#weight' => -10,
-    '#attributes' => array('class' => 'username'),
+    '#attributes' => array('class' => array('username')),
   );
 
   $form['admin_account']['account']['mail'] = array('#type' => 'textfield',
@@ -1589,13 +1601,13 @@ function _install_configure_form(&$form_state, &$install_state) {
     '#options' => system_time_zones(),
     '#description' => st('By default, dates in this site will be displayed in the chosen time zone.'),
     '#weight' => 5,
-    '#attributes' => array('class' => 'timezone-detect'),
+    '#attributes' => array('class' => array('timezone-detect')),
   );
 
   $form['server_settings']['clean_url'] = array(
     '#type' => 'hidden',
     '#default_value' => 0,
-    '#attributes' => array('class' => 'install'),
+    '#attributes' => array('class' => array('install')),
   );
 
   $form['update_notifications'] = array(

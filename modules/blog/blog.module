@@ -1,5 +1,5 @@
 <?php
-// $Id: blog.module,v 1.329 2009/08/12 12:36:04 dries Exp $
+// $Id: blog.module,v 1.331 2009/08/22 14:34:18 webchick Exp $
 
 /**
  * @file
@@ -20,28 +20,6 @@ function blog_node_info() {
 }
 
 /**
- * Implement hook_permission().
- */
-function blog_permission() {
-  return node_list_permissions('blog');
-}
-
-/**
- * Implement hook_access().
- */
-function blog_access($op, $node, $account) {
-  switch ($op) {
-    case 'create':
-      // Anonymous users cannot post even if they have the permission.
-      return user_access('create blog content', $account) && $account->uid;
-    case 'update':
-      return user_access('edit any blog content', $account) || (user_access('edit own blog content', $account) && ($node->uid == $account->uid));
-    case 'delete':
-      return user_access('delete any blog content', $account) || (user_access('delete own blog content', $account) && ($node->uid == $account->uid));
-  }
-}
-
-/**
  * Implement hook_user_view().
  */
 function blog_user_view($account) {
@@ -50,7 +28,7 @@ function blog_user_view($account) {
       '#type' => 'user_profile_item',
       '#title' => t('Blog'),
       '#markup' => l(t('View recent blog entries'), "blog/$account->uid", array('attributes' => array('title' => t("Read !username's latest blog entries.", array('!username' => $account->name))))),
-      '#attributes' => array('class' => 'blog'),
+      '#attributes' => array('class' => array('blog')),
     );
   }
 }
@@ -101,7 +79,7 @@ function blog_node_view($node, $build_mode = 'full') {
       $node->content['links']['blog'] = array(
         '#theme' => 'links',
         '#links' => $links,
-        '#attributes' => array('class' => 'links inline'),
+        '#attributes' => array('class' => array('links', 'inline')),
       );
     }
   }

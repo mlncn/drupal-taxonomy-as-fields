@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.964 2009/08/19 20:19:36 dries Exp $
+// $Id: common.inc,v 1.968 2009/08/22 19:58:27 webchick Exp $
 
 /**
  * @file
@@ -118,6 +118,32 @@ function drupal_get_region_content($region = NULL, $delimiter = ' ') {
     return $content;
   }
 }
+
+/**
+ * Get the name of the currently active install profile.
+ *
+ * When this function is called during Drupal's initial installation process,
+ * the name of the profile that's about to be installed is stored in the global
+ * installation state. At all other times, the standard Drupal systems variable
+ * table contains the name of the current profile, and we can call variable_get()
+ * to determine what one is active.
+ *
+ * @return $profile
+ *   The name of the install profile.
+ */
+function drupal_get_profile() {
+  global $install_state;
+
+  if (isset($install_state['parameters']['profile'])) {
+    $profile = $install_state['parameters']['profile'];
+  }
+  else {
+    $profile = variable_get('install_profile', 'default');
+  }
+
+  return $profile;
+}
+
 
 /**
  * Set the breadcrumb trail for the current page.
@@ -364,8 +390,8 @@ function drupal_goto($path = '', $query = NULL, $fragment = NULL, $http_response
 function drupal_site_offline() {
   drupal_maintenance_theme();
   drupal_set_header('503 Service unavailable');
-  drupal_set_title(t('Site offline'));
-  print theme('maintenance_page', filter_xss_admin(variable_get('site_offline_message',
+  drupal_set_title(t('Site under maintenance'));
+  print theme('maintenance_page', filter_xss_admin(variable_get('maintenance_mode_message',
     t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal'))))));
 }
 
@@ -2260,12 +2286,7 @@ function l($text, $path, array $options = array()) {
   // Append active class.
   if (($path == $_GET['q'] || ($path == '<front>' && drupal_is_front_page())) &&
       (empty($options['language']) || $options['language']->language == $language->language)) {
-    if (isset($options['attributes']['class'])) {
-      $options['attributes']['class'] .= ' active';
-    }
-    else {
-      $options['attributes']['class'] = 'active';
-    }
+    $options['attributes']['class'][] = 'active';
   }
 
   // Remove all HTML and PHP tags from a tooltip. For best performance, we act only
@@ -3239,7 +3260,7 @@ function drupal_get_library($module, $name) {
  * In a situation where a single weight column is being sorted in the table, the
  * classes could be added like this (in the theme function):
  * @code
- * $form['my_elements'][$delta]['weight']['#attributes']['class'] = "my-elements-weight";
+ * $form['my_elements'][$delta]['weight']['#attributes']['class'] = array('my-elements-weight');
  * @endcode
  *
  * Each row of the table must also have a class of "draggable" in order to enable the
@@ -3248,7 +3269,7 @@ function drupal_get_library($module, $name) {
  * $row = array(...);
  * $rows[] = array(
  *   'data' => $row,
- *   'class' => 'draggable',
+ *   'class' => array('draggable'),
  * );
  * @endcode
  *
@@ -3266,7 +3287,7 @@ function drupal_get_library($module, $name) {
  * the block regions on the admin/structure/block page), a separate subgroup class
  * must also be added to differentiate the groups.
  * @code
- * $form['my_elements'][$region][$delta]['weight']['#attributes']['class'] = "my-elements-weight my-elements-weight-" . $region;
+ * $form['my_elements'][$region][$delta]['weight']['#attributes']['class'] = array('my-elements-weight', 'my-elements-weight-' . $region);
  * @endcode
  *
  * $group is still 'my-element-weight', and the additional $subgroup variable
@@ -3724,20 +3745,10 @@ function drupal_cron_cleanup() {
  *   An array of file objects of the specified type.
  */
 function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1) {
-  global $install_state;
   $config = conf_path();
 
-  // When this function is called during Drupal's initial installation process,
-  // the name of the profile that's about to be installed is stored in the global
-  // installation state. At all other times, the standard Drupal systems variable
-  // table contains the name of the current profile, and we can call variable_get()
-  // to determine what one is active.
-  if (isset($install_state['parameters']['profile'])) {
-    $profile = $install_state['parameters']['profile'];
-  }
-  else {
-    $profile = variable_get('install_profile', 'default');
-  }
+  $profile = drupal_get_profile();
+
   $searchdir = array($directory);
   $files = array();
 
@@ -4246,7 +4257,7 @@ function drupal_common_theme() {
       'arguments' => array('display' => NULL),
     ),
     'links' => array(
-      'arguments' => array('links' => NULL, 'attributes' => array('class' => 'links')),
+      'arguments' => array('links' => NULL, 'attributes' => array('class' => array('links'))),
     ),
     'image' => array(
       'arguments' => array('path' => NULL, 'alt' => '', 'title' => '', 'attributes' => array(), 'getsize' => TRUE),
@@ -4331,6 +4342,9 @@ function drupal_common_theme() {
     ),
     'menu_local_task' => array(
       'arguments' => array('link' => NULL, 'active' => FALSE),
+    ),
+    'menu_local_action' => array(
+      'arguments' => array('link' => NULL),
     ),
     'menu_local_tasks' => array(
       'arguments' => array(),

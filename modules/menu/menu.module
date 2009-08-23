@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.module,v 1.195 2009/07/20 18:51:33 dries Exp $
+// $Id: menu.module,v 1.197 2009/08/22 19:58:27 webchick Exp $
 
 /**
  * @file
@@ -65,7 +65,7 @@ function menu_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('menu_edit_menu', 'add'),
     'access arguments' => array('administer menu'),
-    'type' => MENU_LOCAL_TASK,
+    'type' => MENU_LOCAL_ACTION,
   );
   $items['admin/structure/menu/settings'] = array(
     'title' => 'Settings',
@@ -94,7 +94,7 @@ function menu_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('menu_edit_item', 'add', NULL, 3),
     'access arguments' => array('administer menu'),
-    'type' => MENU_LOCAL_TASK,
+    'type' => MENU_LOCAL_ACTION,
   );
   $items['admin/structure/menu-customize/%menu/edit'] = array(
     'title' => 'Edit menu',
@@ -405,7 +405,7 @@ function menu_form_alter(&$form, $form_state, $form_id) {
       '#attached_js' => array(drupal_get_path('module', 'menu') . '/menu.js'),
       '#tree' => TRUE,
       '#weight' => -2,
-      '#attributes' => array('class' => 'menu-item-form'),
+      '#attributes' => array('class' => array('menu-item-form')),
     );
     $item = $form['#node']->menu;
 
@@ -443,7 +443,7 @@ function menu_form_alter(&$form, $form_state, $form_id) {
       '#default_value' => $default,
       '#options' => $options,
       '#description' => t('The maximum depth for an item and all its children is fixed at !maxdepth. Some menu items may not be available as parents if selecting them would exceed this limit.', array('!maxdepth' => MENU_MAX_DEPTH)),
-      '#attributes' => array('class' => 'menu-title-select'),
+      '#attributes' => array('class' => array('menu-title-select')),
     );
     $form['#submit'][] = 'menu_node_form_submit';
 

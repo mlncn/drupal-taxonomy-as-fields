@@ -1,5 +1,5 @@
 <?php
-// $Id: search.test,v 1.27 2009/07/31 19:01:02 dries Exp $
+// $Id: search.test,v 1.30 2009/08/22 00:58:54 webchick Exp $
 
 // The search index can contain different types of content. Typically the type is 'node'.
 // Here we test with _test_ and _test2_ as the type.
@@ -312,7 +312,7 @@ class SearchRankingTestCase extends DrupalWebTestCase {
 
     // Create nodes for testing.
     foreach ($node_ranks as $node_rank) {
-      $settings = array('type' => 'page', 'title' => 'Drupal rocks', 'body' => array(array('value' => "Drupal's search rocks")));
+      $settings = array('type' => 'page', 'title' => 'Drupal rocks', 'body' => array(FIELD_LANGUAGE_NONE => array(array('value' => "Drupal's search rocks"))));
       foreach (array(0, 1) as $num) {
         if ($num == 1) {
           switch ($node_rank) {
@@ -321,7 +321,7 @@ class SearchRankingTestCase extends DrupalWebTestCase {
               $settings[$node_rank] = 1;
               break;
             case 'relevance':
-              $settings['body'][0]['value'] .= " really rocks";
+              $settings['body'][FIELD_LANGUAGE_NONE][0]['value'] .= " really rocks";
               break;
             case 'recent':
               $settings['created'] = REQUEST_TIME + 3600;
@@ -461,7 +461,7 @@ class SearchCommentTestCase extends DrupalWebTestCase {
     variable_set('comment_preview_article', COMMENT_PREVIEW_OPTIONAL);
     // Enable check_plain() for 'Filtered HTML' text format.
     $edit = array(
-      'filters[filter/4]' => 1,
+      'filters[filter/filter_html_escape]' => 1,
     );
     $this->drupalPost('admin/settings/formats/1', $edit, t('Save configuration'));
     // Allow anonymous users to search content.
@@ -475,7 +475,7 @@ class SearchCommentTestCase extends DrupalWebTestCase {
       //   seems to be added via node links.
       DRUPAL_ANONYMOUS_RID . '[post comments]' => 1,
     );
-    $this->drupalPost('admin/settings/permissions', $edit, t('Save permissions'));
+    $this->drupalPost('admin/config/people/permissions', $edit, t('Save permissions'));
 
     // Create a node.
     $node = $this->drupalCreateNode(array('type' => 'article'));

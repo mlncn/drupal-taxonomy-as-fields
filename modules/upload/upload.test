@@ -1,5 +1,5 @@
 <?php
-// $Id: upload.test,v 1.23 2009/08/17 19:14:41 webchick Exp $
+// $Id: upload.test,v 1.25 2009/08/22 19:30:41 webchick Exp $
 
 /**
  * @file
@@ -36,7 +36,7 @@ class UploadTestCase extends DrupalWebTestCase {
     $edit['upload_extensions_default'] = 'jpg jpeg gif png txt doc xls pdf ppt pps odt ods odp';
     $edit['upload_uploadsize_default'] = '1.5';
     $edit['upload_usersize_default'] = '1.5';
-    $this->drupalPost('admin/settings/uploads', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/media/uploads', $edit, t('Save configuration'));
     $this->assertText('The configuration options have been saved.', 'Upload setting saved.');
 
     $this->drupalLogout();
@@ -177,11 +177,11 @@ class UploadTestCase extends DrupalWebTestCase {
     $edit = array();
     foreach ($settings as $key => $value) {
       $edit[$key . '_default'] = $value;
-      if ($rid !== NULL && $key != 'upload_list' && $key != 'upload_max_resolution') {
+      if ($rid !== NULL && $key != 'upload_list' && $key != 'upload_max_resolution_x' && $key != 'upload_max_resolution_y') {
         $edit[$key . '_' . $rid] = $value;
       }
     }
-    $this->drupalPost('admin/settings/uploads', $edit, 'Save configuration');
+    $this->drupalPost('admin/config/media/uploads', $edit, 'Save configuration');
     $this->assertText('The configuration options have been saved.', 'Upload setting saved.');
   }
 

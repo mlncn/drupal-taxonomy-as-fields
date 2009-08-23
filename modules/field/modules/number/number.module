@@ -1,5 +1,5 @@
 <?php
-// $Id: number.module,v 1.12 2009/08/19 13:31:13 webchick Exp $
+// $Id: number.module,v 1.14 2009/08/22 14:34:20 webchick Exp $
 
 /**
  * @file
@@ -170,17 +170,17 @@ function number_field_instance_settings_form($field, $instance) {
  * - 'number_min': The value is smaller than the allowed minimum value.
  * - 'number_max': The value is larger than the allowed maximum value.
  */
-function number_field_validate($obj_type, $node, $field, $instance, $items, &$errors) {
+function number_field_validate($obj_type, $node, $field, $instance, $langcode, $items, &$errors) {
   foreach ($items as $delta => $item) {
     if ($item['value'] != '') {
       if (is_numeric($instance['settings']['min']) && $item['value'] < $instance['settings']['min']) {
-        $errors[$field['field_name']][$delta][] = array(
+        $errors[$field['field_name']][$langcode][$delta][] = array(
           'error' => 'number_min',
           'message' => t('%name: the value may be no smaller than %min.', array('%name' => t($instance['label']), '%min' => $instance['settings']['min'])),
         );
       }
       if (is_numeric($instance['settings']['max']) && $item['value'] > $instance['settings']['max']) {
-        $errors[$field['field_name']][$delta][] = array(
+        $errors[$field['field_name']][$langcode][$delta][] = array(
           'error' => 'number_max',
           'message' => t('%name: the value may be no larger than %max.', array('%name' => t($instance['label']), '%max' => $instance['settings']['max'])),
         );
@@ -377,7 +377,7 @@ function number_elements_process($element, $form_state, $form) {
     // for some configurations where all characters won't fit in input field.
     '#size' => $field['type'] == 'number_decimal' ? $field['settings']['precision'] + 2 : 12,
     '#maxlength' => $field['type'] == 'number_decimal' ? $field['settings']['precision'] : 10,
-    '#attributes' => array('class' => 'number'),
+    '#attributes' => array('class' => array('number')),
     // The following values were set by the Field module and need
     // to be passed down to the nested element.
     '#title' => $element['#title'],

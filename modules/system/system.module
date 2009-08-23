@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.751 2009/08/19 20:19:37 dries Exp $
+// $Id: system.module,v 1.763 2009/08/22 20:10:37 dries Exp $
 
 /**
  * @file
@@ -40,6 +40,11 @@ define('DRUPAL_MINIMUM_PGSQL',  '8.3');
  * Maximum age of temporary files in seconds.
  */
 define('DRUPAL_MAXIMUM_TEMP_FILE_AGE', 21600);
+
+/**
+ * Default interval for automatic cron executions in seconds.
+ */
+define('DRUPAL_CRON_DEFAULT_THRESHOLD', 10800);
 
 /**
  * New users will be set to the default time zone at registration.
@@ -96,7 +101,7 @@ function system_help($path, $arg) {
       $output .= '<li>' . t('support for enabling and disabling <a href="@themes">themes</a>, which determine the design and presentation of your site. Drupal comes packaged with several core themes and additional contributed themes are available at the <a href="@drupal-themes">Drupal.org theme page</a>.', array('@themes' => url('admin/appearance'), '@drupal-themes' => 'http://drupal.org/project/themes')) . '</li>';
       $output .= '<li>' . t('a robust <a href="@cache-settings">caching system</a> that allows the efficient re-use of previously-constructed web pages and web page components. Drupal stores the pages requested by anonymous users in a compressed format; depending on your site configuration and the amount of your web traffic tied to anonymous visitors, Drupal\'s caching system may significantly increase the speed of your site.', array('@cache-settings' => url('admin/config/development/performance'))) . '</li>';
       $output .= '<li>' . t('a set of routine administrative operations that rely on a correctly-configured <a href="@cron">cron maintenance task</a> to run automatically. A number of other modules, including the feed aggregator, and search also rely on <a href="@cron">cron maintenance tasks</a>. For more information, see the online handbook entry for <a href="@handbook">configuring cron jobs</a>.', array('@cron' => url('admin/reports/status'), '@handbook' => 'http://drupal.org/cron')) . '</li>';
-      $output .= '<li>' . t('basic configuration options for your site, including <a href="@regional-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@maintenance-mode">maintenance mode</a> for taking your site temporarily offline.', array('@regional-settings' => url('admin/settings/regional-settings'), '@file-system' => url('admin/settings/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@maintenance-mode' => url('admin/config/development/maintenance'))) . '</li></ul>';
+      $output .= '<li>' . t('basic configuration options for your site, including <a href="@regional-settings">date and time settings</a>, <a href="@file-system">file system settings</a>, <a href="@clean-url">clean URL support</a>, <a href="@site-info">site name and other information</a>, and a <a href="@maintenance-mode">maintenance mode</a> for taking your site temporarily offline.', array('@regional-settings' => url('admin/config/regional/settings'), '@file-system' => url('admin/config/media/file-system'), '@clean-url' => url('admin/settings/clean-urls'), '@site-info' => url('admin/settings/site-information'), '@maintenance-mode' => url('admin/config/development/maintenance'))) . '</li></ul>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@system">System module</a>.', array('@system' => 'http://drupal.org/handbook/modules/system/')) . '</p>';
       return $output;
     case 'admin/by-module':
@@ -112,8 +117,8 @@ function system_help($path, $arg) {
     case 'admin/appearance/settings':
       return '<p>' . t('These options control the default display settings for your entire site, across all themes. Unless they have been overridden by a specific theme, these settings will be used.') . '</p>';
     case 'admin/config/modules':
-      $output = '<p>' . t('Modules are plugins that extend Drupal\'s core functionality. To further extend your site\'s functionality, a number of <a href="@modules">contributed modules</a> are available for download.', array('@permissions' => url('admin/settings/permissions'), '@modules' => 'http://drupal.org/project/modules')) . '</p>';
-      $output .= '<p>' . t('Module-related tasks can be located on the <a href="@by-module">administration by module page</a>. New <a href="@permissions">module-related permissions</a> may also become available as new modules are enabled.', array('@by-module' => url('admin/by-module'), '@permissions' => url('admin/settings/permissions'))) . '</p>';
+      $output = '<p>' . t('Modules are plugins that extend Drupal\'s core functionality. To further extend your site\'s functionality, a number of <a href="@modules">contributed modules</a> are available for download.', array('@permissions' => url('admin/config/people/permissions'), '@modules' => 'http://drupal.org/project/modules')) . '</p>';
+      $output .= '<p>' . t('Module-related tasks can be located on the <a href="@by-module">administration by module page</a>. New <a href="@permissions">module-related permissions</a> may also become available as new modules are enabled.', array('@by-module' => url('admin/by-module'), '@permissions' => url('admin/config/people/permissions'))) . '</p>';
       $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. To help manage the update process, the <em>Update status</em> module, if enabled, provides <a href="@updates">information on new versions of modules (and themes)</a> as they are released. Regular review of the <a href="@updates">available updates page</a> is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php', '@updates' => url('admin/reports/updates'))) . '</p>';
       return $output;
     case 'admin/config/modules/uninstall':
@@ -196,6 +201,9 @@ function system_theme() {
       'arguments' => array('version' => NULL),
     ),
     'system_compact_link' => array(),
+    'system_run_cron_image' => array(
+      'arguments' => array('image_path' => NULL),
+    ),
   ));
 }
 
@@ -219,6 +227,10 @@ function system_permission() {
     'access administration pages' => array(
       'title' => t('Access administration pages'),
       'description' => t('View the administration panel and browse the help system.'),
+    ),
+    'access site in maintenance mode' => array(
+      'title' => t('Access site in maintenance mode'),
+      'description' => t('Log in when the site is in maintenance mode.'),
     ),
     'access site reports' => array(
       'title' => t('Access site reports'),
@@ -496,6 +508,12 @@ function system_menu() {
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
   );
+  $items['system/run-cron-image'] = array(
+    'title' => 'Execute cron',
+    'page callback' => 'system_run_cron_image',
+    'access callback' => 'system_run_cron_image_access',
+    'type' => MENU_CALLBACK,
+  );
   $items['admin'] = array(
     'title' => 'Administer',
     'access arguments' => array('access administration pages'),
@@ -545,9 +563,11 @@ function system_menu() {
   // Appearance.
   $items['admin/appearance'] = array(
     'title' => 'Appearance',
+    'description' => 'Select and configure your site theme.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('system_themes_form'),
     'access arguments' => array('administer site configuration'),
+    'position' => 'left',
     'weight' => -6,
   );
   $items['admin/appearance/select'] = array(
@@ -703,7 +723,60 @@ function system_menu() {
     'page arguments' => array('system_performance_settings'),
     'access arguments' => array('administer site configuration'),
   );
-
+  $items['admin/config/media'] = array(
+   'title' => 'Media',
+   'description' => 'Media tools.',
+   'position' => 'left',
+   'weight' => 10,
+   'page callback' => 'system_admin_menu_block_page',
+   'access callback' => 'system_admin_menu_block_access',
+   'access arguments' => array('admin/config/media', 'access administration pages'),
+  );
+  $items['admin/config/media/file-system'] = array(
+    'title' => 'File system',
+    'description' => 'Tell Drupal where to store uploaded files and how they are accessed.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('system_file_system_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+    $items['admin/config/media/image-toolkit'] = array(
+    'title' => 'Image toolkit',
+    'description' => 'Choose which image toolkit to use if you have installed optional toolkits.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('system_image_toolkit_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+    $items['admin/config/development/logging'] = array(
+    'title' => 'Logging and errors',
+    'description' => "Settings for logging and alerts modules. Various modules can route Drupal's system events to different destinations, such as syslog, database, email, etc.",
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('system_logging_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+  $items['admin/config/regional'] = array(
+   'title' => 'Regional and language',
+   'description' => 'Regional settings, localization and translation.',
+   'position' => 'left',
+   'weight' => -7,
+   'page callback' => 'system_admin_menu_block_page',
+   'access callback' => 'system_admin_menu_block_access',
+   'access arguments' => array('admin/config/regional', 'access administration pages'),
+  );
+  $items['admin/config/regional/settings'] = array(
+    'title' => 'Regional settings',
+    'description' => "Settings for how Drupal displays date and time, as well as the system's default time zone.",
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('system_regional_settings'),
+    'access arguments' => array('administer site configuration'),
+    'weight' => -10,
+  );
+  $items['admin/config/regional/settings/lookup'] = array(
+    'title' => 'Date and time lookup',
+    'type' => MENU_CALLBACK,
+    'page callback' => 'system_date_time_lookup',
+    'access arguments' => array('administer site configuration'),
+  );
+  
   // Settings.
   $items['admin/settings/site-information'] = array(
     'title' => 'Site information',
@@ -712,45 +785,11 @@ function system_menu() {
     'page arguments' => array('system_site_information_settings'),
     'access arguments' => array('administer site configuration'),
   );
-  $items['admin/config/development/logging'] = array(
-    'title' => 'Logging and errors',
-    'description' => "Settings for logging and alerts modules. Various modules can route Drupal's system events to different destinations, such as syslog, database, email, etc.",
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_logging_settings'),
-    'access arguments' => array('administer site configuration'),
-  );
-  $items['admin/settings/file-system'] = array(
-    'title' => 'File system',
-    'description' => 'Tell Drupal where to store uploaded files and how they are accessed.',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_file_system_settings'),
-    'access arguments' => array('administer site configuration'),
-  );
-  $items['admin/settings/image-toolkit'] = array(
-    'title' => 'Image toolkit',
-    'description' => 'Choose which image toolkit to use if you have installed optional toolkits.',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_image_toolkit_settings'),
-    'access arguments' => array('administer site configuration'),
-  );
   $items['admin/settings/rss-publishing'] = array(
     'title' => 'RSS publishing',
     'description' => 'Configure the site description, the number of items per feed and whether feeds should be titles/teasers/full-text.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('system_rss_feeds_settings'),
-    'access arguments' => array('administer site configuration'),
-  );
-  $items['admin/settings/regional-settings'] = array(
-    'title' => 'Regional settings',
-    'description' => "Settings for how Drupal displays date and time, as well as the system's default time zone.",
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('system_regional_settings'),
-    'access arguments' => array('administer site configuration'),
-  );
-  $items['admin/settings/regional-settings/lookup'] = array(
-    'title' => 'Date and time lookup',
-    'type' => MENU_CALLBACK,
-    'page callback' => 'system_date_time_lookup',
     'access arguments' => array('administer site configuration'),
   );
   $items['admin/settings/clean-urls'] = array(
@@ -1447,7 +1486,7 @@ function system_user_timezone(&$edit, &$form) {
   );
   if (!$edit['timezone'] && $edit['uid'] == $user->uid) {
     $form['timezone']['#description'] = t('Your time zone setting will be automatically detected if possible. Please confirm the selection and click save.');
-    $form['timezone']['timezone']['#attributes'] = array('class' => 'timezone-detect');
+    $form['timezone']['timezone']['#attributes'] = array('class' => array('timezone-detect'));
     drupal_add_js('misc/timezone.js');
   }
 }
@@ -1503,7 +1542,7 @@ function system_block_configure($delta = '') {
     $form['wrapper']['preview'] = array(
       '#type' => 'item',
       '#title' => 'Preview',
-      '#markup' => theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'), array('class' => 'powered-by-preview'), FALSE),
+      '#markup' => theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'), array('class' => array('powered-by-preview')), FALSE),
     );
     return $form;
   }
@@ -1744,6 +1783,15 @@ function _system_get_module_data() {
   // Find modules
   $modules = drupal_system_listing('/\.module$/', 'modules', 'name', 0);
 
+  // Include the install profile in modules that are loaded.
+  $profile = drupal_get_profile();
+  $modules[$profile]->name = $profile;
+  $modules[$profile]->uri = 'profiles/' . $profile . '/' . $profile . '.profile';
+  $modules[$profile]->filename = $profile . '.profile';
+
+  // Install profile hooks are always executed last.
+  $modules[$profile]->weight = 1000;
+
   // Set defaults for module info.
   $defaults = array(
     'dependencies' => array(),
@@ -1773,6 +1821,9 @@ function _system_get_module_data() {
     // modify the data in the .info files if necessary.
     drupal_alter('system_info', $modules[$key]->info, $modules[$key]);
   }
+
+  // The install profile is required.
+  $modules[$profile]->info['required'] = TRUE;
 
   return $modules;
 }
@@ -2162,7 +2213,7 @@ function confirm_form($form, $question, $path, $description = NULL, $yes = NULL,
   // Confirm form fails duplication check, as the form values rarely change -- so skip it.
   $form['#skip_duplicate_check'] = TRUE;
 
-  $form['#attributes'] = array('class' => 'confirmation');
+  $form['#attributes'] = array('class' => array('confirmation'));
   $form['description'] = array('#markup' => $description);
   $form[$name] = array('#type' => 'hidden', '#value' => 1);
 
@@ -2221,7 +2272,7 @@ function system_get_module_admin_tasks($module) {
   $admin_task_count = 0;
   // Check for permissions.
   if (in_array($module, module_implements('permission')) && $admin_access) {
-    $admin_tasks[-1] = l(t('Configure permissions'), 'admin/settings/permissions', array('fragment' => 'module-' . $module));
+    $admin_tasks[-1] = l(t('Configure permissions'), 'admin/config/people/permissions', array('fragment' => 'module-' . $module));
   }
 
   // Check for menu items that are admin links.
@@ -2935,3 +2986,104 @@ function system_retrieve_file($url, $destination = NULL, $overwrite = TRUE) {
   
   return $local;
 }
+
+/**
+ * Implement hook_page_alter().
+ */
+function system_page_alter(&$page) {
+  // Automatic cron runs.
+  // @see system_run_cron_image()
+  if (system_run_cron_image_access()) {
+    $page['page_bottom']['run_cron'] = array(
+      // Trigger cron run via AJAX.
+      '#attached_js' => array(
+        '(function($){ $.get(' . drupal_to_js(url('system/run-cron-image')) . '); })(jQuery);' => array('type' => 'inline', 'scope' => 'header'),
+      ),
+      // Trigger cron run for clients not supporting JavaScript (fall-back).
+      '#markup' => theme('system_run_cron_image', 'system/run-cron-image'),
+    );
+  }
+}
+
+/**
+ * Menu callback; executes cron via an image callback.
+ *
+ * This callback runs cron in a separate HTTP request to prevent "mysterious"
+ * slow-downs of regular HTTP requests. It is either invoked via an AJAX request
+ * (if the client's browser supports JavaScript) or by an IMG tag directly in
+ * the page output (for clients not supporting JavaScript). For the latter case,
+ * we need to output a transparent 1x1 image, so the browser does not render the
+ * image's alternate text or a 'missing image placeholder'. The AJAX request
+ * does not process the returned output.
+ *
+ * @see system_page_alter()
+ * @see theme_system_run_cron_image()
+ * @see system_run_cron_image_access()
+ */
+function system_run_cron_image() {
+  drupal_page_is_cacheable(FALSE);
+
+  // Output a transparent 1x1 image to the browser; required for clients not
+  // supporting JavaScript.
+  drupal_set_header('Content-Type', 'image/gif');
+  echo "\x47\x49\x46\x38\x39\x61\x1\x0\x1\x0\x80\xff\x0\xc0\xc0\xc0\x0\x0\x0\x21\xf9\x4\x1\x0\x0\x0\x0\x2c\x0\x0\x0\x0\x1\x0\x1\x0\x0\x2\x2\x44\x1\x0\x3b";
+
+  // Cron threshold semaphore is used to avoid errors every time the image
+  // callback is displayed when a previous cron is still running.
+  $threshold_semaphore = variable_get('cron_threshold_semaphore', FALSE);
+  if ($threshold_semaphore) {
+    if (REQUEST_TIME - $threshold_semaphore > 3600) {
+      // Either cron has been running for more than an hour or the semaphore
+      // was not reset due to a database error.
+      watchdog('cron', 'Cron has been running for more than an hour and is most likely stuck.', array(), WATCHDOG_ERROR);
+
+      // Release the cron threshold semaphore.
+      variable_del('cron_threshold_semaphore');
+    }
+  }
+  else {
+    // Run cron automatically if it has never run or threshold was crossed.
+    $cron_last = variable_get('cron_last', NULL);
+    $cron_threshold = variable_get('cron_safe_threshold', DRUPAL_CRON_DEFAULT_THRESHOLD);
+    if (!isset($cron_last) || (REQUEST_TIME - $cron_last > $cron_threshold)) {
+      // Lock cron threshold semaphore.
+      variable_set('cron_threshold_semaphore', REQUEST_TIME);
+      drupal_cron_run();
+      // Release the cron threshold semaphore.
+      variable_del('cron_threshold_semaphore');
+    }
+  }
+
+  exit;
+}
+
+/**
+ * Checks if the feature to automatically run cron is enabled.
+ *
+ * Also used as a menu access callback for this feature.
+ *
+ * @return
+ *   TRUE if cron threshold is enabled, FALSE otherwise.
+ *
+ * @see system_run_cron_image()
+ * @see system_page_alter()
+ */
+function system_run_cron_image_access() {
+  return variable_get('cron_safe_threshold', DRUPAL_CRON_DEFAULT_THRESHOLD) > 0;
+}
+
+/**
+ * Display image used to run cron automatically.
+ *
+ * Renders an image pointing to the automatic cron run menu callback for
+ * graceful degradation when Javascript is not available. The wrapping NOSCRIPT
+ * tag ensures that only browsers not supporting JavaScript render the image.
+ *
+ * @see system_page_alter()
+ * @see system_run_cron_image()
+ * @ingroup themeable
+ */
+function theme_system_run_cron_image($image_path) {
+  return '<noscript><div id="system-cron-image">' . theme('image', $image_path, '', '', array(), FALSE) . '</div></noscript>';
+}
+

@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.module,v 1.304 2009/08/19 13:31:13 webchick Exp $
+// $Id: poll.module,v 1.307 2009/08/22 14:34:21 webchick Exp $
 
 /**
  * @file
@@ -54,8 +54,7 @@ function poll_theme() {
  * Implement hook_permission().
  */
 function poll_permission() {
-  $perms = node_list_permissions('poll');
-  $perms += array(
+  $perms = array(
     'vote on polls' => array(
       'title' => t('Vote on polls'),
       'description' => t('Cast votes on polls.'),
@@ -71,20 +70,6 @@ function poll_permission() {
   );
 
   return $perms;
-}
-
-/**
- * Implement hook_access().
- */
-function poll_access($op, $node, $account) {
-  switch ($op) {
-    case 'create':
-      return user_access('create poll content', $account);
-    case 'update':
-      return user_access('edit any poll content', $account) || (user_access('edit own poll content', $account) && ($node->uid == $account->uid));
-    case 'delete':
-      return user_access('delete any poll content', $account) || (user_access('delete own poll content', $account) && ($node->uid == $account->uid));
-  }
 }
 
 /**
@@ -393,8 +378,6 @@ function _poll_choice_form($key, $chid = NULL, $value = '', $votes = 0, $weight 
 function poll_choice_js($form, $form_state) {
   $choice_form = $form['choice_wrapper']['choice'];
 
-  // Prevent duplicate wrappers.
-  unset($choice_form['#prefix'], $choice_form['#suffix']);
   return theme('status_messages') . drupal_render($choice_form);
 }
 
@@ -775,21 +758,23 @@ function theme_poll_choices($form) {
   foreach (element_children($form) as $key) {
     $delta++;
     // Set special classes for drag and drop updating.
-    $form[$key]['weight']['#attributes']['class'] = 'poll-weight';
+    $form[$key]['weight']['#attributes']['class'] = array('poll-weight');
 
     // Build the table row.
     $row = array(
       'data' => array(
-        array('class' => 'choice-flag'),
+        array('class' => array('choice-flag')),
         drupal_render($form[$key]['chtext']),
         drupal_render($form[$key]['chvotes']),
         drupal_render($form[$key]['weight']),
       ),
-      'class' => 'draggable',
+      'class' => array('draggable'),
     );
 
     // Add any additional classes set on the row.
-    $row['class'] .= isset($form[$key]['#attributes']['class']) ? ' ' . $form[$key]['#attributes']['class'] : '';
+    if (!empty($form[$key]['#attributes']['class'])) {
+      $row['class'] = array_merge($row['class'], $form[$key]['#attributes']['class']);
+    }
 
     $rows[] = $row;
   }

@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.334 2009/08/17 20:32:29 dries Exp $
+// $Id: menu.inc,v 1.337 2009/08/22 19:58:27 webchick Exp $
 
 /**
  * @file
@@ -113,6 +113,11 @@ define('MENU_CREATED_BY_ADMIN', 0x0040);
 define('MENU_IS_LOCAL_TASK', 0x0080);
 
 /**
+ * Internal menu flag -- menu item is a local action.
+ */
+define('MENU_IS_LOCAL_ACTION', 0x0100);
+
+/**
  * @} End of "Menu flags".
  */
 
@@ -168,6 +173,14 @@ define('MENU_LOCAL_TASK', MENU_IS_LOCAL_TASK);
 define('MENU_DEFAULT_LOCAL_TASK', MENU_IS_LOCAL_TASK | MENU_LINKS_TO_PARENT);
 
 /**
+ * Menu type -- An action specific to the parent, usually rendered as a link.
+ *
+ * Local actions are menu items that describe actions on the parent item such
+ * as adding a new user, taxonomy term, etc.
+ */
+define('MENU_LOCAL_ACTION', MENU_IS_LOCAL_TASK | MENU_IS_LOCAL_ACTION);
+
+/**
  * @} End of "Menu item types".
  */
 
@@ -210,7 +223,7 @@ define('MENU_SITE_OFFLINE', 4);
  /**
  * The maximum number of path elements for a menu callback
  */
-define('MENU_MAX_PARTS', 8);
+define('MENU_MAX_PARTS', 9);
 
 
 /**
@@ -1306,6 +1319,15 @@ function theme_menu_local_task($link, $active = FALSE) {
 }
 
 /**
+ * Generate the HTML output for a single local action link.
+ *
+ * @ingroup themeable
+ */
+function theme_menu_local_action($link) {
+  return '<li>' . $link . "</li>\n";
+}
+
+/**
  * Generates elements for the $arg array in the help hook.
  */
 function drupal_help_arg($arg = array()) {
@@ -1437,27 +1459,39 @@ function menu_navigation_links($menu_name, $level = 0) {
 }
 
 /**
- * Collects the local tasks (tabs) for a given level.
+ * Collects the local tasks (tabs), action links, and the root path.
  *
  * @param $level
  *   The level of tasks you ask for. Primary tasks are 0, secondary are 1.
- * @param $return_root
- *   Whether to return the root path for the current page.
  * @return
- *   Themed output corresponding to the tabs of the requested level, or
- *   router path if $return_root == TRUE. This router path corresponds to
- *   a parent tab, if the current page is a default local task.
+ *   An array containing
+ *   - tabs: Local tasks for the requested level:
+ *     - count: The number of local tasks.
+ *     - output: The themed output of local tasks.
+ *   - actions: Action links for the requested level:
+ *     - count: The number of action links.
+ *     - output: The themed output of action links.
+ *   - root_path: The router path for the current page. If the current page is
+ *     a default local task, then this corresponds to the parent tab.
  */
-function menu_local_tasks($level = 0, $return_root = FALSE) {
-  $tabs = &drupal_static(__FUNCTION__);
-  $root_path = &drupal_static(__FUNCTION__ . ':root_path');
+function menu_local_tasks($level = 0) {
+  $data = &drupal_static(__FUNCTION__);
+  $root_path = &drupal_static(__FUNCTION__ . ':root_path', '');
+  $empty = array(
+    'tabs' => array('count' => 0, 'output' => ''),
+    'actions' => array('count' => 0, 'output' => ''),
+    'root_path' => &$root_path,
+  );
 
-  if (!isset($tabs)) {
+  if (!isset($data)) {
+    $data = array();
+    // Set defaults in case there are no actions or tabs.
+    $actions = $empty['actions'];
     $tabs = array();
 
     $router_item = menu_get_item();
     if (!$router_item || !$router_item['access']) {
-      return '';
+      return $empty;
     }
     // Get all tabs and the root page.
     $result = db_select('menu_router', NULL, array('fetch' => PDO::FETCH_ASSOC))
@@ -1480,7 +1514,6 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
       // Store the translated item for later use.
       $tasks[$item['path']] = $item;
     }
-
     // Find all tabs below the current path.
     $path = $router_item['path'];
     // Tab parenting may skip levels, so the number of parts in the path may not
@@ -1488,31 +1521,42 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
     $depth = 1001;
     while (isset($children[$path])) {
       $tabs_current = '';
+      $actions_current = '';
       $next_path = '';
-      $count = 0;
+      $tab_count = 0;
+      $action_count = 0;
       foreach ($children[$path] as $item) {
         if ($item['access']) {
-          $count++;
           // The default task is always active.
           if ($item['type'] == MENU_DEFAULT_LOCAL_TASK) {
-            // Find the first parent which is not a default local task.
+            // Find the first parent which is not a default local task or action.
             for ($p = $item['tab_parent']; $tasks[$p]['type'] == MENU_DEFAULT_LOCAL_TASK; $p = $tasks[$p]['tab_parent']);
             $link = theme('menu_item_link', array('href' => $tasks[$p]['href']) + $item);
             $tabs_current .= theme('menu_local_task', $link, TRUE);
             $next_path = $item['path'];
+            $tab_count++;
           }
           else {
             $link = theme('menu_item_link', $item);
-            $tabs_current .= theme('menu_local_task', $link);
+            if ($item['type'] == MENU_LOCAL_TASK) {
+              $tabs_current .= theme('menu_local_task', $link);
+              $tab_count++;
+            }
+            else {
+              $actions_current .= theme('menu_local_action', $link);
+              $action_count++;
+            }
           }
         }
       }
       $path = $next_path;
-      $tabs[$depth]['count'] = $count;
+      $tabs[$depth]['count'] = $tab_count;
       $tabs[$depth]['output'] = $tabs_current;
+      $actions['count'] = $action_count;
+      $actions['output'] = $actions_current;
       $depth++;
     }
-
+    $data['actions'] = $actions;
     // Find all tabs at the same level or above the current one.
     $parent = $router_item['tab_parent'];
     $path = $router_item['path'];
@@ -1524,6 +1568,9 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
       $next_parent = '';
       $count = 0;
       foreach ($children[$parent] as $item) {
+        if ($item['type'] == MENU_LOCAL_ACTION) {
+          continue;
+        }
         if ($item['access']) {
           $count++;
           if ($item['type'] == MENU_DEFAULT_LOCAL_TASK) {
@@ -1560,36 +1607,51 @@ function menu_local_tasks($level = 0, $return_root = FALSE) {
     ksort($tabs);
     // Remove the depth, we are interested only in their relative placement.
     $tabs = array_values($tabs);
+    $data['tabs'] = $tabs;
   }
 
-  if ($return_root) {
-    return $root_path;
+  if (isset($data['tabs'][$level])) {
+    return array(
+      'tabs' => $data['tabs'][$level],
+      'actions' => $data['actions'],
+      'root_path' => $root_path,
+    );
   }
-  else {
-    // We do not display single tabs.
-    return (isset($tabs[$level]) && $tabs[$level]['count'] > 1) ? $tabs[$level]['output'] : '';
-  }
+  return $empty;
 }
 
 /**
  * Returns the rendered local tasks at the top level.
  */
 function menu_primary_local_tasks() {
-  return menu_local_tasks(0);
+  $links = menu_local_tasks(0);
+  // Do not display single tabs.
+  return ($links['tabs']['count'] > 1 ? $links['tabs']['output'] : '');
 }
 
 /**
  * Returns the rendered local tasks at the second level.
  */
 function menu_secondary_local_tasks() {
-  return menu_local_tasks(1);
+  $links = menu_local_tasks(1);
+  // Do not display single tabs.
+  return ($links['tabs']['count'] > 1 ? $links['tabs']['output'] : '');
+}
+
+/**
+ * Returns the rendered local actions at the current level.
+ */
+function menu_local_actions() {
+  $links = menu_local_tasks();
+  return $links['actions']['output'];
 }
 
 /**
  * Returns the router path, or the path of the parent tab of a default local task.
  */
 function menu_tab_root_path() {
-  return menu_local_tasks(0, TRUE);
+  $links = menu_local_tasks();
+  return $links['root_path'];
 }
 
 /**
@@ -2744,32 +2806,37 @@ function menu_path_is_external($path) {
 }
 
 /**
- * Checks whether the site is offline for maintenance.
+ * Checks whether the site is in maintenance mode.
  *
  * This function will log the current user out and redirect to front page
- * if the current user has no 'administer site configuration' permission.
+ * if the current user has no 'access site in maintenance mode' permission.
  *
  * @return
- *   FALSE if the site is not offline or its the login page or the user has
- *     'administer site configuration' permission.
- *   TRUE for anonymous users not on the login page if the site is offline.
+ *   FALSE if the site is not in maintenance mode, the user login page is
+ *   displayed, or the user has the 'access site in maintenance mode'
+ *   permission. TRUE for anonymous users not being on the login page when the
+ *   site is in maintenance mode.
  */
 function _menu_site_is_offline() {
-  // Check if site is set to maintenance mode.
-  if (variable_get('site_offline', 0)) {
-    // Check if the user has administration privileges.
-    if (user_access('administer site configuration')) {
-      // Ensure that the offline message is displayed only once [allowing for
-      // page redirects], and specifically suppress its display on the site
-      // maintenance page.
-      if (drupal_get_normal_path($_GET['q']) != 'admin/config/development/maintenance') {
-        drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/config/development/maintenance'))), 'status', FALSE);
+  // Check if site is in maintenance mode.
+  if (variable_get('maintenance_mode', 0)) {
+    if (user_access('access site in maintenance mode')) {
+      // Ensure that the maintenance mode message is displayed only once
+      // (allowing for page redirects) and specifically suppress its display on
+      // the maintenance mode settings page.
+      if ($_GET['q'] != 'admin/config/development/maintenance') {
+        if (user_access('administer site configuration')) {
+          drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/config/development/maintenance'))), 'status', FALSE);
+        }
+        else {
+          drupal_set_message(t('Operating in maintenance mode.'), 'status', FALSE);
+        }
       }
     }
     else {
       // Anonymous users get a FALSE at the login prompt, TRUE otherwise.
       if (user_is_anonymous()) {
-        return $_GET['q'] != 'user' && $_GET['q'] != 'user/login';
+        return ($_GET['q'] != 'user' && $_GET['q'] != 'user/login');
       }
       // Logged in users are unprivileged here, so they are logged out.
       require_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'user') . '/user.pages.inc';

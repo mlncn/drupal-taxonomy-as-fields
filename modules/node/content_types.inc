@@ -1,5 +1,5 @@
 <?php
-// $Id: content_types.inc,v 1.87 2009/08/14 00:12:57 webchick Exp $
+// $Id: content_types.inc,v 1.90 2009/08/22 23:18:28 webchick Exp $
 
 /**
  * @file
@@ -35,7 +35,7 @@ function node_overview_types() {
   }
 
   if (empty($rows)) {
-    $rows[] = array(array('data' => t('No content types available. <a href="@link">Add content type</a>.', array('@link' => url('admin/structure/types/add'))), 'colspan' => '5', 'class' => 'message'));
+    $rows[] = array(array('data' => t('No content types available. <a href="@link">Add content type</a>.', array('@link' => url('admin/structure/types/add'))), 'colspan' => '5', 'class' => array('message')));
   }
   
   $build['node_table'] = array(
@@ -58,7 +58,6 @@ function theme_node_admin_overview($name, $type) {
  * Generates the node type editing form.
  */
 function node_type_form(&$form_state, $type = NULL) {
-  drupal_add_js(drupal_get_path('module', 'node') . '/content_types.js');
   if (!isset($type->type)) {
     // This is a new type. Node module managed types are custom and unlocked.
     $type = node_type_set_defaults(array('custom' => 1, 'locked' => 0));
@@ -78,10 +77,23 @@ function node_type_form(&$form_state, $type = NULL) {
     '#description' => t('The human-readable name of this content type. This text will be displayed as part of the list on the <em>add new content</em> page. It is recommended that this name begin with a capital letter and contain only letters, numbers, and <strong>spaces</strong>. This name must be unique.'),
     '#required' => TRUE,
     '#size' => 30,
-    '#field_suffix' => ' <small id="node-type-name-suffix">&nbsp;</small>',
+    '#field_suffix' => ' <small id="edit-name-suffix">' . ($type->locked ? t('Machine name: @name', array('@name' => $type->type)) : '&nbsp') . '</small>',
   );
 
   if (!$type->locked) {
+    $js_settings = array(
+      'type' => 'setting',
+      'data' => array(
+        'machineReadableValue' => array(
+          'name' => array(
+            'text' => t('Machine name'),
+            'target' => 'type',
+            'searchPattern' => '[^a-z0-9]+',
+            'replaceToken' => '_',
+          ),
+        ),
+      ),
+    );
     $form['identity']['type'] = array(
       '#title' => t('Machine name'),
       '#type' => 'textfield',
@@ -89,6 +101,7 @@ function node_type_form(&$form_state, $type = NULL) {
       '#maxlength' => 32,
       '#required' => TRUE,
       '#description' => t('The machine-readable name of this content type. This text will be used for constructing the URL of the <em>add new content</em> page for this content type. This name must contain only lowercase letters, numbers, and underscores. Underscores will be converted into hyphens when constructing the URL of the <em>add new content</em> page. This name must be unique.'),
+      '#attached_js' => array(drupal_get_path('module', 'system') . '/system.js', $js_settings),
     );
   }
   else {
@@ -96,24 +109,23 @@ function node_type_form(&$form_state, $type = NULL) {
       '#type' => 'value',
       '#value' => $type->type,
     );
-    $form['identity']['type_display'] = array(
-      '#title' => t('Machine name'),
-      '#type' => 'item',
-      '#markup' => theme('placeholder', $type->type),
-      '#description' => t('The machine-readable name of this content type. This field cannot be modified for system-defined content types.'),
-    );
   }
 
   $form['identity']['description'] = array(
     '#title' => t('Description'),
     '#type' => 'textarea',
     '#default_value' => $type->description,
-    );
+  );
+
+  $form['additional_settings'] = array(
+    '#type' => 'vertical_tabs',
+  );
 
   $form['submission'] = array(
     '#type' => 'fieldset',
     '#title' => t('Submission form settings'),
     '#collapsible' => TRUE,
+    '#group' => 'additional_settings',
   );
   $form['submission']['title_label'] = array(
     '#title' => t('Title field label'),
@@ -155,6 +167,7 @@ function node_type_form(&$form_state, $type = NULL) {
     '#title' => t('Publishing options'),
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
+    '#group' => 'additional_settings',
   );
   $form['workflow']['node_options'] = array('#type' => 'checkboxes',
     '#title' => t('Default options'),
@@ -172,6 +185,7 @@ function node_type_form(&$form_state, $type = NULL) {
     '#title' => t('Display settings'),
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
+    '#group' => 'additional_settings',
   );
   $form['display']['node_submitted'] = array(
     '#type' => 'checkbox',

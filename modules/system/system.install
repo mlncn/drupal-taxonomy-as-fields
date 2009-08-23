@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.370 2009/08/17 20:32:30 dries Exp $
+// $Id: system.install,v 1.376 2009/08/22 18:24:14 webchick Exp $
 
 /**
  * @file
@@ -28,6 +28,23 @@ function system_requirements($phase) {
       'severity' => REQUIREMENT_INFO,
       'weight' => -10,
     );
+
+    // Display the currently active install profile, if the site
+    // is not running the default install profile.
+    $profile = drupal_get_profile();
+    if ($profile != 'default') {
+      $info = install_profile_info($profile);
+      $requirements['install_profile'] = array(
+        'title' => $t('Install profile'),
+        'value' => $t('%profile_name (%profile-%version)', array(
+          '%profile_name' => $info['name'],
+          '%profile' => $profile,
+          '%version' => $info['version']
+        )),
+        'severity' => REQUIREMENT_INFO,
+        'weight' => -9
+      );
+    } 
   }
 
   // Web server information.
@@ -205,7 +222,7 @@ function system_requirements($phase) {
       }
       // The files directory requirement check is done only during install and runtime.
       if ($phase == 'runtime') {
-        $description = $error . $t('You may need to set the correct directory at the <a href="@admin-file-system">file system settings page</a> or change the current directory\'s permissions so that it is writable.', array('@admin-file-system' => url('admin/settings/file-system')));
+        $description = $error . $t('You may need to set the correct directory at the <a href="@admin-file-system">file system settings page</a> or change the current directory\'s permissions so that it is writable.', array('@admin-file-system' => url('admin/config/media/file-system')));
       }
       elseif ($phase == 'install') {
         // For the installer UI, we need different wording. 'value' will
@@ -423,33 +440,33 @@ function system_install() {
 
   // Filtered HTML:
   db_insert('filter')
-    ->fields(array('format', 'module', 'delta', 'weight'))
+    ->fields(array('format', 'module', 'name', 'weight'))
     // URL filter.
     ->values(array(
       'format' => $filtered_html_format,
       'module' => 'filter',
-      'delta' => 2,
+      'name' => 'filter_url',
       'weight' => 0,
     ))
     // HTML filter.
     ->values(array(
       'format' => $filtered_html_format,
       'module' => 'filter',
-      'delta' => 0,
+      'name' => 'filter_html',
       'weight' => 1,
     ))
     // Line break filter.
     ->values(array(
       'format' => $filtered_html_format,
       'module' => 'filter',
-      'delta' => 1,
+      'name' => 'filter_autop',
       'weight' => 2,
     ))
     // HTML corrector filter.
     ->values(array(
       'format' => $filtered_html_format,
       'module' => 'filter',
-      'delta' => 3,
+      'name' => 'filter_htmlcorrector',
       'weight' => 10,
     ))
   // Full HTML:
@@ -457,21 +474,21 @@ function system_install() {
     ->values(array(
       'format' => $full_html_format,
       'module' => 'filter',
-      'delta' => 2,
-      'weight' => 0,
+      'name' => 'filter_url',
+       'weight' => 0,
     ))
     // Line break filter.
     ->values(array(
       'format' => $full_html_format,
       'module' => 'filter',
-      'delta' => 1,
+      'name' => 'filter_autop',
       'weight' => 1,
     ))
     // HTML corrector filter.
     ->values(array(
       'format' => $full_html_format,
       'module' => 'filter',
-      'delta' => 3,
+      'name' => 'filter_htmlcorrector',
       'weight' => 10,
     ))
     ->execute();
@@ -1897,7 +1914,7 @@ function system_update_7013() {
     $timezone = 'UTC';
   }
   variable_set('date_default_timezone', $timezone);
-  drupal_set_message('The default time zone has been set to <em>' . check_plain($timezone) . '</em>. Please check the ' . l('date and time configuration page', 'admin/settings/regional-settings') . ' to configure it correctly.', 'warning');
+  drupal_set_message('The default time zone has been set to <em>' . check_plain($timezone) . '</em>. Please check the ' . l('date and time configuration page', 'admin/config/regional/settings') . ' to configure it correctly.', 'warning');
   return $ret;
 }
 
@@ -2283,11 +2300,12 @@ function system_update_7032() {
  * Move CACHE_AGGRESSIVE to CACHE_NORMAL.
  */
 function system_update_7033() {
+  $ret = array();
   if (variable_get('cache') == 2) {
     variable_set('cache', CACHE_NORMAL);
     $ret[] = array('success' => TRUE, 'query' => "Aggressive caching was disabled and replaced with normal caching, please read the page caching section in default.settings.php for more information on how to enable similar functionality.");
   }
-  return array();
+  return $ret;
 }
 
 /**
@@ -2407,6 +2425,33 @@ function system_update_7035() {
     $fids[] = $file['fid'];
   }
   // TODO: delete the found fids from {files}?
+  return $ret;
+}
+
+/**
+ * Split the 'access site in maintenance mode' permission from 'administer site configuration'.
+ */
+function system_update_7036() {
+  $ret = array();
+  // Get existing roles that can 'administer site configuration'.
+  $rids = db_query("SELECT rid FROM {role_permission} WHERE permission = :perm", array(':perm' => 'administer site configuration'))->fetchCol();
+  // None found.
+  if (empty($rids)) {
+    return $ret;
+  }
+  $insert = db_insert('role_permission')->fields(array('rid', 'permission'));
+  foreach ($rids as $rid) {
+    $insert->values(array(
+      'rid' => $rid,
+      'permission' => 'access site in maintenance mode',
+    ));
+  }
+  $insert->execute();
+
+  // Remove obsolete variable 'site_offline_message'.
+  // @see update_fix_d7_requirements().
+  variable_del('site_offline_message');
+
   return $ret;
 }
 

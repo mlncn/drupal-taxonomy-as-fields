@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.admin.inc,v 1.53 2009/07/20 18:51:33 dries Exp $
+// $Id: menu.admin.inc,v 1.55 2009/08/22 23:18:28 webchick Exp $
 
 /**
  * @file
@@ -82,7 +82,7 @@ function _menu_overview_tree_form($tree) {
     if ($item && $item['hidden'] >= 0) {
       $mlid = 'mlid:' . $item['mlid'];
       $form[$mlid]['#item'] = $item;
-      $form[$mlid]['#attributes'] = $item['hidden'] ? array('class' => 'menu-disabled') : array('class' => 'menu-enabled');
+      $form[$mlid]['#attributes'] = $item['hidden'] ? array('class' => array('menu-disabled')) : array('class' => array('menu-enabled'));
       $form[$mlid]['title']['#markup'] = l($item['title'], $item['href'], $item['localized_options']) . ($item['hidden'] ? ' (' . t('disabled') . ')' : '');
       $form[$mlid]['hidden'] = array(
         '#type' => 'checkbox',
@@ -188,8 +188,8 @@ function theme_menu_overview_form($form) {
 
   $header = array(
     t('Menu link'),
-    array('data' => t('Enabled'), 'class' => 'checkbox'),
-    array('data' => t('Show as expanded'), 'class' => 'checkbox'),
+    array('data' => t('Enabled'), 'class' => array('checkbox')),
+    array('data' => t('Show as expanded'), 'class' => array('checkbox')),
     t('Weight'),
     array('data' => t('Operations'), 'colspan' => '3'),
   );
@@ -208,22 +208,22 @@ function theme_menu_overview_form($form) {
       }
 
       // Add special classes to be used for tabledrag.js.
-      $element['plid']['#attributes']['class'] = 'menu-plid';
-      $element['mlid']['#attributes']['class'] = 'menu-mlid';
-      $element['weight']['#attributes']['class'] = 'menu-weight';
+      $element['plid']['#attributes']['class'] = array('menu-plid');
+      $element['mlid']['#attributes']['class'] = array('menu-mlid');
+      $element['weight']['#attributes']['class'] = array('menu-weight');
 
       // Change the parent field to a hidden. This allows any value but hides the field.
       $element['plid']['#type'] = 'hidden';
 
       $row = array();
       $row[] = theme('indentation', $element['#item']['depth'] - 1) . drupal_render($element['title']);
-      $row[] = array('data' => drupal_render($element['hidden']), 'class' => 'checkbox');
-      $row[] = array('data' => drupal_render($element['expanded']), 'class' => 'checkbox');
+      $row[] = array('data' => drupal_render($element['hidden']), 'class' => array('checkbox'));
+      $row[] = array('data' => drupal_render($element['expanded']), 'class' => array('checkbox'));
       $row[] = drupal_render($element['weight']) . drupal_render($element['plid']) . drupal_render($element['mlid']);
       $row = array_merge($row, $operations);
 
       $row = array_merge(array('data' => $row), $element['#attributes']);
-      $row['class'] = !empty($row['class']) ? $row['class'] . ' draggable' : 'draggable';
+      $row['class'][] = 'draggable';
       $rows[] = $row;
     }
   }
@@ -247,7 +247,7 @@ function menu_edit_item(&$form_state, $type, $item, $menu) {
     '#collapsible' => FALSE,
     '#tree' => TRUE,
     '#weight' => -2,
-    '#attributes' => array('class' => 'menu-item-form'),
+    '#attributes' => array('class' => array('menu-item-form')),
     '#item' => $item,
   );
   if ($type == 'add' || empty($item)) {
@@ -329,7 +329,7 @@ function menu_edit_item(&$form_state, $type, $item, $menu) {
     '#default_value' => $default,
     '#options' => $options,
     '#description' => t('The maximum depth for a link and all its children is fixed at !maxdepth. Some menu links may not be available as parents if selecting them would exceed this limit.', array('!maxdepth' => MENU_MAX_DEPTH)),
-    '#attributes' => array('class' => 'menu-title-select'),
+    '#attributes' => array('class' => array('menu-title-select')),
   );
   $form['menu']['weight'] = array(
     '#type' => 'weight',
@@ -402,34 +402,11 @@ function menu_edit_item_submit($form, &$form_state) {
  */
 function menu_edit_menu(&$form_state, $type, $menu = array()) {
   $system_menus = menu_list_system_menus();
-  if ($type == 'edit') {
-    $form['menu_name'] = array('#type' => 'value', '#value' => $menu['menu_name']);
-    $form['#insert'] = FALSE;
-    $form['delete'] = array(
-      '#type' => 'submit',
-      '#value' => t('Delete'),
-      '#access' => !isset($system_menus[$menu['menu_name']]),
-      '#submit' => array('menu_custom_delete_submit'),
-      '#weight' => 10,
-    );
-  }
-  else {
-    $menu = array('menu_name' => '', 'title' => '', 'description' => '');
-    $form['menu_name'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Menu name'),
-      '#maxsize' => MENU_MAX_MENU_NAME_LENGTH_UI,
-      '#description' => t('The machine-readable name of this menu. This text will be used for constructing the URL of the <em>menu overview</em> page for this menu. This name must contain only lowercase letters, numbers, and hyphens, and must be unique.'),
-      '#required' => TRUE,
-    );
-    $form['#insert'] = TRUE;
-  }
-  $form['#title'] = $menu['title'];
+  $menu += array('menu_name' => '', 'title' => '', 'description' => '');
+
+  // The title of a system menu cannot be altered.
   if (isset($system_menus[$menu['menu_name']])) {
-    $form['title'] = array(
-      '#type' => 'value',
-      '#value' => $menu['title'],
-    );
+    $form['title'] = array('#type' => 'value', '#value' => $menu['title']);
   }
   else {
     $form['title'] = array(
@@ -437,8 +414,40 @@ function menu_edit_menu(&$form_state, $type, $menu = array()) {
       '#title' => t('Title'),
       '#default_value' => $menu['title'],
       '#required' => TRUE,
+      '#field_suffix' => ' <small id="edit-title-suffix">&nbsp;</small>',
     );
   }
+
+  // The internal menu name can only be defined during initial menu creation.
+  if ($type == 'edit') {
+    $form['#insert'] = FALSE;
+    $form['menu_name'] = array('#type' => 'value', '#value' => $menu['menu_name']);
+  }
+  else {
+    $form['#insert'] = TRUE;
+    $js_settings = array(
+      'type' => 'setting',
+      'data' => array(
+        'machineReadableValue' => array(
+          'title' => array(
+            'text' => t('URL path'),
+            'target' => 'menu-name',
+            'searchPattern' => '[^a-z0-9]+',
+            'replaceToken' => '-',
+          ),
+        ),
+      ),
+    );
+    $form['menu_name'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Menu name'),
+      '#maxsize' => MENU_MAX_MENU_NAME_LENGTH_UI,
+      '#description' => t('This text will be used to construct the URL for the menu. The name must contain only lowercase letters, numbers and hyphens, and must be unique.'),
+      '#required' => TRUE,
+      '#attached_js' => array(drupal_get_path('module', 'system') . '/system.js', $js_settings),
+    );
+  }
+
   $form['description'] = array(
     '#type' => 'textarea',
     '#title' => t('Description'),
@@ -447,6 +456,13 @@ function menu_edit_menu(&$form_state, $type, $menu = array()) {
   $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Save'),
+  );
+  // Only custom menus may be deleted.
+  $form['delete'] = array(
+    '#type' => 'submit',
+    '#value' => t('Delete'),
+    '#access' => $type == 'edit' && !isset($system_menus[$menu['menu_name']]),
+    '#submit' => array('menu_custom_delete_submit'),
   );
 
   return $form;

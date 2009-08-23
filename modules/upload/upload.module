@@ -1,5 +1,5 @@
 <?php
-// $Id: upload.module,v 1.247 2009/08/17 19:14:41 webchick Exp $
+// $Id: upload.module,v 1.253 2009/08/22 19:30:41 webchick Exp $
 
 /**
  * @file
@@ -17,8 +17,8 @@ function upload_help($path, $arg) {
       $output .= '<p>' . t('Users with the upload files permission can upload attachments to posts. Uploads may be enabled for specific content types on the content types settings page. Each user role can be customized to limit or control the file size of uploads, or the maximum dimension of image files.') . '</p>';
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@upload">Upload module</a>.', array('@upload' => 'http://drupal.org/handbook/modules/upload/')) . '</p>';
       return $output;
-    case 'admin/settings/upload':
-      return '<p>' . t('Users with the <a href="@permissions">upload files permission</a> can upload attachments. Users with the <a href="@permissions">view uploaded files permission</a> can view uploaded attachments. You can choose which post types can take attachments on the <a href="@types">content types settings</a> page.', array('@permissions' => url('admin/settings/permissions'), '@types' => url('admin/settings/types'))) . '</p>';
+    case 'admin/config/media/uploads':
+      return '<p>' . t('Users with the <a href="@permissions">upload files permission</a> can upload attachments. Users with the <a href="@permissions">view uploaded files permission</a> can view uploaded attachments. You can choose which post types can take attachments on the <a href="@types">content types settings</a> page.', array('@permissions' => url('admin/config/people/permissions'), '@types' => url('admin/settings/types'))) . '</p>';
   }
 }
 
@@ -78,7 +78,7 @@ function upload_node_links($node, $build_mode) {
     $node->content['links']['upload_attachments'] = array(
       '#theme' => 'links',
       '#links' => $links,
-      '#attributes' => array('class' => 'links inline'),
+      '#attributes' => array('class' => array('links', 'inline')),
     );
   }
 }
@@ -92,7 +92,7 @@ function upload_menu() {
     'access arguments' => array('upload files'),
     'type' => MENU_CALLBACK,
   );
-  $items['admin/settings/uploads'] = array(
+  $items['admin/config/media/uploads'] = array(
     'title' => 'File uploads',
     'description' => 'Control how files may be attached to content.',
     'page callback' => 'drupal_get_form',
@@ -142,7 +142,7 @@ function _upload_file_limits($user) {
     'extensions' => $all_extensions,
     'file_size' => $file_limit,
     'user_size' => $user_limit,
-    'resolution' => variable_get('upload_max_resolution', 0),
+    'resolution' => variable_get('upload_max_resolution_x', 0) . 'x' . variable_get('upload_max_resolution_y', 0),
   );
 }
 
@@ -236,10 +236,7 @@ function upload_form_alter(&$form, $form_state, $form_id) {
       );
 
       // Wrapper for fieldset contents (used by ajax.js).
-      $form['attachments']['wrapper'] = array(
-        '#prefix' => '<div id="attach-wrapper">',
-        '#suffix' => '</div>',
-      );
+      $form['attachments']['wrapper'] = array();
 
       // Make sure necessary directories for upload.module exist and are
       // writable before displaying the attachment form.
@@ -249,7 +246,7 @@ function upload_form_alter(&$form, $form_state, $form_id) {
       if (!file_prepare_directory($path, FILE_CREATE_DIRECTORY) || !file_prepare_directory($temp, FILE_CREATE_DIRECTORY)) {
         $form['attachments']['#description'] =  t('File attachments are disabled. The file directories have not been properly configured.');
         if (user_access('administer site configuration')) {
-          $form['attachments']['#description'] .= ' ' . t('Please visit the <a href="@admin-file-system">file system configuration page</a>.', array('@admin-file-system' => url('admin/settings/file-system')));
+          $form['attachments']['#description'] .= ' ' . t('Please visit the <a href="@admin-file-system">file system configuration page</a>.', array('@admin-file-system' => url('admin/config/media/file-system')));
         }
         else {
           $form['attachments']['#description'] .= ' ' . t('Please contact the site administrator.');
@@ -448,7 +445,7 @@ function theme_upload_attachments($elements) {
     }
   }
   if (count($rows)) {
-    return theme('table', $header, $rows, array('class' => 'attachments'));
+    return theme('table', $header, $rows, array('class' => array('attachments')));
   }
 }
 
@@ -533,6 +530,8 @@ function _upload_form($node) {
   $form = array(
     '#theme' => 'upload_form_new',
     '#cache' => TRUE,
+    '#prefix' => '<div id="attach-wrapper">',
+    '#suffix' => '</div>',
   );
 
   if (!empty($node->files) && is_array($node->files)) {
@@ -604,7 +603,7 @@ function theme_upload_form_current($form) {
 
   foreach (element_children($form) as $key) {
     // Add class to group weight fields for drag and drop.
-    $form[$key]['weight']['#attributes']['class'] = 'upload-weight';
+    $form[$key]['weight']['#attributes']['class'] = array('upload-weight');
 
     $row = array('');
     $row[] = drupal_render($form[$key]['remove']);
@@ -612,7 +611,7 @@ function theme_upload_form_current($form) {
     $row[] = drupal_render($form[$key]['description']);
     $row[] = drupal_render($form[$key]['weight']);
     $row[] = drupal_render($form[$key]['size']);
-    $rows[] = array('data' => $row, 'class' => 'draggable');
+    $rows[] = array('data' => $row, 'class' => array('draggable'));
   }
   $output = theme('table', $header, $rows, array('id' => 'upload-attachments'));
   $output .= drupal_render_children($form);

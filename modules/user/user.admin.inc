@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.68 2009/08/17 19:14:41 webchick Exp $
+// $Id: user.admin.inc,v 1.72 2009/08/22 14:34:23 webchick Exp $
 
 /**
  * @file
@@ -297,7 +297,7 @@ function user_admin_settings() {
   $form['registration_cancellation']['user_cancel_method'] = array(
     '#type' => 'item',
     '#title' => t('When cancelling a user account'),
-    '#description' => t('Users with the %select-cancel-method or %administer-users <a href="@permissions-url">permissions</a> can override this default method.', array('%select-cancel-method' => t('Select method for cancelling account'), '%administer-users' => t('Administer users'), '@permissions-url' => url('admin/settings/permissions'))),
+    '#description' => t('Users with the %select-cancel-method or %administer-users <a href="@permissions-url">permissions</a> can override this default method.', array('%select-cancel-method' => t('Select method for cancelling account'), '%administer-users' => t('Administer users'), '@permissions-url' => url('admin/config/people/permissions'))),
   );
   $form['registration_cancellation']['user_cancel_method'] += user_cancel_methods();
   foreach (element_children($form['registration_cancellation']['user_cancel_method']) as $element) {
@@ -369,7 +369,7 @@ function user_admin_settings() {
       '#title' => t('Picture display style'),
       '#options' => image_style_options(TRUE),
       '#default_value' => variable_get('user_picture_style', ''),
-      '#description' => t('The style selected will be used on display, while the original image is retained. Styles may be configured in the <a href="!url">Image styles</a> administration area.', array('!url' => url('admin/settings/image-styles'))),
+      '#description' => t('The style selected will be used on display, while the original image is retained. Styles may be configured in the <a href="!url">Image styles</a> administration area.', array('!url' => url('admin/config/media/image-styles'))),
     );
   }
   $form['personalization']['pictures']['user_picture_dimensions'] = array(
@@ -695,23 +695,23 @@ function theme_user_admin_permissions($form) {
     $row = array();
     // Module name
     if (is_numeric($key)) {
-      $row[] = array('data' => drupal_render($form['permission'][$key]), 'class' => 'module', 'id' => 'module-' . $form['permission'][$key]['#id'], 'colspan' => count($form['role_names']['#value']) + 1);
+      $row[] = array('data' => drupal_render($form['permission'][$key]), 'class' => array('module'), 'id' => 'module-' . $form['permission'][$key]['#id'], 'colspan' => count($form['role_names']['#value']) + 1);
     }
     else {
       // Permission row.
       $row[] = array(
         'data' => drupal_render($form['permission'][$key]),
-        'class' => 'permission',
+        'class' => array('permission'),
       );
       foreach (element_children($form['checkboxes']) as $rid) {
-        $row[] = array('data' => drupal_render($form['checkboxes'][$rid][$key]), 'class' => 'checkbox', 'title' => $roles[$rid] . ' : ' . t($key));
+        $row[] = array('data' => drupal_render($form['checkboxes'][$rid][$key]), 'class' => array('checkbox'), 'title' => $roles[$rid] . ' : ' . t($key));
       }
     }
     $rows[] = $row;
   }
   $header[] = (t('Permission'));
   foreach (element_children($form['role_names']) as $rid) {
-    $header[] = array('data' => drupal_render($form['role_names'][$rid]), 'class' => 'checkbox');
+    $header[] = array('data' => drupal_render($form['role_names'][$rid]), 'class' => array('checkbox'));
   }
   $output = theme('system_compact_link');
   $output .= theme('table', $header, $rows, array('id' => 'permissions'));
@@ -728,10 +728,10 @@ function theme_user_admin_permissions($form) {
  * @see theme_user_admin_new_role()
  */
 function user_admin_role() {
-  $rid = arg(4);
+  $rid = arg(5);
   if ($rid) {
     if ($rid == DRUPAL_ANONYMOUS_RID || $rid == DRUPAL_AUTHENTICATED_RID) {
-      drupal_goto('admin/settings/roles');
+      drupal_goto('admin/config/people/roles');
     }
     // Display the edit role form.
     $role = db_query('SELECT * FROM {role} WHERE rid = :rid', array(':rid' => $rid))->fetchObject();
@@ -820,7 +820,7 @@ function user_admin_role_submit($form, &$form_state) {
       ->execute();
     drupal_set_message(t('The role has been added.'));
   }
-  $form_state['redirect'] = 'admin/settings/roles';
+  $form_state['redirect'] = 'admin/config/people/roles';
   return;
 }
 
@@ -877,9 +877,9 @@ function theme_user_admin_account($form) {
 function theme_user_admin_new_role($form) {
   $header = array(t('Name'), array('data' => t('Operations'), 'colspan' => 2));
   foreach (user_roles() as $rid => $name) {
-    $edit_permissions = l(t('edit permissions'), 'admin/settings/permissions/' . $rid);
+    $edit_permissions = l(t('edit permissions'), 'admin/config/people/permissions/' . $rid);
     if (!in_array($rid, array(DRUPAL_ANONYMOUS_RID, DRUPAL_AUTHENTICATED_RID))) {
-      $rows[] = array($name, l(t('edit role'), 'admin/settings/roles/edit/' . $rid), $edit_permissions);
+      $rows[] = array($name, l(t('edit role'), 'admin/config/people/roles/edit/' . $rid), $edit_permissions);
     }
     else {
       $rows[] = array($name, t('locked'), $edit_permissions);

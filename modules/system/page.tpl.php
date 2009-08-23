@@ -1,5 +1,5 @@
 <?php
-// $Id: page.tpl.php,v 1.27 2009/08/03 03:04:33 webchick Exp $
+// $Id: page.tpl.php,v 1.30 2009/08/22 19:58:28 webchick Exp $
 
 /**
  * @file
@@ -68,6 +68,8 @@
  * - $secondary_menu (array): An array containing the Secondary menu links for
  *   the site, if they have been configured.
  * - $breadcrumb: The breadcrumb trail for the current page.
+ * - $action_links: Actions local to the page, such as 'Add menu' on the menu
+ *   administration interface.
  *
  * Page content (in order of occurrence in the default page.tpl.php):
  * - $title: The page title, for use in the actual HTML content.
@@ -154,7 +156,7 @@
 
     <?php if ($main_menu): ?>
       <div id="navigation"><div class="section">
-        <?php print theme('links', $main_menu, array('id' => 'main-menu', 'class' => 'links clearfix')); ?>
+        <?php print theme('links', $main_menu, array('text' => t('Main menu'), 'level' => 'h2'), array('id' => 'main-menu', 'class' => array('links clearfix'))); ?>
       </div></div> <!-- /.section, /#navigation -->
     <?php endif; ?>
 
@@ -171,6 +173,7 @@
         <?php if ($title): ?><h1 class="title" id="page-title"><?php print $title; ?></h1><?php endif; ?>
         <?php if ($tabs): ?><div class="tabs"><?php print $tabs; ?></div><?php endif; ?>
         <?php print $help; ?>
+        <?php if ($action_links): ?><ul class="action-links"><?php print $action_links; ?></ul><?php endif; ?>
         <div id="content-area" class="region">
           <?php print $content; ?>
         </div> <!-- /#content-area -->
@@ -192,7 +195,7 @@
     </div></div> <!-- /#main, /#main-wrapper -->
 
     <div id="footer"><div class="section">
-      <?php print theme('links', $secondary_menu, array('id' => 'secondary-menu', 'class' => 'links clearfix')); ?>
+      <?php print theme('links', $secondary_menu, array('text' => t('Secondary menu'), 'level' => 'h2'), array('id' => 'secondary-menu', 'class' => array('links', 'clearfix'))); ?>
       <?php if ($footer): ?><div id="footer-region" class="region"><?php print $footer; ?></div><?php endif; ?>
     </div></div> <!-- /.section, /#footer -->
 

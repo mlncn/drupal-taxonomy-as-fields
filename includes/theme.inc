@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.506 2009/08/19 22:44:05 webchick Exp $
+// $Id: theme.inc,v 1.510 2009/08/22 19:58:27 webchick Exp $
 
 /**
  * @file
@@ -1338,6 +1338,9 @@ function theme_placeholder($text) {
  * Return a themed set of status and/or error messages. The messages are grouped
  * by type.
  *
+ * An invisible heading identifies the messages for assistive technology. Sighted
+ * users see a colored box. See http://www.w3.org/TR/WCAG-TECHS/H69.html for info.
+ *
  * @param $display
  *   (optional) Set to 'status' or 'error' to display only messages of that type.
  *
@@ -1346,8 +1349,16 @@ function theme_placeholder($text) {
  */
 function theme_status_messages($display = NULL) {
   $output = '';
+  $status_heading = array(
+    'status' => t('Status message'),
+    'error' => t('Error message'),
+    'warning' => t('Warning message'),
+  );
   foreach (drupal_get_messages($display) as $type => $messages) {
     $output .= "<div class=\"messages $type\">\n";
+    if (!empty($status_heading[$type])) {
+      $output .= '<h2 class="element-invisible">' . $status_heading[$type] . "</h2>\n";
+    }
     if (count($messages) > 1) {
       $output .= " <ul>\n";
       foreach ($messages as $message) {
@@ -1378,7 +1389,7 @@ function theme_status_messages($display = NULL) {
  * @return
  *   A string containing an unordered list of links.
  */
-function theme_links($links, $attributes = array('class' => 'links')) {
+function theme_links($links, $attributes = array('class' => array('links'))) {
   global $language;
   $output = '';
 
@@ -1389,18 +1400,18 @@ function theme_links($links, $attributes = array('class' => 'links')) {
     $i = 1;
 
     foreach ($links as $key => $link) {
-      $class = $key;
+      $class = array($key);
 
       // Add first, last and active classes to the list of links to help out themers.
       if ($i == 1) {
-        $class .= ' first';
+        $class[] = 'first';
       }
       if ($i == $num_links) {
-        $class .= ' last';
+        $class[] = 'last';
       }
       if (isset($link['href']) && ($link['href'] == $_GET['q'] || ($link['href'] == '<front>' && drupal_is_front_page()))
           && (empty($link['language']) || $link['language']->language == $language->language)) {
-        $class .= ' active';
+        $class[] = 'active';
       }
       $output .= '<li' . drupal_attributes(array('class' => $class)) . '>';
 
@@ -1508,7 +1519,7 @@ function theme_submenu($links) {
  *     ),
  *     // Row with attributes on the row and some of its cells.
  *     array(
- *       'data' => array('Cell 1', array('data' => 'Cell 2', 'colspan' => 2)), 'class' => 'funky'
+ *       'data' => array('Cell 1', array('data' => 'Cell 2', 'colspan' => 2)), 'class' => array('funky')
  *     )
  *   );
  *   @endverbatim
@@ -1530,17 +1541,17 @@ function theme_submenu($links) {
  *     // COLGROUP with one COL element.
  *     array(
  *       array(
- *         'class' => 'funky', // Attribute for the COL element.
+ *         'class' => array('funky'), // Attribute for the COL element.
  *       ),
  *     ),
  *     // Colgroup with attributes and inner COL elements.
  *     array(
  *       'data' => array(
  *         array(
- *           'class' => 'funky', // Attribute for the COL element.
+ *           'class' => array('funky'), // Attribute for the COL element.
  *         ),
  *       ),
- *       'class' => 'jazzy', // Attribute for the COLGROUP element.
+ *       'class' => array('jazzy'), // Attribute for the COLGROUP element.
  *     ),
  *   );
  *   @endverbatim
@@ -1559,7 +1570,7 @@ function theme_table($header, $rows, $attributes = array(), $caption = NULL, $co
     drupal_add_js('misc/tableheader.js');
     // Add 'sticky-enabled' class to the table to identify it for JS.
     // This is needed to target tables constructed by this function.
-    $attributes['class'] = empty($attributes['class']) ? 'sticky-enabled' : ($attributes['class'] . ' sticky-enabled');
+    $attributes['class'][] = 'sticky-enabled';
   }
 
   $output = '<table' . drupal_attributes($attributes) . ">\n";
@@ -1645,12 +1656,7 @@ function theme_table($header, $rows, $attributes = array(), $caption = NULL, $co
       if (count($cells)) {
         // Add odd/even class
         $class = $flip[$class];
-        if (isset($attributes['class'])) {
-          $attributes['class'] .= ' ' . $class;
-        }
-        else {
-          $attributes['class'] = $class;
-        }
+        $attributes['class'][] = $class;
 
         // Build row
         $output .= ' <tr' . drupal_attributes($attributes) . '>';
@@ -1675,7 +1681,7 @@ function theme_table($header, $rows, $attributes = array(), $caption = NULL, $co
 function theme_table_select_header_cell() {
   drupal_add_js('misc/tableselect.js');
 
-  return array('class' => 'select-all');
+  return array('class' => array('select-all'));
 }
 
 /**
@@ -1767,10 +1773,10 @@ function theme_item_list($items = array(), $title = NULL, $type = 'ul', $attribu
         $data .= theme_item_list($children, NULL, $type, $attributes); // Render nested list
       }
       if ($i == 0) {
-        $attributes['class'] = empty($attributes['class']) ? 'first' : ($attributes['class'] . ' first');
+        $attributes['class'][] = 'first';
       }
       if ($i == $num_items - 1) {
-        $attributes['class'] = empty($attributes['class']) ? 'last' : ($attributes['class'] . ' last');
+        $attributes['class'][] = 'last';
       }
       $output .= '<li' . drupal_attributes($attributes) . '>' . $data . "</li>\n";
     }
@@ -1796,7 +1802,7 @@ function theme_more_help_link($url) {
  *   A descriptive title of the feed.
   */
 function theme_feed_icon($url, $title) {
-  if ($image = theme('image', 'misc/feed.png', t('Syndicate content'), $title)) {
+  if ($image = theme('image', 'misc/feed.png', t('Subscribe to %feed-title', array('%feed-title' => $title)))) {
     return '<a href="' . check_url($url) . '" class="feed-icon">' . $image . '</a>';
   }
 }
@@ -2033,6 +2039,7 @@ function template_preprocess_page(&$variables) {
   $variables['messages']          = $variables['show_messages'] ? theme('status_messages') : '';
   $variables['main_menu']         = theme_get_setting('toggle_main_menu') ? menu_main_menu() : array();
   $variables['secondary_menu']    = theme_get_setting('toggle_secondary_menu') ? menu_secondary_menu() : array();
+  $variables['action_links']      = menu_local_actions();
   $variables['search_box']        = (theme_get_setting('toggle_search') ? drupal_render(drupal_get_form('search_theme_form')) : '');
   $variables['site_name']         = (theme_get_setting('toggle_name') ? filter_xss_admin(variable_get('site_name', 'Drupal')) : '');
   $variables['site_slogan']       = (theme_get_setting('toggle_slogan') ? filter_xss_admin(variable_get('site_slogan', '')) : '');

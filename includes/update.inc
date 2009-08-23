@@ -1,5 +1,5 @@
 <?php
-// $Id: update.inc,v 1.2 2009/08/03 19:37:38 webchick Exp $
+// $Id: update.inc,v 1.5 2009/08/22 18:24:14 webchick Exp $
 
 /**
  * @file
@@ -232,6 +232,7 @@ function update_prepare_d7_bootstrap() {
  * made which make it impossible to continue using the prior version.
  */
 function update_fix_d7_requirements() {
+  global $conf;
   $ret = array();
 
   // Rewrite the settings.php file if necessary.
@@ -242,20 +243,97 @@ function update_fix_d7_requirements() {
     file_put_contents(conf_path() . '/settings.php', "\n" . '$databases = ' . var_export($databases, TRUE) . ';', FILE_APPEND);
   }
   if (drupal_get_installed_schema_version('system') < 7000 && !variable_get('update_d7_requirements', FALSE)) {
-
     // Add the cache_path table.
     $schema['cache_path'] = drupal_get_schema_unprocessed('system', 'cache');
     $schema['cache_path']['description'] = 'Cache table used for path alias lookups.';
     db_create_table($ret, 'cache_path', $schema['cache_path']);
-    variable_set('update_d7_requirements', TRUE);
 
     // Add column for locale context.
     if (db_table_exists('locales_source')) {
       db_add_field($ret, 'locales_source', 'context', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => '', 'description' => 'The context this string applies to.'));
     }
+
+    // Rename 'site_offline_message' variable to 'maintenance_mode_message'.
+    // Old variable is removed in update for system.module.
+    // @see system_update_7036().
+    if ($message = variable_get('site_offline_message', NULL)) {
+      variable_set('maintenance_mode_message', $message);
+    }
+
+    variable_set('update_d7_requirements', TRUE);
   }
 
+  update_fix_d7_install_profile();
+
   return $ret;
+}
+
+/**
+ * Register the currently installed profile in the system table.
+ *
+ * Install profiles are now treated as modules by Drupal, and have an upgrade path
+ * based on their schema version in the system table.
+ * 
+ * The install profile will be set to schema_version 0, as it has already been
+ * installed. Any other hook_update_N functions provided by the install profile
+ * will be run by update.php.
+ */
+function update_fix_d7_install_profile() {
+  $profile = drupal_get_profile();
+
+
+  $results = db_select('system', 's')
+    ->fields('s', array('name', 'schema_version'))
+    ->condition('name', $profile)
+    ->condition('type', 'module')
+    ->execute()
+    ->fetchAll();
+
+  if (empty($results)) {
+    $filename = 'profiles/' . $profile . '/' . $profile . '.profile';
+
+    // Read profile info file
+    $info = drupal_parse_info_file(dirname($filename) . '/' . $profile . '.info');
+
+    // Merge in defaults.
+    $info = $info + array(
+      'dependencies' => array(),
+      'dependents' => array(),
+      'description' => '',
+      'package' => 'Other',
+      'version' => NULL,
+      'php' => DRUPAL_MINIMUM_PHP,
+      'files' => array(),
+    );
+
+    // The install profile is always required.
+    $file->info['required'] = TRUE;
+
+    $values = array(
+      'filename' => $filename,
+      'name' => $profile,
+      'info' => serialize($info),
+      'schema_version' => 0,
+      'type' => 'module',
+      'status' => 1,
+      'owner' => '',
+    );
+
+    // Install profile hooks are always executed last by the module system
+    $values['weight'] = 1000;
+
+    // Initializing the system table entry for the install profile
+    db_insert('system')
+      ->fields(array_keys($values))
+      ->values($values)
+      ->execute();
+
+    // Reset the cached schema version.
+    drupal_get_installed_schema_version($profile, TRUE);
+
+    // Load the updates again to make sure the install profile updates are loaded
+    drupal_load_updates();
+  }
 }
 
 /**
@@ -353,9 +431,9 @@ function update_do_one($module, $number, &$context) {
 function update_batch($start, $redirect = NULL, $url = NULL, $batch = array()) {
   // During the update, bring the site offline so that schema changes do not
   // affect visiting users.
-  $_SESSION['site_offline'] = variable_get('site_offline', FALSE);
-  if ($_SESSION['site_offline'] == FALSE) {
-    variable_set('site_offline', TRUE);
+  $_SESSION['maintenance_mode'] = variable_get('maintenance_mode', FALSE);
+  if ($_SESSION['maintenance_mode'] == FALSE) {
+    variable_set('maintenance_mode', TRUE);
   }
 
   $operations = array();
@@ -410,10 +488,70 @@ function update_finished($success, $results, $operations) {
   $_SESSION['updates_remaining'] = $operations;
 
   // Now that the update is done, we can put the site back online if it was
-  // previously turned off.
-  if (isset($_SESSION['site_offline']) && $_SESSION['site_offline'] == FALSE) {
-    variable_set('site_offline', FALSE);
-    unset($_SESSION['site_offline']);
+  // previously in maintenance mode.
+  if (isset($_SESSION['maintenance_mode']) && $_SESSION['maintenance_mode'] == FALSE) {
+    variable_set('maintenance_mode', FALSE);
+    unset($_SESSION['maintenance_mode']);
   }
+}
+
+/**
+ * Return a list of all the pending database updates.
+ *
+ * @return
+ *   An associative array keyed by module name which contains all information
+ *   about database updates that need to be run, and any updates that are not
+ *   going to proceed due to missing requirements. The system module will
+ *   always be listed first.
+ *
+ *   The subarray for each module can contain the following keys:
+ *   - start: The starting update that is to be processed. If this does not
+ *       exist then do not process any updates for this module as there are
+ *       other requirements that need to be resolved.
+ *   - warning: Any warnings about why this module can not be updated.
+ *   - pending: An array of all the pending updates for the module including
+ *       the update number and the description from source code comment for
+ *       each update function. This array is keyed by the update number.
+ */
+function update_get_update_list() {
+  // Make sure that the system module is first in the list of updates.
+  $ret = array('system' => array());
+  
+  $modules = drupal_get_installed_schema_version(NULL, FALSE, TRUE);
+  foreach ($modules as $module => $schema_version) {
+    $pending = array();
+    $updates = drupal_get_schema_versions($module);
+    // Skip incompatible module updates, otherwise test schema versions.
+    if (!update_check_incompatibility($module) && $updates !== FALSE && $schema_version >= 0) {
+      // module_invoke returns NULL for nonexisting hooks, so if no updates
+      // are removed, it will == 0.
+      $last_removed = module_invoke($module, 'update_last_removed');
+      if ($schema_version < $last_removed) {
+        $ret[$module]['warning'] = '<em>' . $module . '</em> module can not be updated. Its schema version is ' . $schema_version . '. Updates up to and including ' . $last_removed . ' have been removed in this release. In order to update <em>' . $module . '</em> module, you will first <a href="http://drupal.org/upgrade">need to upgrade</a> to the last version in which these updates were available.';
+        continue;
+      }
+      
+      $updates = drupal_map_assoc($updates);
+      foreach (array_keys($updates) as $update) {
+        if ($update > $schema_version) {
+          // The description for an update comes from its Doxygen.
+          $func = new ReflectionFunction($module . '_update_' . $update);
+          $description = str_replace(array("\n", '*', '/'), '', $func->getDocComment());
+          $ret[$module]['pending'][$update] = "$update - $description";
+          if (!isset($ret[$module]['start'])) {
+            $ret[$module]['start'] = $update;
+          }
+        }
+      }
+      if (!isset($ret[$module]['start']) && isset($ret[$module]['pending'])) {
+        $ret[$module]['start'] = $schema_version;
+      }
+    }
+  }
+  
+  if (empty($ret['system'])) {
+    unset($ret['system']);
+  }
+  return $ret;
 }
 

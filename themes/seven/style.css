@@ -1,4 +1,4 @@
-/* $Id: style.css,v 1.10 2009/08/19 08:17:38 webchick Exp $ */
+/* $Id: style.css,v 1.13 2009/08/22 19:58:28 webchick Exp $ */
 
 /**
  * Generic elements
@@ -64,15 +64,9 @@ legend {
   background-color: #e0e0d8;
 }
 
-#branding div.back-to-site {
-  background: url(images/arrow-prev.png) no-repeat left center;
-  padding-left: 8px;
-  font-size: 11px;
-}
-
 #branding div.breadcrumb {
-  float: left;
-  font-size: 12px;
+  font-size: 11px;
+  padding-bottom: 5px;
 }
 
 #branding div.block {
@@ -102,14 +96,6 @@ legend {
 #branding div.block form input.form-submit {
   text-align: center;
   width: 80px;
-}
-
-/**
- * Breadcrumbs.
- */
-div.breadcrumb a {
-  padding: 0 10px 0 0;
-  color: #fff;
 }
 
 /**
@@ -332,11 +318,11 @@ ul.secondary li.active a.active {
 #block-system-main ul.admin-list li {
   position: relative;
   padding-left: 30px;
-  padding-bottom: 9px;
-  border-bottom: 1px solid #ccc;
+  padding-top: 9px;
+  border-top: 1px solid #ccc;
   margin-left: 0;
   margin-bottom: 10px;
-  background: url(images/list-item.png) no-repeat 0 3px;
+  background: url(images/list-item.png) no-repeat 0 11px;
   list-style-type: none;
   list-style-image: none;
 }
@@ -622,6 +608,16 @@ html.js input.throbbing {
   background-position: 100% -16px;
 }
 
+ul.action-links {
+  margin: 1em 0;
+  overflow: hidden;
+}
+
+ul.action-links li {
+  float: left;
+  margin: 0 1em 0 0;
+}
+
 /* Exceptions */
 #diff-inline-form select,
 #block-system-main div.filter-options select {
@@ -653,9 +649,8 @@ div.admin-panel {
 #block-system-main div.admin-panel h3 {
   font-size: 12px;
   text-transform: uppercase;
-  margin: 0 0 10px;
+  margin: 0;
   padding-bottom: 9px;
-  border-bottom: 1px solid #ccc;
 }
 
 .container-inline fieldset {

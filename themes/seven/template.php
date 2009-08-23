@@ -1,5 +1,5 @@
 <?php
-// $Id: template.php,v 1.3 2009/08/14 07:57:30 dries Exp $
+// $Id: template.php,v 1.5 2009/08/22 14:34:23 webchick Exp $
 
 /**
  * Override or insert variables into the page template.
@@ -8,7 +8,6 @@ function seven_preprocess_page(&$vars) {
   $vars['primary_local_tasks'] = menu_primary_local_tasks();
   $vars['secondary_local_tasks'] = menu_secondary_local_tasks();
   $vars['ie_styles'] = '<!--[if lt IE 7]><style type="text/css" media="screen">@import ' . path_to_theme() . '/ie6.css";</style><![endif]-->';
-  $vars['back_to_site'] = l(t('Back to the front page'), '');
 }
 
 /**
@@ -76,12 +75,12 @@ function seven_fieldset($element) {
     drupal_add_js('misc/collapse.js');
 
     if (!isset($element['#attributes']['class'])) {
-      $element['#attributes']['class'] = '';
+      $element['#attributes']['class'] = array();
     }
 
-    $element['#attributes']['class'] .= ' collapsible';
+    $element['#attributes']['class'][] = 'collapsible';
     if (!empty($element['#collapsed'])) {
-      $element['#attributes']['class'] .= ' collapsed';
+      $element['#attributes']['class'][] = 'collapsed';
     }
   }
   $element['#attributes']['id'] = $element['#id'];

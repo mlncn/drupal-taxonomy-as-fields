@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.297 2009/08/17 20:32:29 dries Exp $
+// $Id: bootstrap.inc,v 1.299 2009/08/21 00:00:43 webchick Exp $
 
 /**
  * @file
@@ -701,6 +701,8 @@ function variable_initialize($conf = array()) {
  *   The default value to use if this variable has never been set.
  * @return
  *   The value of the variable.
+ *
+ * @see variable_del(), variable_set()
  */
 function variable_get($name, $default = NULL) {
   global $conf;
@@ -716,6 +718,8 @@ function variable_get($name, $default = NULL) {
  * @param $value
  *   The value to set. This can be any PHP data type; these functions take care
  *   of serialization as necessary.
+ *
+ * @see variable_del(), variable_get()
  */
 function variable_set($name, $value) {
   global $conf;
@@ -732,6 +736,8 @@ function variable_set($name, $value) {
  *
  * @param $name
  *   The name of the variable to undefine.
+ *
+ * @see variable_get(), variable_set()
  */
 function variable_del($name) {
   global $conf;
@@ -1552,10 +1558,8 @@ function drupal_valid_test_ua($user_agent) {
   // The file properties add more entropy not easily accessible to others.
   $filepath = DRUPAL_ROOT . '/includes/bootstrap.inc';
   $key = sha1(serialize($databases) . filectime($filepath) . fileinode($filepath), TRUE);
-  $time_diff = REQUEST_TIME - $time;
-  // Since we are making a local request, a 2 second time window is allowed,
-  // and the HMAC must match.
-  return (($time_diff >= 0) && ($time_diff < 3) && ($hmac == base64_encode(hash_hmac('sha1', $check_string, $key, TRUE))));
+  // The HMAC must match.
+  return $hmac == base64_encode(hash_hmac('sha1', $check_string, $key, TRUE));
 }
 
 /**
