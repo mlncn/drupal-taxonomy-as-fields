@@ -1,5 +1,5 @@
 <?php
-// $Id: install.inc,v 1.106 2009/08/21 07:50:07 webchick Exp $
+// $Id: install.inc,v 1.110 2009/08/24 03:13:44 webchick Exp $
 
 /**
  * Indicates that a module has not been installed yet.
@@ -632,15 +632,16 @@ function drupal_install_system() {
   $system_versions = drupal_get_schema_versions('system');
   $system_version = $system_versions ? max($system_versions) : SCHEMA_INSTALLED;
   db_insert('system')
-    ->fields(array('filename', 'name', 'type', 'owner', 'status', 'schema_version'))
+    ->fields(array('filename', 'name', 'type', 'owner', 'status', 'schema_version', 'bootstrap'))
     ->values(array(
         'filename' => $system_path . '/system.module',
         'name' => 'system',
         'type' => 'module',
         'owner' => '',
         'status' => 1,
-        'schema_version' => $system_version
-        ))
+        'schema_version' => $system_version,
+        'bootstrap' => 0,
+      ))
     ->execute();
   // Now that we've installed things properly, bootstrap the full Drupal environment
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
@@ -931,13 +932,13 @@ function st($string, $args = array()) {
   if (!isset($locale_strings)) {
     $locale_strings = array();
     if (isset($install_state['parameters']['profile']) && isset($install_state['parameters']['locale'])) {
-    $filename = 'profiles/' . $install_state['parameters']['profile'] . '/translations/' . $install_state['parameters']['locale'] . '.po';
-    if (file_exists(DRUPAL_ROOT . '/' . $filename)) {
-      require_once DRUPAL_ROOT . '/includes/locale.inc';
-      $file = (object) array('uri' => $filename);
-      _locale_import_read_po('mem-store', $file);
-      $locale_strings = _locale_import_one_string('mem-report');
-    }
+      $filename = 'profiles/' . $install_state['parameters']['profile'] . '/translations/' . $install_state['parameters']['locale'] . '.po';
+      if (file_exists(DRUPAL_ROOT . '/' . $filename)) {
+        require_once DRUPAL_ROOT . '/includes/locale.inc';
+        $file = (object) array('uri' => $filename);
+        _locale_import_read_po('mem-store', $file);
+        $locale_strings = _locale_import_one_string('mem-report');
+      }
     }
   }
 

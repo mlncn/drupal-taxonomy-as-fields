@@ -1,5 +1,5 @@
 <?php
-// $Id: node.admin.inc,v 1.61 2009/08/22 14:34:20 webchick Exp $
+// $Id: node.admin.inc,v 1.63 2009/08/23 04:37:52 webchick Exp $
 
 /**
  * @file
@@ -145,7 +145,6 @@ function node_filter_form() {
     '#title' => t('Show only items where'),
     '#theme' => 'node_filters',
   );
-  $form['#submit'][] = 'node_filter_form_submit';
   foreach ($session as $filter) {
     list($type, $value) = $filter;
     if ($type == 'term') {
@@ -160,10 +159,10 @@ function node_filter_form() {
       $value = $filters[$type]['options'][$value];
     }
     if ($i++) {
-      $form['filters']['current'][] = array('#markup' => t('<em>and</em> where <strong>%a</strong> is <strong>%b</strong>', array('%a' => $filters[$type]['title'], '%b' => $value)));
+      $form['filters']['current'][] = array('#markup' => t('<em>and</em> where <strong>%type</strong> is <strong>%value</strong>', array('%type' => $filters[$type]['title'], '%value' => $value)));
     }
     else {
-      $form['filters']['current'][] = array('#markup' => t('<strong>%a</strong> is <strong>%b</strong>', array('%a' => $filters[$type]['title'], '%b' => $value)));
+      $form['filters']['current'][] = array('#markup' => t('<strong>%type</strong> is <strong>%value</strong>', array('%type' => $filters[$type]['title'], '%value' => $value)));
     }
     if (in_array($type, array('type', 'language'))) {
       // Remove the option if it is already being filtered on.
@@ -371,16 +370,13 @@ function node_admin_content($form_state) {
   if (isset($form_state['values']['operation']) && $form_state['values']['operation'] == 'delete') {
     return node_multiple_delete_confirm($form_state, array_filter($form_state['values']['nodes']));
   }
-  $form = array();
   // Show the 'add new content' link.
-  if (_node_add_access()) {
-    $form['add_content'] = array(
-      '#type' => 'markup',
-      '#markup' => l(t('Add new content'), 'node/add', array('attributes' => array('class' => array('node-admin-add-content')))),
-    );
-  }
+  $form['add_content'] = array(
+    '#access' => _node_add_access(),
+    '#markup' => theme('links', array(array('title' => t('Add new content'), 'href' => 'node/add')), array('class' => array('action-links'))),
+  );
   $form[] = node_filter_form();
-
+  $form['#submit'][] = 'node_filter_form_submit';
   $form['#theme'] = 'node_filter_form';
   $form['admin'] = node_admin_nodes();
 

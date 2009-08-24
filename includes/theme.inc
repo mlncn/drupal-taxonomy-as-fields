@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.510 2009/08/22 19:58:27 webchick Exp $
+// $Id: theme.inc,v 1.514 2009/08/24 00:34:11 webchick Exp $
 
 /**
  * @file
@@ -189,7 +189,7 @@ function _drupal_theme_initialize($theme, $base_theme = array(), $registry_callb
     }
   }
 
-  if (drupal_function_exists($registry_callback)) {
+  if (function_exists($registry_callback)) {
     $registry_callback($theme, $base_theme, $theme_engine);
   }
 }
@@ -322,7 +322,6 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
 
   if (function_exists($function)) {
     $result = $function($cache, $type, $theme, $path);
-
     foreach ($result as $hook => $info) {
       $result[$hook]['type'] = $type;
       $result[$hook]['theme path'] = $path;
@@ -336,12 +335,14 @@ function _theme_process_registry(&$cache, $name, $type, $theme, $path) {
       // functions on behalf of core .include files.
       // All files are included to be safe. Conditionally included
       // files can prevent them from getting registered.
-      if (isset($info['file']) && !isset($info['path'])) {
-        $result[$hook]['file'] = $path . '/' . $info['file'];
-        include_once DRUPAL_ROOT . '/' . $result[$hook]['file'];
+      if (isset($cache[$hook]['includes'])) {
+        $result[$hook]['includes'] = $cache[$hook]['includes'];
       }
-      elseif (isset($info['file']) && isset($info['path'])) {
-        include_once DRUPAL_ROOT . '/' . $info['path'] . '/' . $info['file'];
+      if (isset($info['file'])) {
+        $include_file = isset($info['path']) ? $info['path'] : $path;
+        $include_file .= '/' . $info['file'];
+        include_once DRUPAL_ROOT . '/' . $include_file;
+        $result[$hook]['includes'][] = $include_file;
       }
 
       // If 'arguments' have been defined previously, carry them forward.
@@ -760,12 +761,10 @@ function theme() {
   $theme_path = $info['theme path'];
 
   // Include a file if the theme function or variable processor is held elsewhere.
-  if (!empty($info['file'])) {
-    $include_file = $info['file'];
-    if (isset($info['path'])) {
-      $include_file = $info['path'] . '/' . $include_file;
+  if (!empty($info['includes'])) {
+    foreach ($info['includes'] as $include_file) {
+      include_once DRUPAL_ROOT . '/' . $include_file;
     }
-    include_once DRUPAL_ROOT . '/' . $include_file;
   }
   if (isset($info['function'])) {
     // The theme call is a function.
@@ -804,7 +803,7 @@ function theme() {
         foreach (array('preprocess functions', 'process functions') as $phase) {
           if (!empty($info[$phase])) {
             foreach ($info[$phase] as $processor_function) {
-              if (drupal_function_exists($processor_function)) {
+              if (function_exists($processor_function)) {
                 $processor_function($variables, $hook_clone);
               }
             }
@@ -830,7 +829,7 @@ function theme() {
           $suggestions[] = $variables['theme_function'];
         }
         foreach (array_reverse($suggestions) as $suggestion) {
-          if (drupal_function_exists($suggestion)) {
+          if (function_exists($suggestion)) {
             $info['function'] = $suggestion;
             break;
           }
@@ -842,7 +841,7 @@ function theme() {
     }
 
     // Call the function.
-    if (drupal_function_exists($info['function'])) {
+    if (function_exists($info['function'])) {
       $output = call_user_func_array($info['function'], $args);
     }
   }
@@ -885,7 +884,7 @@ function theme() {
     foreach (array('preprocess functions', 'process functions') as $phase) {
       if (!empty($info[$phase])) {
         foreach ($info[$phase] as $processor_function) {
-          if (drupal_function_exists($processor_function)) {
+          if (function_exists($processor_function)) {
             call_user_func_array($processor_function, $args);
           }
         }
@@ -1384,17 +1383,37 @@ function theme_status_messages($display = NULL) {
  *    - href: the link URL. If omitted, the 'title' is shown as a plain text item in the links list.
  *    - html: (optional) set this to TRUE if 'title' is HTML so it will be escaped.
  *   Array items are passed on to the l() function's $options parameter when creating the link.
+ * @param $heading
+ *   An optional keyed array for a heading to precede the links:
+ *    - text: the heading text
+ *    - level: the heading level (e.g. 'h2', 'h3')
+ *    - class: (optional) space-separated classes for the heading
+ *   Headings should be used on navigation menus and any list of links that
+ *   consistently appears on multiple pages. To make the heading invisible
+ *   use class => 'element-invisible'. Do not use 'display:none', which
+ *   removes it from screen-readers and assistive technology. Headings allow
+ *   screen-reader and keyboard only users to navigate to or skip the links.
+ *   See http://juicystudio.com/article/screen-readers-display-none.php
+ *   and http://www.w3.org/TR/WCAG-TECHS/H42.html for more information.
  * @param $attributes
  *   A keyed array of attributes.
  * @return
  *   A string containing an unordered list of links.
  */
-function theme_links($links, $attributes = array('class' => array('links'))) {
+function theme_links($links, $heading = array(), $attributes = array('class' => array('links'))) {
   global $language;
   $output = '';
 
   if (count($links) > 0) {
-    $output = '<ul' . drupal_attributes($attributes) . '>';
+    $output = '';
+    if (!empty($heading['text']) && !empty($heading['level'])) {
+      $output .= '<' . $heading['level'] . (!empty($heading['class']) ?
+        drupal_attributes(array('class' => $heading['class'])) : '') . '>';
+      $output .= check_plain($heading['text']);
+      $output .= '</' . $heading['level'] . '>';
+    }
+
+    $output .= '<ul' . drupal_attributes($attributes) . '>';
 
     $num_links = count($links);
     $i = 1;
