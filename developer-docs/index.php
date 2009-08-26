@@ -1,5 +1,5 @@
 <?php
-// $Id: index.php,v 1.23 2009/06/23 07:07:46 drumm Exp $
+// $Id: index.php,v 1.24 2009/08/18 19:16:15 drumm Exp $
 
 /** @mainpage Developer Documentation
  * Welcome to the Drupal developer's documentation. Newcomers to Drupal
@@ -32,5 +32,5 @@
  *   - @link forms_api.html Forms API Quickstart Guide @endlink
  *   - @link forms_api_reference.html Forms API Reference @endlink
  *   - @link javascript_startup_guide.html JavaScript Startup Guide @endlink
- *   - @link oop.html Drupal Programming from an Object-Oriented Perspective @endlink
+ *   - @link http://drupal.org/node/547518 Drupal Programming from an Object-Oriented Perspective @endlink
  */
