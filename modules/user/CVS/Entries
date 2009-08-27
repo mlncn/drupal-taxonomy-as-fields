@@ -3,8 +3,6 @@
 /user-profile-item.tpl.php/1.3/Tue Aug 25 12:49:12 2009//
 /user-profile.tpl.php/1.11/Tue Aug 25 12:49:12 2009//
 /user-rtl.css/1.5/Tue Aug 25 12:49:12 2009//
-/user.admin.inc/1.75/Tue Aug 25 12:49:13 2009//
-/user.api.php/1.11/Tue Aug 25 12:49:13 2009//
 /user.css/1.13/Tue Aug 25 12:49:13 2009//
 /user.info/1.12/Tue Aug 25 12:49:13 2009//
 /user.install/1.28/Tue Aug 25 12:49:13 2009//
@@ -13,5 +11,7 @@
 /user.permissions.js/1.1/Tue Aug 25 12:49:13 2009//
 /user.test/1.57/Tue Aug 25 12:51:06 2009//
 /user.tokens.inc/1.1/Tue Aug 25 12:49:13 2009//
-/user.module/1.1031/Tue Aug 25 22:59:01 2009//
+/user.admin.inc/1.76/Thu Aug 27 22:09:56 2009//
+/user.api.php/1.12/Thu Aug 27 22:09:56 2009//
+/user.module/1.1032/Thu Aug 27 22:09:56 2009//
 D

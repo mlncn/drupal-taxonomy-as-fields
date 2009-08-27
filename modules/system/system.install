@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.379 2009/08/24 00:14:22 webchick Exp $
+// $Id: system.install,v 1.381 2009/08/27 21:18:20 dries Exp $
 
 /**
  * @file
@@ -385,21 +385,6 @@ function system_install() {
       ->execute();
   }
 
-  $query = db_insert('role_permission')->fields(array('rid', 'permission'));
-  // Anonymous role permissions.
-  $query->values(array(
-    'rid' => DRUPAL_ANONYMOUS_RID,
-    'permission' => 'access content',
-  ));
-
-  // Authenticated role permissions.
-  foreach (array('access comments', 'access content', 'post comments', 'post comments without approval', 'view own unpublished content') as $permission) {
-    $query->values(array(
-      'rid' => DRUPAL_AUTHENTICATED_RID,
-      'permission' => $permission,
-    ));
-  }
-  $query->execute();
 
   variable_set('theme_default', 'garland');
 
@@ -440,13 +425,14 @@ function system_install() {
 
   // Filtered HTML:
   db_insert('filter')
-    ->fields(array('format', 'module', 'name', 'weight'))
+    ->fields(array('format', 'module', 'name', 'weight', 'status'))
     // URL filter.
     ->values(array(
       'format' => $filtered_html_format,
       'module' => 'filter',
       'name' => 'filter_url',
       'weight' => 0,
+      'status' => 1,
     ))
     // HTML filter.
     ->values(array(
@@ -454,6 +440,7 @@ function system_install() {
       'module' => 'filter',
       'name' => 'filter_html',
       'weight' => 1,
+      'status' => 1,
     ))
     // Line break filter.
     ->values(array(
@@ -461,6 +448,7 @@ function system_install() {
       'module' => 'filter',
       'name' => 'filter_autop',
       'weight' => 2,
+      'status' => 1,
     ))
     // HTML corrector filter.
     ->values(array(
@@ -468,6 +456,7 @@ function system_install() {
       'module' => 'filter',
       'name' => 'filter_htmlcorrector',
       'weight' => 10,
+      'status' => 1,
     ))
   // Full HTML:
     // URL filter.
@@ -475,7 +464,8 @@ function system_install() {
       'format' => $full_html_format,
       'module' => 'filter',
       'name' => 'filter_url',
-       'weight' => 0,
+      'weight' => 0,
+      'status' => 1,
     ))
     // Line break filter.
     ->values(array(
@@ -483,6 +473,7 @@ function system_install() {
       'module' => 'filter',
       'name' => 'filter_autop',
       'weight' => 1,
+      'status' => 1,
     ))
     // HTML corrector filter.
     ->values(array(
@@ -490,6 +481,7 @@ function system_install() {
       'module' => 'filter',
       'name' => 'filter_htmlcorrector',
       'weight' => 10,
+      'status' => 1,
     ))
     ->execute();
 
