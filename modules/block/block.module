@@ -1,64 +1,15 @@
 <?php
-// $Id: block.module,v 1.369 2009/08/27 20:25:28 dries Exp $
+// $Id: block.module,v 1.373 2009/08/31 17:06:08 dries Exp $
 
 /**
  * @file
- * Controls the boxes that are displayed around the main content.
+ * Controls the visual building blocks a page is constructed with.
  */
 
 /**
  * Denotes that a block is not enabled in any region and should not be shown.
  */
 define('BLOCK_REGION_NONE', -1);
-
-/**
- * Constants defining cache granularity for blocks.
- *
- * Modules specify the caching patterns for their blocks using binary
- * combinations of these constants in their hook_block_list():
- *   $block[delta]['cache'] = BLOCK_CACHE_PER_ROLE | BLOCK_CACHE_PER_PAGE;
- * BLOCK_CACHE_PER_ROLE is used as a default when no caching pattern is
- * specified.
- *
- * The block cache is cleared in cache_clear_all(), and uses the same clearing
- * policy than page cache (node, comment, user, taxonomy added or updated...).
- * Blocks requiring more fine-grained clearing might consider disabling the
- * built-in block cache (BLOCK_NO_CACHE) and roll their own.
- *
- * Note that user 1 is excluded from block caching.
- */
-
-/**
- * The block should not get cached. This setting should be used:
- * - for simple blocks (notably those that do not perform any db query),
- * where querying the db cache would be more expensive than directly generating
- * the content.
- * - for blocks that change too frequently.
- */
-define('BLOCK_NO_CACHE', -1);
-
-/**
- * The block can change depending on the roles the user viewing the page belongs to.
- * This is the default setting, used when the block does not specify anything.
- */
-define('BLOCK_CACHE_PER_ROLE', 0x0001);
-
-/**
- * The block can change depending on the user viewing the page.
- * This setting can be resource-consuming for sites with large number of users,
- * and thus should only be used when BLOCK_CACHE_PER_ROLE is not sufficient.
- */
-define('BLOCK_CACHE_PER_USER', 0x0002);
-
-/**
- * The block can change depending on the page being viewed.
- */
-define('BLOCK_CACHE_PER_PAGE', 0x0004);
-
-/**
- * The block is the same for every user on every page where it is visible.
- */
-define('BLOCK_CACHE_GLOBAL', 0x0008);
 
 /**
  * Implement hook_help().
@@ -150,7 +101,7 @@ function block_menu() {
   $items['admin/structure/block/delete'] = array(
     'title' => 'Delete block',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('block_box_delete'),
+    'page arguments' => array('block_custom_block_delete'),
     'access arguments' => array('administer blocks'),
     'type' => MENU_CALLBACK,
     'file' => 'block.admin.inc',
@@ -187,16 +138,16 @@ function _block_themes_access($theme) {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function block_block_list() {
+function block_block_info() {
   $blocks = array();
 
-  $result = db_query('SELECT bid, info FROM {box} ORDER BY info');
+  $result = db_query('SELECT bid, info FROM {block_custom} ORDER BY info');
   foreach ($result as $block) {
     $blocks[$block->bid]['info'] = $block->info;
     // Not worth caching.
-    $blocks[$block->bid]['cache'] = BLOCK_NO_CACHE;
+    $blocks[$block->bid]['cache'] = DRUPAL_NO_CACHE;
   }
   return $blocks;
 }
@@ -205,18 +156,18 @@ function block_block_list() {
  * Implement hook_block_configure().
  */
 function block_block_configure($delta = 0) {
-  $box = array('format' => FILTER_FORMAT_DEFAULT);
+  $custom_block = array('format' => FILTER_FORMAT_DEFAULT);
   if ($delta) {
-    $box = block_box_get($delta);
+    $custom_block = block_custom_block_get($delta);
   }
-  return block_box_form($box);
+  return block_custom_block_form($custom_block);
 }
 
 /**
  * Implement hook_block_save().
  */
 function block_block_save($delta = 0, $edit = array()) {
-  block_box_save($edit, $delta);
+  block_custom_block_save($edit, $delta);
 }
 
 /**
@@ -225,7 +176,7 @@ function block_block_save($delta = 0, $edit = array()) {
  * Generates the administrator-defined blocks for display.
  */
 function block_block_view($delta = 0, $edit = array()) {
-  $block = db_query('SELECT body, format FROM {box} WHERE bid = :bid', array(':bid' => $delta))->fetchObject();
+  $block = db_query('SELECT body, format FROM {block_custom} WHERE bid = :bid', array(':bid' => $delta))->fetchObject();
   $data['content'] = check_markup($block->body, $block->format);
   return $data;
 }
@@ -235,7 +186,7 @@ function block_block_view($delta = 0, $edit = array()) {
  *
  * Render blocks into their regions.
  */
-function block_page_alter($page) {
+function block_page_build(&$page) {
   global $theme;
 
   // The theme system might not yet be initialized. We need $theme.
@@ -312,8 +263,8 @@ function _block_rehash() {
   // Valid region names for the theme.
   $regions = system_region_list($theme_key);
 
-  foreach (module_implements('block_list') as $module) {
-    $module_blocks = module_invoke($module, 'block_list');
+  foreach (module_implements('block_info') as $module) {
+    $module_blocks = module_invoke($module, 'block_info');
     if ($module_blocks) {
       foreach ($module_blocks as $delta => $block) {
         if (empty($old_blocks[$module][$delta])) {
@@ -372,14 +323,14 @@ function _block_rehash() {
   return $blocks;
 }
 
-function block_box_get($bid) {
-  return db_query("SELECT * FROM {box} WHERE bid = :bid", array(':bid' => $bid))->fetchAssoc();
+function block_custom_block_get($bid) {
+  return db_query("SELECT * FROM {block_custom} WHERE bid = :bid", array(':bid' => $bid))->fetchAssoc();
 }
 
 /**
  * Define the custom block form.
  */
-function block_box_form($edit = array()) {
+function block_custom_block_form($edit = array()) {
   $edit += array(
     'info' => '',
     'body' => '',
@@ -409,8 +360,8 @@ function block_box_form($edit = array()) {
   return $form;
 }
 
-function block_box_save($edit, $delta) {
-  db_update('box')
+function block_custom_block_save($edit, $delta) {
+  db_update('block_custom')
     ->fields(array(
       'body' => $edit['body'],
       'info' => $edit['info'],
@@ -437,7 +388,7 @@ function block_user_form(&$edit, $account, $category) {
       '#tree' => TRUE
     );
     foreach ($result as $block) {
-      $data = module_invoke($block->module, 'block_list');
+      $data = module_invoke($block->module, 'block_info');
       if ($data[$block->delta]['info']) {
         $return = TRUE;
         $form['block'][$block->module][$block->delta] = array(
@@ -576,24 +527,24 @@ function _block_load_blocks() {
     ->addTag('block_load')
     ->execute();
 
-  $block_list = $result->fetchAllAssoc('bid');
+  $block_info = $result->fetchAllAssoc('bid');
   // Allow modules to modify the block list.
-  drupal_alter('block_list', $block_list);
+  drupal_alter('block_info', $block_info);
 
   $blocks = array();
-  foreach ($block_list as $block) {
+  foreach ($block_info as $block) {
     $blocks[$block->region]["{$block->module}_{$block->delta}"] = $block;
   }
   return $blocks;
 }
 
 /**
- * Implement hook_block_list_alter().
+ * Implement hook_block_info_alter().
  *
  * Check the page, user role, content type and user specific visibilty settings.
  * Remove the block if the visibility conditions are not met.
  */
-function block_block_list_alter(&$blocks) {
+function block_block_info_alter(&$blocks) {
   global $user, $theme_key;
 
   // Build an array of roles for each block.
@@ -707,7 +658,7 @@ function block_block_list_alter(&$blocks) {
  *   An array of block objects such as returned for one region by _block_load_blocks().
  *
  * @return
- *   An array of visible blocks with subject and content rendered.
+ *   An array of visible blocks as expected by drupal_render().
  */
 function _block_render_blocks($region_blocks) {
   foreach ($region_blocks as $key => $block) {
@@ -772,37 +723,17 @@ function _block_render_blocks($region_blocks) {
  *   The string used as cache_id for the block.
  */
 function _block_get_cache_id($block) {
-  global $theme, $base_root, $user;
-
+  global $user;
+  
   // User 1 being out of the regular 'roles define permissions' schema,
   // it brings too many chances of having unwanted output get in the cache
   // and later be served to other users. We therefore exclude user 1 from
   // block caching.
-  if (variable_get('block_cache', 0) && $block->cache != BLOCK_NO_CACHE && $user->uid != 1) {
-    $cid_parts = array();
-
+  if (variable_get('block_cache', 0) && !in_array($block->cache, array(DRUPAL_NO_CACHE, DRUPAL_CACHE_CUSTOM)) && $user->uid != 1) {
     // Start with common sub-patterns: block identification, theme, language.
     $cid_parts[] = $block->module;
     $cid_parts[] = $block->delta;
-    $cid_parts[] = $theme;
-    if (module_exists('locale')) {
-      global $language;
-      $cid_parts[] = $language->language;
-    }
-
-    // 'PER_ROLE' and 'PER_USER' are mutually exclusive. 'PER_USER' can be a
-    // resource drag for sites with many users, so when a module is being
-    // equivocal, we favor the less expensive 'PER_ROLE' pattern.
-    if ($block->cache & BLOCK_CACHE_PER_ROLE) {
-      $cid_parts[] = 'r.' . implode(',', array_keys($user->roles));
-    }
-    elseif ($block->cache & BLOCK_CACHE_PER_USER) {
-      $cid_parts[] = "u.$user->uid";
-    }
-
-    if ($block->cache & BLOCK_CACHE_PER_PAGE) {
-      $cid_parts[] = $base_root . request_uri();
-    }
+    $cid_parts += drupal_render_cid_parts($block->cache);
 
     return implode(':', $cid_parts);
   }
@@ -868,7 +799,7 @@ function block_user_role_delete($role) {
  * Implement hook_filter_format_delete().
  */
 function block_filter_format_delete($format, $default) {
-  db_update('box')
+  db_update('block_custom')
     ->fields(array('format' => $default->format))
     ->condition('format', $format->format)
     ->execute();

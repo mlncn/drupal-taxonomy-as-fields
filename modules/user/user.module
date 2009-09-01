@@ -1,5 +1,5 @@
 <?php
-// $Id: user.module,v 1.1032 2009/08/27 20:25:28 dries Exp $
+// $Id: user.module,v 1.1037 2009/08/31 17:06:10 dries Exp $
 
 /**
  * @file
@@ -795,39 +795,46 @@ function user_file_delete($file) {
 }
 
 /**
- * Implement hook_search().
+ * Implement hook_search_info().
  */
-function user_search($op = 'search', $keys = NULL, $skip_access_check = FALSE) {
-  switch ($op) {
-    case 'name':
-      if ($skip_access_check || user_access('access user profiles')) {
-        return t('Users');
-      }
-    case 'search':
-      if (user_access('access user profiles')) {
-        $find = array();
-        // Replace wildcards with MySQL/PostgreSQL wildcards.
-        $keys = preg_replace('!\*+!', '%', $keys);
-        $query = db_select('users')->extend('PagerDefault');
-        $query->fields('users', array('name', 'uid', 'mail'));
-        if (user_access('administer users')) {
-          // Administrators can also search in the otherwise private email field.
-          $query->condition(db_or()->
-            where('LOWER(name) LIKE LOWER(:name)', array(':name' => "%$keys%"))->
-            where('LOWER(mail) LIKE LOWER(:mail)', array(':mail' => "%$keys%")));
-        }
-        else {
-          $query->where('LOWER(name) LIKE LOWER(:name)', array(':name' => "%$keys%"));
-        }
-        $result = $query
-          ->limit(15)
-          ->execute();
-        foreach ($result as $account) {
-          $find[] = array('title' => $account->name . ' (' . $account->mail . ')', 'link' => url('user/' . $account->uid, array('absolute' => TRUE)));
-        }
-        return $find;
-      }
+function user_search_info() {
+  return array(
+    'title' => 'Users',
+  );
+}
+
+/**
+ * Implement hook_search_access().
+ */
+function user_search_access() {
+  return user_access('access user profiles');
+}
+
+/**
+ * Implement hook_search_execute().
+ */
+function user_search_execute($keys = NULL) {
+  $find = array();
+  // Replace wildcards with MySQL/PostgreSQL wildcards.
+  $keys = preg_replace('!\*+!', '%', $keys);
+  $query = db_select('users')->extend('PagerDefault');
+  $query->fields('users', array('name', 'uid', 'mail'));
+  if (user_access('administer users')) {
+    // Administrators can also search in the otherwise private email field.
+    $query->condition(db_or()->
+      where('LOWER(name) LIKE LOWER(:name)', array(':name' => "%$keys%"))->
+      where('LOWER(mail) LIKE LOWER(:mail)', array(':mail' => "%$keys%")));
   }
+  else {
+    $query->where('LOWER(name) LIKE LOWER(:name)', array(':name' => "%$keys%"));
+  }
+  $result = $query
+    ->limit(15)
+    ->execute();
+  foreach ($result as $account) {
+    $find[] = array('title' => $account->name . ' (' . $account->mail . ')', 'link' => url('user/' . $account->uid, array('absolute' => TRUE)));
+  }
+  return $find;
 }
 
 /**
@@ -984,20 +991,20 @@ function user_login_block() {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function user_block_list() {
+function user_block_info() {
   global $user;
 
   $blocks['login']['info'] = t('User login');
   // Not worth caching.
-  $blocks['login']['cache'] = BLOCK_NO_CACHE;
+  $blocks['login']['cache'] = DRUPAL_NO_CACHE;
 
   $blocks['new']['info'] = t('Who\'s new');
 
   // Too dynamic to cache.
   $blocks['online']['info'] = t('Who\'s online');
-  $blocks['online']['cache'] = BLOCK_NO_CACHE;
+  $blocks['online']['cache'] = DRUPAL_NO_CACHE;
   return $blocks;
 }
 
@@ -1316,8 +1323,9 @@ function user_menu() {
    'description' => 'Configure user accounts, roles and permissions.',
    'position' => 'right',
    'page callback' => 'system_admin_menu_block_page',
-   'access callback' => 'system_admin_menu_block_access',
-   'access arguments' => array('admin/config/people', 'access administration pages'),
+   'access arguments' => array('access administration pages'),
+   'file' => 'system.admin.inc',
+   'file path' => drupal_get_path('module', 'system'),
   );
   $items['admin/config/people/accounts'] = array(
     'title' => 'Account settings',

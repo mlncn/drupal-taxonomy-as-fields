@@ -1,5 +1,5 @@
 <?php
-// $Id: book.module,v 1.509 2009/08/24 01:49:41 webchick Exp $
+// $Id: book.module,v 1.511 2009/08/31 17:06:08 dries Exp $
 
 /**
  * @file
@@ -207,12 +207,12 @@ function book_field_build_modes($obj_type) {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function book_block_list() {
+function book_block_info() {
   $block = array();
   $block['navigation']['info'] = t('Book navigation');
-  $block['navigation']['cache'] = BLOCK_CACHE_PER_PAGE | BLOCK_CACHE_PER_ROLE;
+  $block['navigation']['cache'] = DRUPAL_CACHE_PER_PAGE | DRUPAL_CACHE_PER_ROLE;
 
   return $block;
 }

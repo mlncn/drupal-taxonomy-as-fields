@@ -1,5 +1,5 @@
 <?php
-// $Id: file.inc,v 1.187 2009/08/25 21:53:47 dries Exp $
+// $Id: file.inc,v 1.190 2009/08/31 05:47:33 dries Exp $
 
 /**
  * @file
@@ -285,13 +285,23 @@ function file_stream_wrapper_get_instance_by_scheme($scheme) {
 }
 
 /**
- * Creates the web accessible URL to a stream.
+ * Creates a web-accessible URL for a stream to an external or local file.
  *
  * Compatibility: normal paths and stream wrappers.
  * @see http://drupal.org/node/515192
  *
+ * There are two kinds of local files:
+ * - "created files", i.e. those in the files directory (which is stored in
+ *   the file_directory_path variable and can be retrieved using
+ *   file_directory_path()). These are files that have either been uploaded by
+ *   users or were generated automatically (for example through CSS
+ *   aggregation).
+ * - "shipped files", i.e. those outside of the files directory, which ship as
+ *   part of Drupal core or contributed modules or themes.
+ *
  * @param $uri
- *   The URI to for which we need an external URL.
+ *   The URI to a file for which we need an external URL, or the path to a
+ *   shipped file.
  * @return
  *   A string containing a URL that may be used to access the file.
  *   If the provided string already contains a preceding 'http', nothing is done
@@ -299,11 +309,15 @@ function file_stream_wrapper_get_instance_by_scheme($scheme) {
  *   found to generate an external URL, then FALSE will be returned.
  */
 function file_create_url($uri) {
+  // Allow the URI to be altered, e.g. to serve a file from a CDN or static
+  // file server.
+  drupal_alter('file_url', $uri);
+  
   $scheme = file_uri_scheme($uri);
 
   if (!$scheme) {
-    // If this is not a properly formatted stream return the URI with the base
-    // url prepended.
+    // If this is not a properly formatted stream, then it is a shipped file.
+    // Therefor, return the URI with the base URL prepended.
     return $GLOBALS['base_url'] . '/' . $uri;
   }
   elseif ($scheme == 'http' || $scheme == 'https') {
@@ -320,9 +334,6 @@ function file_create_url($uri) {
       return FALSE;
     }
   }
-
-  // @todo Implement CDN integration hook stuff in this function.
-  // @see http://drupal.org/node/499156
 }
 
 /**
@@ -465,8 +476,7 @@ function file_load($fid) {
  * @see hook_file_insert()
  * @see hook_file_update()
  */
-function file_save($file) {
-  $file = (object)$file;
+function file_save(stdClass $file) {
   $file->timestamp = REQUEST_TIME;
   $file->filesize = filesize($file->uri);
 
@@ -519,9 +529,7 @@ function file_save($file) {
  * @see file_unmanaged_copy()
  * @see hook_file_copy()
  */
-function file_copy($source, $destination = NULL, $replace = FILE_EXISTS_RENAME) {
-  $source = (object)$source;
-
+function file_copy(stdClass $source, $destination = NULL, $replace = FILE_EXISTS_RENAME) {
   if ($uri = file_unmanaged_copy($source->uri, $destination, $replace)) {
     $file = clone $source;
     $file->fid = NULL;
@@ -722,9 +730,7 @@ function file_destination($destination, $replace) {
  * @see file_unmanaged_move()
  * @see hook_file_move()
  */
-function file_move($source, $destination = NULL, $replace = FILE_EXISTS_RENAME) {
-  $source = (object)$source;
-
+function file_move(stdClass $source, $destination = NULL, $replace = FILE_EXISTS_RENAME) {
   if ($uri = file_unmanaged_move($source->uri, $destination, $replace)) {
     $delete_source = FALSE;
 
@@ -914,9 +920,7 @@ function file_create_filename($basename, $directory) {
  * @see hook_file_references()
  * @see hook_file_delete()
  */
-function file_delete($file, $force = FALSE) {
-  $file = (object)$file;
-
+function file_delete(stdClass $file, $force = FALSE) {
   // If any module returns a value from the reference hook, the file will not
   // be deleted from Drupal, but file_delete will return a populated array that
   // tests as TRUE.
@@ -1219,7 +1223,7 @@ function file_save_upload($source, $validators = array(), $destination = FALSE, 
  *
  * @see hook_file_validate()
  */
-function file_validate(&$file, $validators = array()) {
+function file_validate(stdClass &$file, $validators = array()) {
   // Call the validation functions specified by this function's caller.
   $errors = array();
   foreach ($validators as $function => $args) {
@@ -1241,7 +1245,7 @@ function file_validate(&$file, $validators = array()) {
  * @return
  *   An array. If the file name is too long, it will contain an error message.
  */
-function file_validate_name_length($file) {
+function file_validate_name_length(stdClass $file) {
   $errors = array();
 
   if (empty($file->filename)) {
@@ -1266,7 +1270,7 @@ function file_validate_name_length($file) {
  *
  * @see hook_file_validate()
  */
-function file_validate_extensions($file, $extensions) {
+function file_validate_extensions(stdClass $file, $extensions) {
   $errors = array();
 
   $regex = '/\.(' . preg_replace('/ +/', '|', preg_quote($extensions)) . ')$/i';
@@ -1295,7 +1299,7 @@ function file_validate_extensions($file, $extensions) {
  *
  * @see hook_file_validate()
  */
-function file_validate_size($file, $file_limit = 0, $user_limit = 0) {
+function file_validate_size(stdClass $file, $file_limit = 0, $user_limit = 0) {
   global $user;
 
   $errors = array();
@@ -1324,7 +1328,7 @@ function file_validate_size($file, $file_limit = 0, $user_limit = 0) {
  *
  * @see hook_file_validate()
  */
-function file_validate_is_image($file) {
+function file_validate_is_image(stdClass $file) {
   $errors = array();
 
   $info = image_get_info($file->uri);
@@ -1359,7 +1363,7 @@ function file_validate_is_image($file) {
  *
  * @see hook_file_validate()
  */
-function file_validate_image_resolution($file, $maximum_dimensions = 0, $minimum_dimensions = 0) {
+function file_validate_image_resolution(stdClass $file, $maximum_dimensions = 0, $minimum_dimensions = 0) {
   $errors = array();
 
   // Check first that the file is an image.
@@ -1608,11 +1612,10 @@ function file_scan_directory($dir, $mask, $options = array(), $depth = 0) {
         elseif ($depth >= $options['min_depth'] && preg_match($mask, $filename)) {
           // Always use this match over anything already set in $files with the
           // same $$options['key'].
-          $file = (object) array(
-            'uri' => $uri,
-            'filename' => $filename,
-            'name' => pathinfo($filename, PATHINFO_FILENAME),
-          );
+          $file = new StdClass;
+          $file->uri = $uri;
+          $file->filename = $filename;
+          $file->name = pathinfo($filename, PATHINFO_FILENAME);
           $key = $options['key'];
           $files[$file->$key] = $file;
           if ($options['callback']) {
@@ -1681,12 +1684,12 @@ function file_upload_max_size() {
  *   An optional map of extensions to their mimetypes, in the form:
  *    - 'mimetypes': a list of mimetypes, keyed by an identifier,
  *    - 'extensions': the mapping itself, an associative array in which
- *      the key is the extension (lowercase) and the value is the mimetype identifier.
- *    If $mapping is omitted, the drupal variable mime_extension_mapping is checked
- *    for a value and if that fails then file_default_mimetype_mapping() is called
+ *      the key is the extension (lowercase) and the value is the mimetype
+ *      identifier. If $mapping is NULL file_mimetype_mapping() is called.
  *
  * @return
- *   The internet media type registered for the extension or application/octet-stream for unknown extensions.
+ *   The internet media type registered for the extension or
+ *   application/octet-stream for unknown extensions.
  * @see
  *   file_default_mimetype_mapping()
  */

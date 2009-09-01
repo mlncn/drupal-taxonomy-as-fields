@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1112 2009/08/25 21:53:47 dries Exp $
+// $Id: node.module,v 1.1117 2009/08/31 17:06:09 dries Exp $
 
 /**
  * @file
@@ -127,9 +127,6 @@ function node_theme() {
     ),
     'node_log_message' => array(
       'arguments' => array('log' => NULL),
-    ),
-    'node_submitted' => array(
-      'arguments' => array('node' => NULL),
     ),
     'node_admin_overview' => array(
       'arguments' => array('name' => NULL, 'type' => NULL),
@@ -1142,11 +1139,11 @@ function template_preprocess_node(&$variables) {
 
   // Display post information only on certain node types.
   if (variable_get('node_submitted_' . $node->type, TRUE)) {
-    $variables['submitted'] = theme('node_submitted', $node);
+    $variables['display_submitted'] = TRUE;
     $variables['user_picture'] = theme_get_setting('toggle_node_user_picture') ? theme('user_picture', $node) : '';
   }
   else {
-    $variables['submitted'] = '';
+    $variables['display_submitted'] = FALSE;
     $variables['user_picture'] = '';
   }
 
@@ -1231,168 +1228,153 @@ function node_permission() {
 
 /**
  * Gather the rankings from the the hook_ranking implementations.
+ *
+ * @param $query
+ *   A query object that has been extended with the Search DB Extender.
  */
-function _node_rankings() {
-  $rankings = array(
-    'total' => 0, 'join' => array(), 'score' => array(), 'args' => array(),
-  );
+function _node_rankings(SelectQueryExtender $query) {
   if ($ranking = module_invoke_all('ranking')) {
+    $tables = &$query->getTables();
     foreach ($ranking as $rank => $values) {
       if ($node_rank = variable_get('node_rank_' . $rank, 0)) {
         // If the table defined in the ranking isn't already joined, then add it.
-        if (isset($values['join']) && !isset($rankings['join'][$values['join']])) {
-          $rankings['join'][$values['join']] = $values['join'];
+        if (isset($values['join']) && !isset($tables[$values['join']['alias']])) {
+          $query->addJoin($values['join']['type'], $values['join']['table'], $values['join']['alias'], $values['join']['on']);
         }
-
-        // Add the rankings weighted score multiplier value, handling NULL gracefully.
-        $rankings['score'][] = 'CAST(%f AS DECIMAL) * COALESCE((' . $values['score'] . '), 0)';
-
-        // Add the the administrator's weighted score multiplier value for this ranking.
-        $rankings['total'] += $node_rank;
-        $rankings['arguments'][] = $node_rank;
-
-        // Add any additional arguments used by this ranking.
-        if (isset($values['arguments'])) {
-          $rankings['arguments'] = array_merge($rankings['arguments'], $values['arguments']);
-        }
+        $arguments = isset($values['arguments']) ? $values['arguments'] : array();
+        $query->addScore($values['score'], $arguments, $node_rank);
       }
     }
   }
-  return $rankings;
 }
 
+/**
+ * Implement hook_search_info().
+ */
+function node_search_info() {
+  return array(
+    'title' => 'Content',
+    'path' => 'node',
+  );
+}
 
 /**
- * Implement hook_search().
+ * Implement hook_search_access().
  */
-function node_search($op = 'search', $keys = NULL) {
-  switch ($op) {
-    case 'name':
-      return t('Content');
+function node_search_access() {
+  return user_access('access content');
+}
 
-    case 'reset':
-      db_update('search_dataset')
-        ->fields(array('reindex' => REQUEST_TIME))
-        ->condition('type', 'node')
-        ->execute();
-      return;
+/**
+ * Implement hook_search_reset().
+ */
+function node_search_reset() {
+  db_update('search_dataset')
+    ->fields(array('reindex' => REQUEST_TIME))
+    ->condition('type', 'node')
+    ->execute();
+}
 
-    case 'status':
-      $total = db_query('SELECT COUNT(*) FROM {node} WHERE status = 1')->fetchField();
-      $remaining = db_query("SELECT COUNT(*) FROM {node} n LEFT JOIN {search_dataset} d ON d.type = 'node' AND d.sid = n.nid WHERE n.status = 1 AND d.sid IS NULL OR d.reindex <> 0")->fetchField();
-      return array('remaining' => $remaining, 'total' => $total);
+/**
+ * Implement hook_search_status().
+ */
+function node_search_status() {
+  $total = db_query('SELECT COUNT(*) FROM {node} WHERE status = 1')->fetchField();
+  $remaining = db_query("SELECT COUNT(*) FROM {node} n LEFT JOIN {search_dataset} d ON d.type = 'node' AND d.sid = n.nid WHERE n.status = 1 AND d.sid IS NULL OR d.reindex <> 0")->fetchField();
+  return array('remaining' => $remaining, 'total' => $total);
+}
 
-    case 'admin':
-      $form = array();
-      // Output form for defining rank factor weights.
-      $form['content_ranking'] = array(
-        '#type' => 'fieldset',
-        '#title' => t('Content ranking'),
-      );
-      $form['content_ranking']['#theme'] = 'node_search_admin';
-      $form['content_ranking']['info'] = array(
-        '#value' => '<em>' . t('The following numbers control which properties the content search should favor when ordering the results. Higher numbers mean more influence, zero means the property is ignored. Changing these numbers does not require the search index to be rebuilt. Changes take effect immediately.') . '</em>'
-      );
-
-      // Note: reversed to reflect that higher number = higher ranking.
-      $options = drupal_map_assoc(range(0, 10));
-      foreach (module_invoke_all('ranking') as $var => $values) {
-        $form['content_ranking']['factors']['node_rank_' . $var] = array(
-          '#title' => $values['title'],
-          '#type' => 'select',
-          '#options' => $options,
-          '#default_value' => variable_get('node_rank_' . $var, 0),
-        );
-      }
-      return $form;
-
-    case 'search':
-      // Build matching conditions
-      list($join1, $where1) = _db_rewrite_sql();
-      $arguments1 = array();
-      $conditions1 = 'n.status = 1';
-
-      if ($type = search_query_extract($keys, 'type')) {
-        $types = array();
-        foreach (explode(',', $type) as $t) {
-          $types[] = "n.type = '%s'";
-          $arguments1[] = $t;
-        }
-        $conditions1 .= ' AND (' . implode(' OR ', $types) . ')';
-        $keys = search_query_insert($keys, 'type');
-      }
-
-      if ($term = search_query_extract($keys, 'term')) {
-        $terms = array();
-        foreach (explode(',', $term) as $c) {
-          $terms[] = "tn.tid = %d";
-          $arguments1[] = $c;
-        }
-        $conditions1 .= ' AND (' . implode(' OR ', $terms) . ')';
-        $join1 .= ' INNER JOIN {taxonomy_term_node} tn ON n.vid = tn.vid';
-        $keys = search_query_insert($keys, 'term');
-      }
-
-      if ($languages = search_query_extract($keys, 'language')) {
-        $terms = array();
-        foreach (explode(',', $languages) as $l) {
-          $terms[] = "n.language = '%s'";
-          $arguments1[] = $l;
-        }
-        $conditions1 .= ' AND (' . implode(' OR ', $terms) . ')';
-        $keys = search_query_insert($keys, 'language');
-      }
-
-      // Get the ranking expressions.
-      $rankings = _node_rankings();
-
-      // When all search factors are disabled (ie they have a weight of zero),
-      // The default score is based only on keyword relevance.
-      if ($rankings['total'] == 0) {
-        $total = 1;
-        $arguments2 = array();
-        $join2 = '';
-        $select2 = 'SUM(i.relevance) AS calculated_score';
-      }
-      else {
-        $total = $rankings['total'];
-        $arguments2 = $rankings['arguments'];
-        $join2 = implode(' ', $rankings['join']);
-        $select2 = 'SUM(' . implode(' + ', $rankings['score']) . ') AS calculated_score';
-      }
-
-      // Do search.
-      $find = do_search($keys, 'node', 'INNER JOIN {node} n ON n.nid = i.sid ' . $join1, $conditions1 . (empty($where1) ? '' : ' AND ' . $where1), $arguments1, $select2, $join2, $arguments2);
-
-      // Load results.
-      $results = array();
-      foreach ($find as $item) {
-        // Render the node.
-        $node = node_load($item->sid);
-        $node = node_build_content($node, 'search_result');
-        $node->rendered = drupal_render($node->content);
-
-        // Fetch comments for snippet.
-        $node->rendered .= module_invoke('comment', 'node_update_index', $node);
-        // Fetch terms for snippet.
-        $node->rendered .= module_invoke('taxonomy', 'node_update_index', $node);
-
-        $extra = module_invoke_all('node_search_result', $node);
-
-        $results[] = array(
-          'link' => url('node/' . $item->sid, array('absolute' => TRUE)),
-          'type' => check_plain(node_type_get_name($node)),
-          'title' => $node->title,
-          'user' => theme('username', $node),
-          'date' => $node->changed,
-          'node' => $node,
-          'extra' => $extra,
-          'score' => $total ? ($item->calculated_score / $total) : 0,
-          'snippet' => search_excerpt($keys, $node->rendered),
-        );
-      }
-      return $results;
+/**
+ * Implement hook_search_admin().
+ */
+function node_search_admin() {
+  $form = array();
+  // Output form for defining rank factor weights.
+  $form['content_ranking'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Content ranking'),
+  );
+  $form['content_ranking']['#theme'] = 'node_search_admin';
+  $form['content_ranking']['info'] = array(
+    '#value' => '<em>' . t('The following numbers control which properties the content search should favor when ordering the results. Higher numbers mean more influence, zero means the property is ignored. Changing these numbers does not require the search index to be rebuilt. Changes take effect immediately.') . '</em>'
+  );
+  
+  // Note: reversed to reflect that higher number = higher ranking.
+  $options = drupal_map_assoc(range(0, 10));
+  foreach (module_invoke_all('ranking') as $var => $values) {
+    $form['content_ranking']['factors']['node_rank_' . $var] = array(
+      '#title' => $values['title'],
+      '#type' => 'select',
+      '#options' => $options,
+      '#default_value' => variable_get('node_rank_' . $var, 0),
+    );
   }
+  return $form;
+}
+
+/**
+ * Implement hook_search_execute().
+ */
+function node_search_execute($keys = NULL) {
+  // Build matching conditions
+  $query = db_select('search_index', 'i')->extend('SearchQuery')->extend('PagerDefault');
+  $query->join('node', 'n', 'n.nid = i.sid');
+  $query
+    ->condition('n.status', 1)
+    ->addTag('node_access')
+    ->searchExpression($keys, 'node');
+  
+  // Insert special keywords.
+  $query->setOption('type', 'n.type');
+  $query->setOption('language', 'n.language');
+  if ($query->setOption('term', 'tn.nid')) {
+    $query->join('taxonomy_term_node', 'tn', 'n.vid = tn.vid');
+  }
+  // Only continue if the first pass query matches.
+  if (!$query->executeFirstPass()) {
+    return array();
+  }
+  
+  // Add the ranking expressions.
+  _node_rankings($query);
+  
+  // Add a count query.
+  $inner_query = clone $query;
+  $count_query = db_select($inner_query->fields('i', array('sid')));
+  $count_query->addExpression('COUNT(*)');
+  $query->setCountQuery($count_query);
+  $find = $query
+    ->limit(10)
+    ->execute();
+  
+  // Load results.
+  $results = array();
+  foreach ($find as $item) {
+    // Render the node.
+    $node = node_load($item->sid);
+    $node = node_build_content($node, 'search_result');
+    $node->rendered = drupal_render($node->content);
+  
+    // Fetch comments for snippet.
+    $node->rendered .= ' ' . module_invoke('comment', 'node_update_index', $node);
+    // Fetch terms for snippet.
+    $node->rendered .= ' ' . module_invoke('taxonomy', 'node_update_index', $node);
+  
+    $extra = module_invoke_all('node_search_result', $node);
+  
+    $results[] = array(
+      'link' => url('node/' . $item->sid, array('absolute' => TRUE)),
+      'type' => check_plain(node_type_get_name($node)),
+      'title' => $node->title,
+      'user' => theme('username', $node),
+      'date' => $node->changed,
+      'node' => $node,
+      'extra' => $extra,
+      'score' => $item->calculated_score,
+      'snippet' => search_excerpt($keys, $node->rendered),
+    );
+  }
+  return $results;
 }
 
 /**
@@ -1423,8 +1405,8 @@ function node_ranking() {
     $ranking['recent'] = array(
       'title' => t('Recently posted'),
       // Exponential decay with half-life of 6 months, starting at last indexed node
-      'score' => 'POW(2.0, (GREATEST(n.created, n.changed) - %d) * 6.43e-8)',
-      'arguments' => array($node_cron_last),
+      'score' => 'POW(2.0, (GREATEST(n.created, n.changed) - :node_cron_last) * 6.43e-8)',
+      'arguments' => array(':node_cron_last' => $node_cron_last),
     );
   }
   return $ranking;
@@ -1764,12 +1746,12 @@ function node_revision_list($node) {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function node_block_list() {
+function node_block_info() {
   $blocks['syndicate']['info'] = t('Syndicate');
   // Not worth caching.
-  $blocks['syndicate']['cache'] = BLOCK_NO_CACHE;
+  $blocks['syndicate']['cache'] = DRUPAL_NO_CACHE;
   return $blocks;
 }
 
@@ -2085,15 +2067,15 @@ function node_search_validate($form, &$form_state) {
     // checkboxes to 0.
     $form_state['values']['type'] = array_filter($form_state['values']['type']);
     if (count($form_state['values']['type'])) {
-      $keys = search_query_insert($keys, 'type', implode(',', array_keys($form_state['values']['type'])));
+      $keys = search_expression_insert($keys, 'type', implode(',', array_keys($form_state['values']['type'])));
     }
   }
 
   if (isset($form_state['values']['term']) && is_array($form_state['values']['term'])) {
-    $keys = search_query_insert($keys, 'term', implode(',', $form_state['values']['term']));
+    $keys = search_expression_insert($keys, 'term', implode(',', $form_state['values']['term']));
   }
   if (isset($form_state['values']['language']) && is_array($form_state['values']['language'])) {
-    $keys = search_query_insert($keys, 'language', implode(',', array_filter($form_state['values']['language'])));
+    $keys = search_expression_insert($keys, 'language', implode(',', array_filter($form_state['values']['language'])));
   }
   if ($form_state['values']['or'] != '') {
     if (preg_match_all('/ ("[^"]+"|[^" ]+)/i', ' ' . $form_state['values']['or'], $matches)) {
@@ -2805,19 +2787,6 @@ function node_forms() {
     }
   }
   return $forms;
-}
-
-/**
- * Format the "Submitted by username on date/time" for each node
- *
- * @ingroup themeable
- */
-function theme_node_submitted($node) {
-  return t('Submitted by !username on @datetime',
-    array(
-      '!username' => theme('username', $node),
-      '@datetime' => format_date($node->created),
-    ));
 }
 
 /**

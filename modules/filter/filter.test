@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.test,v 1.36 2009/08/27 21:18:19 dries Exp $
+// $Id: filter.test,v 1.39 2009/08/29 03:55:44 webchick Exp $
 
 class FilterAdminTestCase extends DrupalWebTestCase {
   public static function getInfo() {
@@ -29,15 +29,15 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     // Change default filter.
     $edit = array();
     $edit['default'] = $full;
-    $this->drupalPost('admin/settings/formats', $edit, t('Save changes'));
+    $this->drupalPost('admin/config/content/formats', $edit, t('Save changes'));
     $this->assertText(t('Default format updated.'), t('Default filter updated successfully.'));
 
-    $this->assertNoRaw('admin/settings/formats/' . $full . '/delete', t('Delete link not found.'));
+    $this->assertNoRaw('admin/config/content/formats/' . $full . '/delete', t('Delete link not found.'));
 
     // Add an additional tag.
     $edit = array();
     $edit['settings[filter_html][allowed_html]'] = '<a> <em> <strong> <cite> <code> <ul> <ol> <li> <dl> <dt> <dd> <quote>';
-    $this->drupalPost('admin/settings/formats/' . $filtered . '/configure', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $filtered . '/configure', $edit, t('Save configuration'));
     $this->assertText(t('The configuration options have been saved.'), t('Allowed HTML tag added.'));
 
     $this->assertRaw(htmlentities($edit['settings[filter_html][allowed_html]']), t('Tag displayed.'));
@@ -49,7 +49,7 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     $edit = array();
     $edit['weights[' . $second_filter . ']'] = 1;
     $edit['weights[' . $first_filter . ']'] = 2;
-    $this->drupalPost('admin/settings/formats/' . $filtered . '/order', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $filtered . '/order', $edit, t('Save configuration'));
     $this->assertText(t('The filter ordering has been saved.'), t('Order saved successfully.'));
 
     $result = db_query('SELECT * FROM {filter} WHERE format = :format ORDER BY weight ASC', array(':format' => $filtered));
@@ -67,7 +67,7 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     $edit['roles[2]'] = 1;
     $edit['filters[' . $second_filter . ']'] = TRUE;
     $edit['filters[' . $first_filter . ']'] = TRUE;
-    $this->drupalPost('admin/settings/formats/add', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/add', $edit, t('Save configuration'));
     $this->assertRaw(t('Added text format %format.', array('%format' => $edit['name'])), t('New filter created.'));
 
     $format = $this->getFilter($edit['name']);
@@ -79,23 +79,23 @@ class FilterAdminTestCase extends DrupalWebTestCase {
       $this->assertFieldByName('filters[' . $first_filter . ']', '', t('Url filter found.'));
 
       // Delete new filter.
-      $this->drupalPost('admin/settings/formats/' . $format->format . '/delete', array(), t('Delete'));
+      $this->drupalPost('admin/config/content/formats/' . $format->format . '/delete', array(), t('Delete'));
       $this->assertRaw(t('Deleted text format %format.', array('%format' => $edit['name'])), t('Format successfully deleted.'));
     }
 
     // Change default filter back.
     $edit = array();
     $edit['default'] = $filtered;
-    $this->drupalPost('admin/settings/formats', $edit, t('Save changes'));
+    $this->drupalPost('admin/config/content/formats', $edit, t('Save changes'));
     $this->assertText(t('Default format updated.'), t('Default filter updated successfully.'));
 
-    $this->assertNoRaw('admin/settings/formats/' . $filtered . '/delete', t('Delete link not found.'));
+    $this->assertNoRaw('admin/config/content/formats/' . $filtered . '/delete', t('Delete link not found.'));
 
     // Allow authenticated users on full HTML.
     $edit = array();
     $edit['roles[1]'] = 0;
     $edit['roles[2]'] = 1;
-    $this->drupalPost('admin/settings/formats/' . $full, $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $full, $edit, t('Save configuration'));
     $this->assertText(t('The text format settings have been updated.'), t('Full HTML format successfully updated.'));
 
     // Switch user.
@@ -131,20 +131,20 @@ class FilterAdminTestCase extends DrupalWebTestCase {
     // Allowed tags.
     $edit = array();
     $edit['settings[filter_html][allowed_html]'] = '<a> <em> <strong> <cite> <code> <ul> <ol> <li> <dl> <dt> <dd>';
-    $this->drupalPost('admin/settings/formats/' . $filtered . '/configure', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $filtered . '/configure', $edit, t('Save configuration'));
     $this->assertText(t('The configuration options have been saved.'), t('Changes reverted.'));
 
     // Full HTML.
     $edit = array();
     $edit['roles[2]'] = FALSE;
-    $this->drupalPost('admin/settings/formats/' . $full, $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $full, $edit, t('Save configuration'));
     $this->assertText(t('The text format settings have been updated.'), t('Full HTML format successfully reverted.'));
 
     // Filter order.
     $edit = array();
     $edit['weights[' . $second_filter . ']'] = 2;
     $edit['weights[' . $first_filter . ']'] = 1;
-    $this->drupalPost('admin/settings/formats/' . $filtered . '/order', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $filtered . '/order', $edit, t('Save configuration'));
     $this->assertText(t('The filter ordering has been saved.'), t('Order successfully reverted.'));
   }
 
@@ -510,22 +510,16 @@ class FilterUnitTestCase extends DrupalWebTestCase {
 
   /**
    * Test the HTML escaping filter.
-   *
-   * Here we test only whether check_plain() does what it should.
    */
   function testNoHtmlFilter() {
-    // Test that characters that have special meaning in XML are changed into
-    // entities.
-    $f = check_plain('<>&"');
-    $this->assertEqual($f, '&lt;&gt;&amp;&quot;', t('No HTML filter basic test.'));
+    $this->_testEscapedHTML('_filter_html_escape');
+  }
 
-    // A single quote can also be used for evil things in some contexts.
-    $f = check_plain('\'');
-    $this->assertEqual($f, '&#039;', t('No HTML filter -- single quote.'));
-
-    // Test that the filter is not fooled by different evasion techniques.
-    $f = check_plain("\xc2\"");
-    $this->assertEqual($f, '', t('No HTML filter -- invalid UTF-8.'));
+  /**
+   * Test that the check_plain() function escapes HTML correctly.
+   */
+  function testCheckPlain() {
+    $this->_testEscapedHTML('check_plain');
   }
 
   /**
@@ -744,6 +738,30 @@ class FilterUnitTestCase extends DrupalWebTestCase {
   function assertNoNormalized($haystack, $needle, $message = '', $group = 'Other') {
     return $this->assertTrue(strpos(strtolower(decode_entities($haystack)), $needle) === FALSE, $message, $group);
   }
+
+  /**
+   * Helper method to test functions that are intended to escape HTML.
+   *
+   * @param $function
+   *   The name of the function to test.
+   */
+  function _testEscapedHTML($function) {
+    // Define string replacements for the assertion messages.
+    $replacements = array('@function' => $function);
+
+    // Test that characters that have special meaning in XML are changed into
+    // entities.
+    $f = $function('<>&"');
+    $this->assertEqual($f, '&lt;&gt;&amp;&quot;', t('The @function() function correctly filters basic HTML entities.', $replacements));
+
+    // A single quote can also be used for evil things in some contexts.
+    $f = $function('\'');
+    $this->assertEqual($f, '&#039;', t('The @function() function correctly filters single quotes.', $replacements));
+
+    // Test that the filter is not fooled by different evasion techniques.
+    $f = $function("\xc2\"");
+    $this->assertEqual($f, '', t('The @function() function correctly filters invalid UTF-8.', $replacements));
+  }
 }
 
 /**
@@ -773,7 +791,7 @@ class FilterHooksTestCase extends DrupalWebTestCase {
     $edit = array();
     $edit['name'] = $name;
     $edit['roles[1]'] = 1;
-    $this->drupalPost('admin/settings/formats/add', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/add', $edit, t('Save configuration'));
     $this->assertRaw(t('Added text format %format.', array('%format' => $name)), t('New format created.'));
     $this->assertText('hook_filter_format_insert invoked.', t('hook_filter_format_insert was invoked.'));
 
@@ -782,31 +800,31 @@ class FilterHooksTestCase extends DrupalWebTestCase {
     // Update text format.
     $edit = array();
     $edit['roles[2]'] = 1;
-    $this->drupalPost('admin/settings/formats/' . $format, $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/' . $format, $edit, t('Save configuration'));
     $this->assertRaw(t('The text format settings have been updated.'), t('Full HTML format successfully updated.'));
     $this->assertText('hook_filter_format_update invoked.', t('hook_filter_format_update() was invoked.'));
 
     // Add a new custom block.
-    $box = array();
-    $box['info'] = $this->randomName(8);
-    $box['title'] = $this->randomName(8);
-    $box['body'] = $this->randomName(32);
+    $custom_block = array();
+    $custom_block['info'] = $this->randomName(8);
+    $custom_block['title'] = $this->randomName(8);
+    $custom_block['body'] = $this->randomName(32);
     // Use the format created.
-    $box['body_format'] = $format;
-    $this->drupalPost('admin/structure/block/add', $box, t('Save block'));
+    $custom_block['body_format'] = $format;
+    $this->drupalPost('admin/structure/block/add', $custom_block, t('Save block'));
     $this->assertText(t('The block has been created.'), t('New block successfully created.'));
 
     // Verify the new block is in the database.
-    $bid = db_query("SELECT bid FROM {box} WHERE info = :info", array(':info' => $box['info']))->fetchField();
+    $bid = db_query("SELECT bid FROM {block_custom} WHERE info = :info", array(':info' => $custom_block['info']))->fetchField();
     $this->assertNotNull($bid, t('New block found in database'));
 
     // Delete the text format.
-    $this->drupalPost('admin/settings/formats/' . $format . '/delete', array(), t('Delete'));
+    $this->drupalPost('admin/config/content/formats/' . $format . '/delete', array(), t('Delete'));
     $this->assertRaw(t('Deleted text format %format.', array('%format' => $name)), t('Format successfully deleted.'));
     $this->assertText('hook_filter_format_delete invoked.', t('hook_filter_format_delete() was invoked.'));
 
     // Verify that the deleted format was replaced with the default format.
-    $current_format = db_select('box', 'b')
+    $current_format = db_select('block_custom', 'b')
       ->fields('b', array('format'))
       ->condition('bid', $bid)
       ->execute()

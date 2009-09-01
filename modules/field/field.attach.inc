@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.42 2009/08/24 00:14:20 webchick Exp $
+// $Id: field.attach.inc,v 1.44 2009/08/31 06:37:36 dries Exp $
 
 /**
  * @file
@@ -490,13 +490,14 @@ function field_attach_form($obj_type, $object, &$form, &$form_state, $langcode =
 
   // Add custom weight handling.
   list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  $form['#attached_css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
   $form['#pre_render'][] = '_field_extra_weights_pre_render';
   $form['#extra_fields'] = field_extra_fields($bundle);
 
   // Let other modules make changes to the form.
   foreach (module_implements('field_attach_form') as $module) {
     $function = $module . '_field_attach_form';
-    $function($obj_type, $object, $form, $form_state);
+    $function($obj_type, $object, $form, $form_state, $langcode);
   }
 }
 
@@ -1040,10 +1041,11 @@ function field_attach_query_revisions($field_id, $conditions, $count, &$cursor =
  *       '#label_display' => the label display mode,
  *       '#object' => the fieldable object being displayed,
  *       '#object_type' => the type of the object being displayed,
+ *       '#language' => the language of the field values being displayed,
  *       '#build_mode' => the build mode,
  *       '#field_name' => the name of the field,
- *       '#single' => boolean indicating whether the formatter is single or
- *         multiple,
+ *       '#formatter_single' => boolean indicating whether the formatter is single or
+ *          multiple,
  *       'items' => array(
  *         // One sub-array per field value, keyed by delta.
  *         0 => array(
@@ -1088,11 +1090,12 @@ function field_attach_view($obj_type, $object, $build_mode = 'full', $langcode =
 
   // Add custom weight handling.
   list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  $output['#attached_css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
   $output['#pre_render'][] = '_field_extra_weights_pre_render';
   $output['#extra_fields'] = field_extra_fields($bundle);
 
   // Let other modules make changes after rendering the view.
-  drupal_alter('field_attach_view', $output, $obj_type, $object, $build_mode);
+  drupal_alter('field_attach_view', $output, $obj_type, $object, $build_mode, $langcode);
 
   return $output;
 }

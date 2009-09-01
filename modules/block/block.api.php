@@ -1,5 +1,5 @@
 <?php
-// $Id: block.api.php,v 1.6 2009/08/23 13:02:38 dries Exp $
+// $Id: block.api.php,v 1.8 2009/08/31 17:06:08 dries Exp $
 
 /**
  * @file
@@ -12,7 +12,7 @@
  */
 
 /**
- * List of all blocks defined by the module.
+ * Define all blocks provided by the module.
  *
  * Any module can export a block (or blocks) to be displayed by defining
  * the _block hook. This hook is called by theme.inc to display a block,
@@ -26,18 +26,18 @@
  *   - 'info': (required) The human-readable name of the block.
  *   - 'cache': A bitmask of flags describing how the block should behave with
  *     respect to block caching. The following shortcut bitmasks are provided
- *     as constants in block.module:
- *     - BLOCK_CACHE_PER_ROLE (default): The block can change depending on the
+ *     as constants in common.inc:
+ *     - DRUPAL_CACHE_PER_ROLE (default): The block can change depending on the
  *       roles the user viewing the page belongs to.
- *     - BLOCK_CACHE_PER_USER: The block can change depending on the user
+ *     - DRUPAL_CACHE_PER_USER: The block can change depending on the user
  *       viewing the page. This setting can be resource-consuming for sites
  *       with large number of users, and should only be used when
- *       BLOCK_CACHE_PER_ROLE is not sufficient.
- *     - BLOCK_CACHE_PER_PAGE: The block can change depending on the page
+ *       DRUPAL_CACHE_PER_ROLE is not sufficient.
+ *     - DRUPAL_CACHE_PER_PAGE: The block can change depending on the page
  *       being viewed.
- *     - BLOCK_CACHE_GLOBAL: The block is the same for every user on every
+ *     - DRUPAL_CACHE_GLOBAL: The block is the same for every user on every
  *       page where it is visible.
- *     - BLOCK_NO_CACHE: The block should not get cached.
+ *     - DRUPAL_NO_CACHE: The block should not get cached.
  *   - 'weight', 'status', 'region', 'visibility', 'pages':
  *     You can give your blocks an explicit weight, enable them, limit them to
  *     given pages, etc. These settings will be registered when the block is first
@@ -52,18 +52,18 @@
  *
  * For a detailed usage example, see block_example.module.
  */
-function hook_block_list() {
+function hook_block_info() {
   $blocks['exciting'] = array(
     'info' => t('An exciting block provided by Mymodule.'),
     'weight' => 0,
     'status' => 1,
     'region' => 'sidebar_first',
-    // BLOCK_CACHE_PER_ROLE will be assumed for block 0.
+    // DRUPAL_CACHE_PER_ROLE will be assumed for block 0.
   );
 
   $blocks['amazing'] = array(
     'info' => t('An amazing block provided by Mymodule.'),
-    'cache' => BLOCK_CACHE_PER_ROLE | BLOCK_CACHE_PER_PAGE,
+    'cache' => DRUPAL_CACHE_PER_ROLE | DRUPAL_CACHE_PER_PAGE,
   );
 
   return $blocks;
@@ -76,7 +76,7 @@ function hook_block_list() {
  *   Which block to return. This is a descriptive string used to identify
  *   blocks within each module and also within the theme system.
  *   The $delta for each block is defined within the array that your module
- *   returns when the hook_block_list() implementation is called.
+ *   returns when the hook_block_info() implementation is called.
  * @return
  *   Optionally return the configuration form.
  *
@@ -101,7 +101,7 @@ function hook_block_configure($delta = '') {
  *   Which block to save the settings for. This is a descriptive string used
  *   to identify blocks within each module and also within the theme system.
  *   The $delta for each block is defined within the array that your module
- *   returns when the hook_block_list() implementation is called.
+ *   returns when the hook_block_info() implementation is called.
  * @param $edit
  *   The submitted form data from the configuration form.
  *
@@ -120,7 +120,7 @@ function hook_block_save($delta = '', $edit = array()) {
  *   Which block to return. This is a descriptive string used to identify
  *   blocks within each module and also within the theme system.
  *   The $delta for each block is defined within the array that your module
- *   returns when the hook_block_list() implementation is called.
+ *   returns when the hook_block_info() implementation is called.
  * @return
  *   An array which must define a 'subject' element and a 'content' element
  *   defining the block indexed by $delta.
@@ -166,7 +166,7 @@ function hook_block_view($delta = '') {
  * This example shows how to achieve language specific visibility setting for
  * blocks.
  */
-function hook_block_list_alter(&$blocks) {
+function hook_block_info_alter(&$blocks) {
   global $language, $theme_key;
 
   $result = db_query('SELECT module, delta, language FROM {my_table}');

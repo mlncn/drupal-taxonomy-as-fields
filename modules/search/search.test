@@ -1,5 +1,5 @@
 <?php
-// $Id: search.test,v 1.31 2009/08/25 10:35:33 dries Exp $
+// $Id: search.test,v 1.34 2009/08/29 21:05:16 dries Exp $
 
 // The search index can contain different types of content. Typically the type is 'node'.
 // Here we test with _test_ and _test2_ as the type.
@@ -133,7 +133,12 @@ class SearchMatchTestCase extends DrupalWebTestCase {
       'xx "minim am veniam es" OR dolore' => array()
     );
     foreach ($queries as $query => $results) {
-      $set = do_search($query, SEARCH_TYPE);
+      $result = db_select('search_index', 'i')
+        ->extend('SearchQuery')
+        ->searchExpression($query, SEARCH_TYPE)
+        ->execute();
+
+      $set = $result ? $result->fetchAll() : array();
       $this->_testQueryMatching($query, $set, $results);
       $this->_testQueryScores($query, $set, $results);
     }
@@ -148,7 +153,12 @@ class SearchMatchTestCase extends DrupalWebTestCase {
       'germany' => array(11, 12),
     );
     foreach ($queries as $query => $results) {
-      $set = do_search($query, SEARCH_TYPE_2);
+      $result = db_select('search_index', 'i')
+        ->extend('SearchQuery')
+        ->searchExpression($query, SEARCH_TYPE_2)
+        ->execute();
+
+      $set = $result ? $result->fetchAll() : array();
       $this->_testQueryMatching($query, $set, $results);
       $this->_testQueryScores($query, $set, $results);
     }
@@ -364,7 +374,7 @@ class SearchRankingTestCase extends DrupalWebTestCase {
       }
 
       // Do the search and assert the results.
-      $set = node_search('search', 'rocks');
+      $set = node_search_execute('rocks');
       $this->assertEqual($set[0]['node']->nid, $nodes[$node_rank][1]->nid, 'Search ranking "' . $node_rank . '" order.');
     }
   }
@@ -463,7 +473,7 @@ class SearchCommentTestCase extends DrupalWebTestCase {
     $edit = array(
       'filters[filter_html_escape]' => 1,
     );
-    $this->drupalPost('admin/settings/formats/1', $edit, t('Save configuration'));
+    $this->drupalPost('admin/config/content/formats/1', $edit, t('Save configuration'));
     // Allow anonymous users to search content.
     $edit = array(
       DRUPAL_ANONYMOUS_RID . '[search content]' => 1,

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.381 2009/08/27 21:18:20 dries Exp $
+// $Id: system.install,v 1.383 2009/08/29 10:38:58 dries Exp $
 
 /**
  * @file
@@ -2446,6 +2446,15 @@ function system_update_7036() {
   // @see update_fix_d7_requirements().
   variable_del('site_offline_message');
 
+  return $ret;
+}
+
+/**
+ * Rename {box} table to {block_custom}.
+ */
+function system_update_7037() {
+  $ret = array();
+  db_rename_table($ret, 'box', 'block_custom');
   return $ret;
 }
 

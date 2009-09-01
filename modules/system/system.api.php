@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.65 2009/08/26 03:09:12 webchick Exp $
+// $Id: system.api.php,v 1.70 2009/08/31 17:45:04 dries Exp $
 
 /**
  * @file
@@ -400,20 +400,57 @@ function hook_css_alter(&$css) {
 }
 
 /**
+ * Add elements to a page before it is rendered.
+ *
+ * Use this hook when you want to add elements at the page level. For your
+ * additions to be printed, they have to be placed below a top level array key
+ * of the $page array that has the name of a region of the active theme.
+ *
+ * By default, valid region keys are 'page_top', 'header', 'sidebar_first',
+ * 'content', 'sidebar_second' and 'page_bottom'. To get a list of all regions
+ * of the active theme, use system_region_list($theme). Note that $theme is a
+ * global variable.
+ *
+ * If you want to alter the elements added by other modules or if your module
+ * depends on the elements of other modules, use hook_page_alter() instead which
+ * runs after this hook.
+ *
+ * @param $page
+ *   Nested array of renderable elements that make up the page.
+ *
+ * @see hook_page_alter()
+ * @see drupal_render_page()
+ */
+function hook_page_build(&$page) {
+  if (menu_get_object('node', 1)) {
+    // We are on a node detail page. Append a standard disclaimer to the
+    // content region.
+    $page['content']['disclaimer'] = array(
+      '#markup' => t('Acme, Inc. is not responsible for the contents of this sample code.'),
+      '#weight' => 25,
+    );
+  }
+}
+
+/**
  * Perform alterations before a page is rendered.
  *
- * Use this hook when you want to add, remove, or alter elements at the page
- * level. If you are making changes to entities such as forms, menus, or user
+ * Use this hook when you want to remove or alter elements at the page
+ * level, or add elements at the page level that depend on an other module's
+ * elements (this hook runs after hook_page_build().
+ *
+ * If you are making changes to entities such as forms, menus, or user
  * profiles, use those objects' native alter hooks instead (hook_form_alter(),
  * for example).
  *
  * The $page array contains top level elements for each block region:
  * @code
+ *   $page['page_top']
  *   $page['header']
  *   $page['sidebar_first']
  *   $page['content']
  *   $page['sidebar_second']
- *   $page['footer']
+ *   $page['page_bottom']
  * @endcode
  *
  * The 'content' element contains the main content of the current page, and its
@@ -437,23 +474,21 @@ function hook_css_alter(&$css) {
  * Blocks may be referenced by their module/delta pair within a region:
  * @code
  *   // The login block in the first sidebar region.
- *   $page['sidebar_first']['user-login']['#block'];
+ *   $page['sidebar_first']['user_login']['#block'];
  * @endcode
  *
  * @param $page
  *   Nested array of renderable elements that make up the page.
  *
+ * @see hook_page_build()
  * @see drupal_render_page()
  */
-function hook_page_alter($page) {
-  if (menu_get_object('node', 1)) {
-    // We are on a node detail page. Append a standard disclaimer to the
-    // content region.
-    $page['content']['disclaimer'] = array(
-      '#markup' => t('Acme, Inc. is not responsible for the contents of this sample code.'),
-      '#weight' => 25,
-    );
-  }
+function hook_page_alter(&$page) {
+  // Add help text to the user login block.
+  $page['sidebar_first']['user_login']['help'] = array(
+    '#weight' => -10,
+    '#markup' => t('To post comments or add new content, you first have to log in.'),
+  );
 }
 
 /**
@@ -618,32 +653,47 @@ function hook_image_toolkits() {
 }
 
 /**
- * Alter any aspect of email sent by Drupal. You can use this hook
- * to add a common site footer to all outgoing email, add extra header
- * fields, and/or modify the email in any way. HTML-izing the
- * outgoing email is one possibility. See also drupal_mail().
+ * Alter an email message created with the drupal_mail() function.
+ *
+ * hook_mail_alter() allows modification of email messages created and sent
+ * with drupal_mail(). Usage examples include adding and/or changing message
+ * text, message fields, and message headers.
+ *
+ * Email messages sent using functions other than drupal_mail() will not
+ * invoke hook_mail_alter(). For example, a contributed module directly
+ * calling the drupal_mail_send() or PHP mail() function will not invoke this
+ * hook. All core modules use drupal_mail() for messaging, it is best practice
+ * but not manditory in contributed modules.
  *
  * @param $message
- *   A structured array containing the message to be altered. Keys in this
- *   array include:
+ *   An array containing the message data. Keys in this array include:
  *  - 'id':
- *     An id to identify the mail sent. Look at module source code
- *     or drupal_mail() for possible id values.
- *   - 'to'
+ *     The drupal_mail() id of the message. Look at module source code or
+ *     drupal_mail() for possible id values. 
+ *  - 'to':
  *     The address or addresses the message will be sent to. The
  *     formatting of this string must comply with RFC 2822.
- *   - 'subject'
- *     Subject of the email to be sent. This must not contain any newline
- *     characters, or the email may not be sent properly.
- *   - 'body'
- *     An array of lines containing the message to be sent. Drupal will format
- *     the correct line endings for you.
- *   - 'from'
+ *  - 'from':
  *     The address the message will be marked as being from, which is
  *     either a custom address or the site-wide default email address.
- *   - 'headers'
+ *  - 'subject':
+ *     Subject of the email to be sent. This must not contain any newline
+ *     characters, or the email may not be sent properly.
+ *  - 'body':
+ *     An array of strings containing the message text. The message body is
+ *     created by concatenating the individual array strings into a single text 
+ *     string using "\n\n" as a separator.
+ *  - 'headers':
  *     Associative array containing mail headers, such as From, Sender,
  *     MIME-Version, Content-Type, etc.
+ *  - 'params':
+ *     An array of optional parameters supplied by the caller of drupal_mail()
+ *     that is used to build the message before hook_mail_alter() is invoked.
+ *  - 'language':
+ *     The language object used to build the message before hook_mail_alter()
+ *     is invoked.
+ *
+ * @see drupal_mail()
  */
 function hook_mail_alter(&$message) {
   if ($message['id'] == 'modulename_messagekey') {
@@ -1434,6 +1484,65 @@ function hook_file_download($filepath) {
 }
 
 /**
+ * Alter the URL to a file.
+ *
+ * This hook is called from file_create_url(), and  is called fairly
+ * frequently (10+ times per page), depending on how many files there are in a
+ * given page.
+ * If CSS and JS aggregation are disabled, this can become very frequently
+ * (50+ times per page) so performance is critical.
+ *
+ * This function should alter the URI, if it wants to rewrite the file URL.
+ *
+ * @param $uri
+ *   The URI to a file for which we need an external URL, or the path to a
+ *   shipped file.
+ */
+function hook_file_url_alter(&$uri) {
+  global $user;
+
+  // User 1 will always see the local file in this example.
+  if ($user->uid == 1) {
+    return;
+  }
+
+  $cdn1 = 'http://cdn1.example.com';
+  $cdn2 = 'http://cdn2.example.com';
+  $cdn_extensions = array('css', 'js', 'gif', 'jpg', 'jpeg', 'png');
+
+  // Most CDNs don't support private file transfers without a lot of hassle,
+  // so don't support this in the common case.
+  $schemes = array('public');
+
+  $scheme = file_uri_scheme($uri);
+
+  // Only serve shipped files and public created files from the CDN.
+  if (!$scheme || in_array($scheme, $schemes)) {
+    // Shipped files.
+    if (!$scheme) {
+      $path = $uri;
+    }
+    // Public created files.
+    else {
+      $wrapper = file_stream_wrapper_get_instance_by_scheme($scheme);
+      $path = $wrapper->getDirectoryPath() . '/' . file_uri_target($uri);
+    }
+
+    // Clean up Windows paths.
+    $path = str_replace('\\', '/', $path);
+
+    // Serve files with one of the CDN extensions from CDN 1, all others from
+    // CDN 2.
+    $pathinfo = pathinfo($path);
+    if (array_key_exists('extension', $pathinfo) && in_array($pathinfo['extension'], $cdn_extensions)) {
+      $uri = $cdn1 . '/' . $path;
+    }
+    else {
+      $uri = $cdn2 . '/' . $path;
+    }
+  }
+}
+                                                                                                      /**
  * Check installation requirements and do status reporting.
  *
  * This hook has two closely related uses, determined by the $phase argument:
@@ -2081,6 +2190,28 @@ function hook_profile_tasks() {
     ),
   );
   return $tasks; 
+}
+
+/**
+ * Alter MIME type mappings used to determine MIME type from a file extension.
+ *
+ * This hook is run when file_mimetype_mapping() is called. It is used to
+ * allow modules to add to or modify the default mapping from
+ * file_default_mimetype_mapping().
+ *
+ * @param $mapping
+ *   An array of mimetypes correlated to the extensions that relate to them.
+ *   The array has 'mimetypes' and 'extensions' elements, each of which is an
+ *   array.
+ * @see file_default_mimetype_mapping()
+ */
+function hook_file_mimetype_mapping_alter(&$mapping) {
+  // Add new MIME type 'drupal/info'.
+  $mapping['mimetypes']['example_info'] = 'drupal/info';
+  // Add new extension '.info' and map it to the 'drupal/info' MIME type.
+  $mapping['extensions']['info'] = 'example_info';
+  // Override existing extension mapping for '.ogg' files.
+  $mapping['extensions']['ogg'] = 189;
 }
 
 /**

@@ -1,5 +1,5 @@
 <?php
-// $Id: statistics.module,v 1.315 2009/08/24 00:14:22 webchick Exp $
+// $Id: statistics.module,v 1.319 2009/08/31 17:06:09 dries Exp $
 
 /**
  * @file
@@ -228,10 +228,12 @@ function statistics_cron() {
     variable_set('statistics_day_timestamp', REQUEST_TIME);
   }
 
-  // Clean up expired access logs.
-  db_delete('accesslog')
-    ->condition('timestamp', REQUEST_TIME - variable_get('statistics_flush_accesslog_timer', 259200), '<')
-    ->execute();
+  // Clean up expired access logs (if applicable).
+  if (variable_get('statistics_flush_accesslog_timer', 259200) > 0) {
+    db_delete('accesslog')
+      ->condition('timestamp', REQUEST_TIME - variable_get('statistics_flush_accesslog_timer', 259200), '<')
+      ->execute();
+  }
 }
 
 /**
@@ -292,13 +294,13 @@ function statistics_get($nid) {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function statistics_block_list() {
+function statistics_block_info() {
   if (variable_get('statistics_count_content_views', 0)) {
     $blocks['popular']['info'] = t('Popular content');
     // Too dynamic to cache.
-    $blocks['popular']['cache'] = BLOCK_NO_CACHE;
+    $blocks['popular']['cache'] = DRUPAL_NO_CACHE;
     return $blocks;
   }
 }
@@ -389,10 +391,15 @@ function statistics_ranking() {
     return array(
       'views' => array(
         'title' => t('Number of views'),
-        'join' => 'LEFT JOIN {node_counter} node_counter ON node_counter.nid = i.sid',
+        'join' => array(
+          'type' => 'LEFT',
+          'table' => 'node_counter',
+          'alias' => 'node_counter',
+          'on' => 'node_counter.nid = i.sid',
+        ),
         // Inverse law that maps the highest view count on the site to 1 and 0 to 0.
-        'score' => '2.0 - 2.0 / (1.0 + node_counter.totalcount * CAST(%f AS DECIMAL))',
-        'arguments' => array(variable_get('node_cron_views_scale', 0)),
+        'score' => '2.0 - 2.0 / (1.0 + node_counter.totalcount * CAST(:scale AS DECIMAL))',
+        'arguments' => array(':scale' => variable_get('node_cron_views_scale', 0)),
       ),
     );
   }

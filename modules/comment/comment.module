@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.762 2009/08/26 10:28:45 dries Exp $
+// $Id: comment.module,v 1.765 2009/08/29 10:46:40 dries Exp $
 
 /**
  * @file
@@ -148,9 +148,6 @@ function comment_theme() {
       'template' => 'comment-wrapper',
       'arguments' => array('content' => NULL),
     ),
-    'comment_submitted' => array(
-      'arguments' => array('comment' => NULL),
-    ),
   );
 }
 
@@ -281,9 +278,9 @@ function comment_permission() {
 }
 
 /**
- * Implement hook_block_list().
+ * Implement hook_block_info().
  */
-function comment_block_list() {
+function comment_block_info() {
   $blocks['recent']['info'] = t('Recent comments');
 
   return $blocks;
@@ -2088,7 +2085,6 @@ function template_preprocess_comment(&$variables) {
   $variables['new']       = !empty($comment->new) ? t('new') : '';
   $variables['picture']   = theme_get_setting('toggle_comment_user_picture') ? theme('user_picture', $comment) : '';
   $variables['signature'] = $comment->signature;
-  $variables['submitted'] = theme('comment_submitted', $comment);
   $variables['title']     = l($comment->subject, 'comment/' . $comment->cid, array('fragment' => "comment-$comment->cid"));
   $variables['template_files'][] = 'comment-' . $variables['node']->type;
   // Set status to a string representation of comment->status.
@@ -2167,21 +2163,6 @@ function template_preprocess_comment_wrapper(&$variables) {
   $variables['node'] = $variables['content']['#node'];
   $variables['display_mode'] = _comment_get_display_setting('mode', $variables['node']);
   $variables['template_files'][] = 'comment-wrapper-' . $variables['node']->type;
-}
-
-/**
- * Theme a "Submitted by ..." notice.
- *
- * @param $comment
- *   The comment.
- * @ingroup themeable
- */
-function theme_comment_submitted($comment) {
-  return t('Submitted by !username on @datetime.',
-    array(
-      '!username' => theme('username', $comment),
-      '@datetime' => format_date($comment->timestamp)
-    ));
 }
 
 /**
@@ -2427,10 +2408,15 @@ function comment_ranking() {
   return array(
     'comments' => array(
       'title' => t('Number of comments'),
-      'join' => 'LEFT JOIN {node_comment_statistics} node_comment_statistics ON node_comment_statistics.nid = i.sid',
+      'join' => array(
+        'type' => 'LEFT',
+        'table' => 'node_comment_statistics',
+        'alias' => 'node_comment_statistics',
+        'on' => 'node_comment_statistics.nid = i.sid',
+      ),
       // Inverse law that maps the highest reply count on the site to 1 and 0 to 0.
-      'score' => '2.0 - 2.0 / (1.0 + node_comment_statistics.comment_count * CAST(%f AS DECIMAL))',
-      'arguments' => array(variable_get('node_cron_comments_scale', 0)),
+      'score' => '2.0 - 2.0 / (1.0 + node_comment_statistics.comment_count * CAST(:scale AS DECIMAL))',
+      'arguments' => array(':scale' => variable_get('node_cron_comments_scale', 0)),
     ),
   );
 }
