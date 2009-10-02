@@ -1,5 +1,5 @@
 <?php
-// $Id: update.php,v 1.301 2009/08/25 21:53:47 dries Exp $
+// $Id: update.php,v 1.305 2009/09/28 22:16:32 dries Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -13,9 +13,10 @@ define('DRUPAL_ROOT', getcwd());
  * Point your browser to "http://www.example.com/update.php" and follow the
  * instructions.
  *
- * If you are not logged in as administrator, you will need to modify the access
- * check statement inside your settings.php file. After finishing the upgrade,
- * be sure to open settings.php again, and change it back to its original state!
+ * If you are not logged in using the site maintenance account, you will need
+ * to modify the access check statement inside your settings.php file. After
+ * finishing the upgrade, be sure to open settings.php again, and change it back
+ * to its original state!
  */
 
 /**
@@ -85,7 +86,7 @@ function update_script_selection_form() {
       '#markup' => '<p>The version of Drupal you are updating from has been automatically detected.</p>',
       '#weight' => -5,
     );
-    $form['start']['#title'] = strtr('!num pending updates', array('!num' => $count));
+    $form['start']['#title'] = format_plural($count, '1 pending update', '@count pending updates');
     $form['has_js'] = array(
       '#type' => 'hidden',
       '#default_value' => FALSE,
@@ -140,23 +141,28 @@ function update_results_page() {
   // Output a list of queries executed
   if (!empty($_SESSION['update_results'])) {
     $output .= '<div id="update-results">';
-    $output .= '<h2>The following queries were executed</h2>';
+    $output .= '<h2>The following updates returned messages</h2>';
     foreach ($_SESSION['update_results'] as $module => $updates) {
       $output .= '<h3>' . $module . ' module</h3>';
       foreach ($updates as $number => $queries) {
         if ($number != '#abort') {
-          $output .= '<h4>Update #' . $number . '</h4>';
-          $output .= '<ul>';
+          $messages = array();
           foreach ($queries as $query) {
+            // If there is no message for this update, don't show anything.
+            if (empty($query['query'])) {
+              continue;
+            }
             if ($query['success']) {
-              $output .= '<li class="success">' . $query['query'] . '</li>';
+              $messages[] = '<li class="success">' . $query['query'] . '</li>';
             }
             else {
-              $output .= '<li class="failure"><strong>Failed:</strong> ' . $query['query'] . '</li>';
+              $messages[] = '<li class="failure"><strong>Failed:</strong> ' . $query['query'] . '</li>';
             }
           }
-          if (!count($queries)) {
-            $output .= '<li class="none">No queries</li>';
+
+          if ($messages) {
+            $output .= '<h4>Update #' . $number . "</h4>\n";
+            $output .= '<ul>' . implode("\n", $messages) . "</ul>\n";
           }
         }
         $output .= '</ul>';
@@ -196,12 +202,12 @@ function update_info_page() {
 
 function update_access_denied_page() {
   drupal_set_title('Access denied');
-  return '<p>Access denied. You are not authorized to access this page. Please log in as the admin user (the first user you created). If you cannot log in, you will have to edit <code>settings.php</code> to bypass this access check. To do this:</p>
+  return '<p>Access denied. You are not authorized to access this page. Please log in using the site maintenance account (the account you created during installation). If you cannot log in, you will have to edit <code>settings.php</code> to bypass this access check. To do this:</p>
 <ol>
  <li>With a text editor find the settings.php file on your system. From the main Drupal directory that you installed all the files into, go to <code>sites/your_site_name</code> if such directory exists, or else to <code>sites/default</code> which applies otherwise.</li>
  <li>There is a line inside your settings.php file that says <code>$update_free_access = FALSE;</code>. Change it to <code>$update_free_access = TRUE;</code>.</li>
  <li>As soon as the update.php script is done, you must change the settings.php file back to its original form with <code>$update_free_access = FALSE;</code>.</li>
- <li>To avoid having this problem in future, remember to log in to your website as the admin user (the user you first created) before you backup your database at the beginning of the update process.</li>
+ <li>To avoid having this problem in the future, remember to log in to your website using the site maintenance account (the account you created during installation) before you backup your database at the beginning of the update process.</li>
 </ol>';
 }
 
@@ -285,6 +291,10 @@ if (empty($op) && $update_access_allowed) {
   module_list(TRUE, FALSE, FALSE, $module_list);
   drupal_load('module', 'system');
   drupal_load('module', 'filter');
+
+  // Reset the module_implements() cache so that any new hook implementations
+  // in updated code are picked up.
+  module_implements('', FALSE, TRUE);
 
   // Set up $language, since the installer components require it.
   drupal_language_initialize();

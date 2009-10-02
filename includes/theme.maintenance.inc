@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.maintenance.inc,v 1.39 2009/08/31 18:43:12 webchick Exp $
+// $Id: theme.maintenance.inc,v 1.41 2009/09/30 18:36:01 dries Exp $
 
 /**
  * @file
@@ -87,16 +87,24 @@ function _theme_load_offline_registry($theme, $base_theme = NULL, $theme_engine 
  */
 function theme_task_list($items, $active = NULL) {
   $done = isset($items[$active]) || $active == NULL;
-  $output = '<ol class="task-list">';
+  $output = '<h2 class="element-invisible">Installation tasks</h2>';
+  $output .= '<ol class="task-list">';
+
   foreach ($items as $k => $item) {
     if ($active == $k) {
       $class = 'active';
+      $status = '(' . t('active') . ')';
       $done = FALSE;
     }
     else {
       $class = $done ? 'done' : '';
+      $status = $done ? '(' . t('done') . ')' : '';
     }
-    $output .= '<li class="' . $class . '">' . $item . '</li>';
+    $output .= '<li';
+    $output .= ($class ? ' class="' . $class . '"' : '') . '>';
+    $output .= $item;
+    $output .= ($status ? '<span class="element-invisible">' . $status . '</span>' : '');
+    $output .= '</li>';
   }
   $output .= '</ol>';
   return $output;
@@ -111,7 +119,7 @@ function theme_task_list($items, $active = NULL) {
  *   The page content to show.
  */
 function theme_install_page($content) {
-  drupal_set_header('Content-Type', 'text/html; charset=utf-8');
+  drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
 
   // Assign content.
   $variables['content'] = $content;
@@ -168,7 +176,7 @@ function theme_install_page($content) {
  */
 function theme_update_page($content, $show_messages = TRUE) {
   // Set required headers.
-  drupal_set_header('Content-Type', 'text/html; charset=utf-8');
+  drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
 
   // Assign content and show message flag.
   $variables['content'] = $content;

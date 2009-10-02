@@ -1,24 +1,10 @@
 <?php
-// $Id: list.module,v 1.13 2009/08/25 16:38:51 webchick Exp $
+// $Id: list.module,v 1.15 2009/09/26 15:57:38 dries Exp $
 
 /**
  * @file
  * Defines list field types that can be used with the Options module.
  */
-
-/**
- * Implement hook_theme().
- */
-function list_theme() {
-  return array(
-    'field_formatter_list_default' => array(
-      'arguments' => array('element' => NULL),
-    ),
-    'field_formatter_list_key' => array(
-      'arguments' => array('element' => NULL),
-    ),
-  );
-}
 
 /**
  * Implement hook_field_info().
@@ -99,8 +85,14 @@ function list_field_schema($field) {
 
 /**
  * Implement hook_field_settings_form().
+ *
+ * @todo: If $has_data, add a form validate function to verify that the
+ * new allowed values do not exclude any keys for which data already
+ * exists in the databae (use field_attach_query()) to find out.
+ * Implement the validate function via hook_field_update_forbid() so
+ * list.module does not depend on form submission.
  */
-function list_field_settings_form($field, $instance) {
+function list_field_settings_form($field, $instance, $has_data) {
   $settings = $field['settings'];
 
   $form['allowed_values'] = array(

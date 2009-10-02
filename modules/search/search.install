@@ -1,5 +1,5 @@
 <?php
-// $Id: search.install,v 1.22 2009/06/01 22:07:09 dries Exp $
+// $Id: search.install,v 1.26 2009/09/29 15:13:56 dries Exp $
 
 /**
  * @file
@@ -7,20 +7,9 @@
  */
 
 /**
- * Implement hook_install().
- */
-function search_install() {
-  // Create tables.
-  drupal_install_schema('search');
-}
-
-/**
  * Implement hook_uninstall().
  */
 function search_uninstall() {
-  // Remove tables.
-  drupal_uninstall_schema('search');
-
   variable_del('minimum_word_size');
   variable_del('overlap_cjk');
   variable_del('search_cron_limit');
@@ -165,13 +154,10 @@ function search_schema() {
  * Replace unique keys in 'search_dataset' and 'search_index' by primary keys.
  */
 function search_update_7000() {
-  $ret = array();
-  db_drop_unique_key($ret, 'search_dataset', 'sid_type');
-  db_add_primary_key($ret, 'search_dataset', array('sid', 'type'));
+  db_drop_unique_key('search_dataset', 'sid_type');
+  db_add_primary_key('search_dataset', array('sid', 'type'));
 
-  db_drop_index($ret, 'search_index', 'word');
-  db_drop_unique_key($ret, 'search_index', 'word_sid_type');
-  db_add_primary_key($ret, 'search_index', array('word', 'sid', 'type'));
-
-  return $ret;
+  db_drop_index('search_index', 'word');
+  db_drop_unique_key('search_index', 'word_sid_type');
+  db_add_primary_key('search_index', array('word', 'sid', 'type'));
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: search.module,v 1.314 2009/09/05 10:53:09 dries Exp $
+// $Id: search.module,v 1.318 2009/09/21 06:44:14 dries Exp $
 
 /**
  * @file
@@ -117,10 +117,6 @@ function search_help($path, $arg) {
  */
 function search_theme() {
   return array(
-    'search_theme_form' => array(
-      'arguments' => array('form' => NULL),
-      'template' => 'search-theme-form',
-    ),
     'search_block_form' => array(
       'arguments' => array('form' => NULL),
       'template' => 'search-block-form',
@@ -716,10 +712,6 @@ function search_touch_node($nid) {
     ->execute();
 }
 
-function search_touch_data($type, $sid) {
-  db_query("UPDATE {search_dataset} SET reindex = :time WHERE sid = :sid AND type = :type", array(':time' => REQUEST_TIME, ':sid' => $sid, ':type' => $type));
-}
-
 /**
  * Implement hook_node_update_index().
  */
@@ -864,8 +856,7 @@ function search_get_keys() {
  * @return
  *   An HTML string containing the search form.
  */
-function search_form(&$form_state, $action = '', $keys = '', $type = NULL, $prompt = NULL) {
-
+function search_form($form, &$form_state, $action = '', $keys = '', $type = NULL, $prompt = NULL) {
   // Add CSS
   drupal_add_css(drupal_get_path('module', 'search') . '/search.css', array('preprocess' => FALSE));
 
@@ -876,10 +867,8 @@ function search_form(&$form_state, $action = '', $keys = '', $type = NULL, $prom
     $prompt = t('Enter your keywords');
   }
 
-  $form = array(
-    '#action' => $action,
-    '#attributes' => array('class' => array('search-form')),
-  );
+  $form['#action'] = $action;
+  $form['#attributes']['class'][] = 'search-form';
   $form['module'] = array('#type' => 'value', '#value' => $type);
   $form['basic'] = array('#type' => 'item', '#title' => $prompt, '#id' => 'edit-keys');
   $form['basic']['inline'] = array('#prefix' => '<div class="container-inline">', '#suffix' => '</div>');
@@ -899,14 +888,14 @@ function search_form(&$form_state, $action = '', $keys = '', $type = NULL, $prom
 }
 
 /**
- * Form builder; Output a search form for the search block and the theme's search box.
+ * Form builder; Output a search form for the search block's search box.
  *
  * @ingroup forms
  * @see search_box_form_submit()
  * @see search-theme-form.tpl.php
  * @see search-block-form.tpl.php
  */
-function search_box(&$form_state, $form_id) {
+function search_box($form, &$form_state, $form_id) {
   $form[$form_id] = array(
     '#title' => t('Search this site'),
     '#type' => 'textfield',
@@ -928,39 +917,12 @@ function search_box_form_submit($form, &$form_state) {
   // functionality, so we override any static destination set in the request,
   // for example by drupal_access_denied() or drupal_not_found()
   // (see http://drupal.org/node/292565).
-  if (isset($_REQUEST['destination'])) {
-    unset($_REQUEST['destination']);
+  if (isset($_GET['destination'])) {
+    unset($_GET['destination']);
   }
 
   $form_id = $form['form_id']['#value'];
   $form_state['redirect'] = 'search/node/' . trim($form_state['values'][$form_id]);
-}
-
-/**
- * Process variables for search-theme-form.tpl.php.
- *
- * The $variables array contains the following arguments:
- * - $form
- *
- * @see search-theme-form.tpl.php
- */
-function template_preprocess_search_theme_form(&$variables) {
-  $variables['search'] = array();
-  $hidden = array();
-  // Provide variables named after form keys so themers can print each element independently.
-  foreach (element_children($variables['form']) as $key) {
-    $type = $variables['form'][$key]['#type'];
-    if ($type == 'hidden' || $type == 'token') {
-      $hidden[] = drupal_render($variables['form'][$key]);
-    }
-    else {
-      $variables['search'][$key] = drupal_render($variables['form'][$key]);
-    }
-  }
-  // Hidden form elements have no value to themers. No need for separation.
-  $variables['search']['hidden'] = implode($hidden);
-  // Collect all form elements to make it easier to print the whole form.
-  $variables['search_form'] = implode($variables['search']);
 }
 
 /**
@@ -1134,10 +1096,6 @@ function _search_excerpt_replace(&$text) {
 }
 
 function search_forms() {
-  $forms['search_theme_form']= array(
-    'callback' => 'search_box',
-    'callback arguments' => array('search_theme_form'),
-  );
   $forms['search_block_form']= array(
     'callback' => 'search_box',
     'callback arguments' => array('search_block_form'),

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.72 2009/09/05 13:05:31 dries Exp $
+// $Id: system.api.php,v 1.80 2009/10/01 13:16:17 dries Exp $
 
 /**
  * @file
@@ -120,68 +120,78 @@ function hook_entity_info_alter(&$entity_info) {
 /**
  * Perform periodic actions.
  *
+ * This hook will only be called if cron.php is run (e.g. by crontab).
+ *
  * Modules that require to schedule some commands to be executed at regular
  * intervals can implement hook_cron(). The engine will then call the hook
  * at the appropriate intervals defined by the administrator. This interface
  * is particularly handy to implement timers or to automate certain tasks.
- * Database maintenance, recalculation of settings or parameters, and
- * automatic mailings are good candidates for cron tasks.
+ * Database maintenance, recalculation of settings or parameters are good
+ * candidates for cron tasks.
  *
- * This hook will only be called if cron.php is run (e.g. by crontab).
+ * Short-running or not resource intensive tasks can be executed directly.
+ *
+ * Long-running tasks should use the queue API. To do this, one or more queues
+ * need to be defined via hook_cron_queue_info(). Items that need to be
+ * processed are appended to the defined queue, instead of processing them
+ * directly in hook_cron().
+ * Examples of jobs that are good candidates for
+ * hook_cron_queue_info() include automated mailing, retrieving remote data, and
+ * intensive file tasks.
+ *
+ * @return
+ *   None.
+ *
+ * @see hook_cron_queue_info()
  */
 function hook_cron() {
-  $result = db_query('SELECT * FROM {site} WHERE checked = 0 OR checked + refresh < :time', array(':time' => REQUEST_TIME));
+  // Short-running operation example, not using a queue:
+  // Delete all expired records since the last cron run.
+  $expires = variable_get('mymodule_cron_last_run', REQUEST_TIME);
+  db_delete('mymodule_table')
+    ->condition('expires', $expires, '>=')
+    ->execute();
+  variable_set('mymodule_cron_last_run', REQUEST_TIME);
 
-  foreach ($result as $site) {
-    cloud_update($site);
+  // Long-running operation example, leveraging a queue:
+  // Fetch feeds from other sites.
+  $result = db_query('SELECT * FROM {aggregator_feed} WHERE checked + refresh < :time AND refresh != :never', array(
+    ':time' => REQUEST_TIME,
+    ':never' => AGGREGATOR_CLEAR_NEVER,
+  ));
+  $queue = DrupalQueue::get('aggregator_feeds');
+  foreach ($result as $feed) {
+    $queue->createItem($feed);
   }
 }
 
 /**
- * Rewrite database queries, usually for access control.
+ * Declare queues holding items that need to be run periodically.
  *
- * Add JOIN and WHERE statements to queries and decide whether the primary_field
- * shall be made DISTINCT. For node objects, primary field is always called nid.
- * For taxonomy terms, it is tid and for vocabularies it is vid. For comments,
- * it is cid. Primary table is the table where the primary object (node, file,
- * taxonomy_term_node etc.) is.
+ * While there can be only one hook_cron() process running at the same time,
+ * there can be any number of processes defined here running. Because of
+ * this, long running tasks are much better suited for this API. Items queued
+ * in hook_cron() might be processed in the same cron run if there are not many
+ * items in the queue, otherwise it might take several requests, which can be
+ * run in parallel.
  *
- * You shall return an associative array. Possible keys are 'join', 'where' and
- * 'distinct'. The value of 'distinct' shall be 1 if you want that the
- * primary_field made DISTINCT.
- *
- * @param $query
- *   Query to be rewritten.
- * @param $primary_table
- *   Name or alias of the table which has the primary key field for this query.
- *   Typical table names would be: {block}, {comment}, {forum}, {node},
- *   {menu}, {taxonomy_term_data} or {taxonomy_vocabulary}. However, it is more common for
- *   $primary_table to contain the usual table alias: b, c, f, n, m, t or v.
- * @param $primary_field
- *   Name of the primary field.
- * @param $args
- *   Array of additional arguments.
  * @return
- *   An array of join statements, where statements, distinct decision.
+ *   An associative array where the key is the queue name and the value is
+ *   again an associative array. Possible keys are:
+ *   - 'worker callback': The name of the function to call. It will be called
+ *     with one argument, the item created via DrupalQueue::createItem() in
+ *     hook_cron().
+ *   - 'time': (optional) How much time Drupal should spend on calling this
+ *     worker in seconds. Defaults to 15.
+ *
+ * @see hook_cron()
  */
-function hook_db_rewrite_sql($query, $primary_table, $primary_field, $args) {
-  switch ($primary_field) {
-    case 'nid':
-      // this query deals with node objects
-      $return = array();
-      if ($primary_table != 'n') {
-        $return['join'] = "LEFT JOIN {node} n ON $primary_table.nid = n.nid";
-      }
-      $return['where'] = 'created >' . mktime(0, 0, 0, 1, 1, 2005);
-      return $return;
-      break;
-    case 'tid':
-      // this query deals with taxonomy objects
-      break;
-    case 'vid':
-      // this query deals with vocabulary objects
-      break;
-  }
+function hook_cron_queue_info() {
+  $queues['aggregator_feeds'] = array(
+    'worker callback' => 'aggregator_refresh',
+    'time' => 15,
+  );
+  return $queues;
 }
 
 /**
@@ -207,7 +217,8 @@ function hook_db_rewrite_sql($query, $primary_table, $primary_field, $args) {
  *  name as the key. Each sub-array has a number of possible attributes:
  *  - "#input": boolean indicating whether or not this element carries a value
  *    (even if it's hidden).
- *  - "#process": array of callback functions taking $element and $form_state.
+ *  - "#process": array of callback functions taking $element, $form_state,
+ *    and $complete_form.
  *  - "#after_build": array of callback functions taking $element and $form_state.
  *  - "#validate": array of callback functions taking $form and $form_state.
  *  - "#element_validate": array of callback functions taking $element and
@@ -215,10 +226,15 @@ function hook_db_rewrite_sql($query, $primary_table, $primary_field, $args) {
  *  - "#pre_render": array of callback functions taking $element and $form_state.
  *  - "#post_render": array of callback functions taking $element and $form_state.
  *  - "#submit": array of callback functions taking $form and $form_state.
+ *
+ * @see hook_element_info_alter()
+ * @see system_element_info()
  */
-function hook_elements() {
-  $type['filter_format'] = array('#input' => TRUE);
-  return $type;
+function hook_element_info() {
+  $types['filter_format'] = array(
+    '#input' => TRUE,
+  );
+  return $types;
 }
 
 /**
@@ -228,9 +244,9 @@ function hook_elements() {
  * defined by a module.
  *
  * @param &$type
- *   All element type defaults as collected by hook_elements().
+ *   All element type defaults as collected by hook_element_info().
  *
- * @see hook_elements()
+ * @see hook_element_info()
  */
 function hook_element_info_alter(&$type) {
   // Decrease the default size of textfields.
@@ -669,7 +685,7 @@ function hook_image_toolkits() {
  *   An array containing the message data. Keys in this array include:
  *  - 'id':
  *     The drupal_mail() id of the message. Look at module source code or
- *     drupal_mail() for possible id values. 
+ *     drupal_mail() for possible id values.
  *  - 'to':
  *     The address or addresses the message will be sent to. The
  *     formatting of this string must comply with RFC 2822.
@@ -681,7 +697,7 @@ function hook_image_toolkits() {
  *     characters, or the email may not be sent properly.
  *  - 'body':
  *     An array of strings containing the message text. The message body is
- *     created by concatenating the individual array strings into a single text 
+ *     created by concatenating the individual array strings into a single text
  *     string using "\n\n" as a separator.
  *  - 'headers':
  *     Associative array containing mail headers, such as From, Sender,
@@ -713,8 +729,11 @@ function hook_mail_alter(&$message) {
  * @param $file
  *   Full information about the module or theme, including $file->name, and
  *   $file->filename
+ * @param $type
+ *   Either 'module' or 'theme', depending on the type of .info file that was
+ *   passed.
  */
-function hook_system_info_alter(&$info, $file) {
+function hook_system_info_alter(&$info, $file, $type) {
   // Only fill this in if the .info file does not define a 'datestamp'.
   if (empty($info['datestamp'])) {
     $info['datestamp'] = filemtime($file->filename);
@@ -1427,7 +1446,7 @@ function hook_file_move($file, $source) {
  */
 function hook_file_references($file) {
   // If upload.module is still using a file, do not let other modules delete it.
-  $file_used = (bool) db_query_range('SELECT 1 FROM {upload} WHERE fid = :fid', array(':fid' => $file->fid), 0, 1)->fetchField();
+  $file_used = (bool) db_query_range('SELECT 1 FROM {upload} WHERE fid = :fid', 0, 1, array(':fid' => $file->fid))->fetchField();
   if ($file_used) {
     // Return the name of the module and how many references it has to the file.
     return array('upload' => $count);
@@ -1792,7 +1811,10 @@ function hook_query_TAG_alter(QueryAlterableInterface $query) {
 }
 
 /**
- * Install the current version of the database schema, and any other setup tasks.
+ * Perform setup tasks when the module is installed.
+ *
+ * If the module implements hook_schema(), the database tables will
+ * be created before this hook is fired.
  *
  * The hook will be called the first time a module is installed, and the
  * module's schema version will be set to the module's greatest numbered update
@@ -1802,7 +1824,7 @@ function hook_query_TAG_alter(QueryAlterableInterface $query) {
  *
  * See the Schema API documentation at
  * @link http://drupal.org/node/146843 http://drupal.org/node/146843 @endlink
- * for details on hook_schema, where a database tables are defined.
+ * for details on hook_schema and how database tables are defined.
  *
  * Note that since this function is called from a full bootstrap, all functions
  * (including those in modules enabled by the current page request) are
@@ -1813,9 +1835,20 @@ function hook_query_TAG_alter(QueryAlterableInterface $query) {
  * be removed during uninstall should be removed with hook_uninstall().
  *
  * @see hook_uninstall()
+ * @see hook_schema()
  */
 function hook_install() {
-  drupal_install_schema('upload');
+  // Populate the default {node_access} record.
+  db_insert('node_access')
+    ->fields(array(
+      'nid' => 0,
+      'gid' => 0,
+      'realm' => 'all',
+      'grant_view' => 1,
+      'grant_update' => 0,
+      'grant_delete' => 0,
+    ))
+    ->execute();
 }
 
 /**
@@ -1865,30 +1898,28 @@ function hook_install() {
  * If your update task is potentially time-consuming, you'll need to implement a
  * multipass update to avoid PHP timeouts. Multipass updates use the $sandbox
  * parameter provided by the batch API (normally, $context['sandbox']) to store
- * information between successive calls, and the $ret['#finished'] return value
+ * information between successive calls, and the $sandbox['#finished'] value
  * to provide feedback regarding completion level.
  *
  * See the batch operations page for more information on how to use the batch API:
  * @link http://drupal.org/node/146843 http://drupal.org/node/146843 @endlink
  *
- * @return An array with the results of the calls to update_sql(). An upate
- *   function can force the current and all later updates for this
- *   module to abort by returning a $ret array with an element like:
- *   $ret['#abort'] = array('success' => FALSE, 'query' => 'What went wrong');
- *   The schema version will not be updated in this case, and all the
- *   aborted updates will continue to appear on update.php as updates that
- *   have not yet been run. Multipass update functions will also want to pass
- *   back the $ret['#finished'] variable to inform the batch API of progress.
+ * @throws DrupalUpdateException, PDOException
+ *   In case of error, update hooks should throw an instance of DrupalUpdateException
+ *   with a meaningful message for the user. If a database query fails for whatever
+ *   reason, it will throw a PDOException.
+ *
+ * @return
+ *   Optionally update hooks may return a translated string that will be displayed
+ *   to the user. If no message is returned, no message will be presented to the
+ *   user.
  */
 function hook_update_N(&$sandbox = NULL) {
   // For most updates, the following is sufficient.
-  $ret = array();
-  db_add_field($ret, 'mytable1', 'newcol', array('type' => 'int', 'not null' => TRUE, 'description' => 'My new integer column.'));
-  return $ret;
+  db_add_field('mytable1', 'newcol', array('type' => 'int', 'not null' => TRUE, 'description' => 'My new integer column.'));
 
   // However, for more complex operations that may take a long time,
   // you may hook into Batch API as in the following example.
-  $ret = array();
 
   // Update 3 users at a time to have an exclamation point after their names.
   // (They're really happy that we can do batch API in this hook!)
@@ -1906,15 +1937,23 @@ function hook_update_N(&$sandbox = NULL) {
     ->execute();
   foreach ($users as $user) {
     $user->name .= '!';
-    $ret[] = update_sql("UPDATE {users} SET name = '$user->name' WHERE uid = $user->uid");
+    db_update('users')
+      ->fields(array('name' => $user->name))
+      ->condition('uid', $user->uid)
+      ->execute();
 
     $sandbox['progress']++;
     $sandbox['current_uid'] = $user->uid;
   }
 
-  $ret['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
+  $sandbox['#finished'] = empty($sandbox['max']) ? 1 : ($sandbox['progress'] / $sandbox['max']);
 
-  return $ret;
+  // To display a message to the user when the update is completed, return it.
+  // If you do not want to display a completion message, simply return nothing.
+  return t('The update did what it was supposed to do.');
+
+  // In case of an error, simply throw an exception with an error message.
+  throw new DrupalUpdateException('Something went wrong; here is what you should do.');
 }
 
 /**
@@ -1944,15 +1983,19 @@ function hook_update_last_removed() {
  *
  * The information that the module should remove includes:
  * - variables that the module has set using variable_set() or system_settings_form()
- * - tables the module has created, using drupal_uninstall_schema()
  * - modifications to existing tables
  *
- * The module should not remove its entry from the {system} table.
+ * The module should not remove its entry from the {system} table. Database tables
+ * defined by hook_schema() will be removed automatically.
  *
- * The uninstall hook will fire when the module gets uninstalled.
+ * The uninstall hook will fire when the module gets uninstalled but before the
+ * module's database tables are removed, allowing your module to query its own
+ * tables during this routine.
+ *
+ * @see hook_install()
+ * @see hook_schema()
  */
 function hook_uninstall() {
-  drupal_uninstall_schema('upload');
   variable_del('upload_file_types');
 }
 
@@ -2232,6 +2275,90 @@ function hook_file_mimetype_mapping_alter(&$mapping) {
   $mapping['extensions']['info'] = 'example_info';
   // Override existing extension mapping for '.ogg' files.
   $mapping['extensions']['ogg'] = 189;
+}
+
+/**
+ * Declares information about actions.
+ *
+ * Any module can define actions, and then call actions_do() to make those
+ * actions happen in response to events. The trigger module provides a user
+ * interface for associating actions with module-defined triggers, and it makes
+ * sure the core triggers fire off actions when their events happen.
+ *
+ * An action consists of two or three parts:
+ * - an action definition (returned by this hook)
+ * - a function which performs the action (which by convention is named
+ *   MODULE_description-of-function_action)
+ * - an optional form definition function that defines a configuration form
+ *   (which has the name of the action function with '_form' appended to it.)
+ *
+ * The action function takes two to four arguments, which come from the input
+ * arguments to actions_do().
+ *
+ * @return
+ *   An associative array of action descriptions. The keys of the array
+ *   are the names of the action functions, and each corresponding value
+ *   is an associative array with the following key-value pairs:
+ *   - 'type': The type of object this action acts upon. Core actions have types
+ *     'node', 'user', 'comment', and 'system'.
+ *   - 'label': The human-readable name of the action, which should be passed
+ *     through the t() function for translation.
+ *   - 'configurable': If FALSE, then the action doesn't require any extra
+ *     configuration. If TRUE, then your module must define a form function with
+ *     the same name as the action function with '_form' appended (e.g., the
+ *     form for 'node_assign_owner_action' is 'node_assign_owner_action_form'.)
+ *     This function takes $context as its only parameter, and is paired with
+ *     the usual _submit function, and possibly a _validate function.
+ *   - 'triggers': An array of the events (that is, hooks) that can trigger this
+ *     action. For example: array('node_insert', 'user_update'). You can also
+ *     declare support for any trigger by returning array('any') for this value.
+ *   - 'behavior': (optional) machine-readable array of behaviors of this
+ *     action, used to signal additional actions that may need to be triggered.
+ *     Currently recognized behaviors by Trigger module:
+ *     - 'changes_node_property': If an action with this behavior is assigned to
+ *       a trigger other than 'node_presave', any node save actions also
+ *       assigned to this trigger are moved later in the list. If a node save
+ *       action is not present, one will be added.
+ */
+function hook_action_info() {
+  return array(
+    'comment_unpublish_action' => array(
+      'type' => 'comment',
+      'label' => t('Unpublish comment'),
+      'configurable' => FALSE,
+      'triggers' => array('comment_insert', 'comment_update'),
+    ),
+    'comment_unpublish_by_keyword_action' => array(
+      'type' => 'comment',
+      'label' => t('Unpublish comment containing keyword(s)'),
+      'configurable' => TRUE,
+      'triggers' => array('comment_insert', 'comment_update'),
+    ),
+  );
+}
+
+/**
+ * Executes code after an action is deleted.
+ *
+ * @param $aid
+ *   The action ID.
+ */
+function hook_actions_delete($aid) {
+  db_delete('actions_assignments')
+    ->condition('aid', $aid)
+    ->execute();
+}
+
+/**
+ * Alters the actions declared by another module.
+ *
+ * Called by actions_list() to allow modules to alter the return values from
+ * implementations of hook_action_info().
+ *
+ * @see trigger_example_action_info_alter().
+ */
+function hook_action_info_alter(&$actions) {
+  $actions['node_unpublish_action']['label'] = t('Unpublish and remove from public view.');
 }
 
 /**

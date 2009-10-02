@@ -1,5 +1,5 @@
 <?php
-// $Id: update.inc,v 1.6 2009/09/01 17:03:31 webchick Exp $
+// $Id: update.inc,v 1.11 2009/09/29 15:13:54 dries Exp $
 
 /**
  * @file
@@ -9,138 +9,24 @@
  * installation. It is included and used extensively by update.php.
  */
 
-
-/**
- * Add a column to a database using syntax appropriate for PostgreSQL.
- *
- * Saves the result of the SQL commands in the referenced $ret array.
- *
- * Note: when you add a column with NOT NULL and you are not sure if there are
- * already rows in the table, you MUST also add DEFAULT. Otherwise PostgreSQL
- * won't work when the table is not empty, and db_add_column() will fail.
- * To have an empty string as the default, you must use: 'default' => "''"
- * in the $attributes array. If NOT NULL and DEFAULT are set the PostgreSQL
- * version will set values of the added column in old rows to the
- * DEFAULT value.
- *
- * @param $ret
- *   Reference to an array to which results will be added.
- * @param $table
- *   Name of the table, without {}
- * @param $column
- *   Name of the column
- * @param $type
- *   Type of column
- * @param $attributes
- *   Additional optional attributes. Recognized attributes:
- *     not null => TRUE|FALSE
- *     default  => NULL|FALSE|value (the value must be enclosed in '' marks)
- * @return
- *   nothing, but modifies $ret parameter.
- */
-function db_add_column(&$ret, $table, $column, $type, $attributes = array()) {
-  if (array_key_exists('not null', $attributes) and $attributes['not null']) {
-    $not_null = 'NOT NULL';
-  }
-  if (array_key_exists('default', $attributes)) {
-    if (is_null($attributes['default'])) {
-      $default_val = 'NULL';
-      $default = 'default NULL';
-    }
-    elseif ($attributes['default'] === FALSE) {
-      $default = '';
-    }
-    else {
-      $default_val = "$attributes[default]";
-      $default = "default $attributes[default]";
-    }
-  }
-
-  $ret[] = update_sql("ALTER TABLE {" . $table . "} ADD $column $type");
-  if (!empty($default)) {
-    $ret[] = update_sql("ALTER TABLE {" . $table . "} ALTER $column SET $default");
-  }
-  if (!empty($not_null)) {
-    if (!empty($default)) {
-      $ret[] = update_sql("UPDATE {" . $table . "} SET $column = $default_val");
-    }
-    $ret[] = update_sql("ALTER TABLE {" . $table . "} ALTER $column SET NOT NULL");
-  }
-}
-
-/**
- * Change a column definition using syntax appropriate for PostgreSQL.
- * Save result of SQL commands in $ret array.
- *
- * Remember that changing a column definition involves adding a new column
- * and dropping an old one. This means that any indices, primary keys and
- * sequences from serial-type columns are dropped and might need to be
- * recreated.
- *
- * @param $ret
- *   Array to which results will be added.
- * @param $table
- *   Name of the table, without {}
- * @param $column
- *   Name of the column to change
- * @param $column_new
- *   New name for the column (set to the same as $column if you don't want to change the name)
- * @param $type
- *   Type of column
- * @param $attributes
- *   Additional optional attributes. Recognized attributes:
- *     not null => TRUE|FALSE
- *     default  => NULL|FALSE|value (with or without '', it won't be added)
- * @return
- *   nothing, but modifies $ret parameter.
- */
-function db_change_column(&$ret, $table, $column, $column_new, $type, $attributes = array()) {
-  if (array_key_exists('not null', $attributes) and $attributes['not null']) {
-    $not_null = 'NOT NULL';
-  }
-  if (array_key_exists('default', $attributes)) {
-    if (is_null($attributes['default'])) {
-      $default_val = 'NULL';
-      $default = 'default NULL';
-    }
-    elseif ($attributes['default'] === FALSE) {
-      $default = '';
-    }
-    else {
-      $default_val = "$attributes[default]";
-      $default = "default $attributes[default]";
-    }
-  }
-
-  $ret[] = update_sql("ALTER TABLE {" . $table . "} RENAME $column TO " . $column . "_old");
-  $ret[] = update_sql("ALTER TABLE {" . $table . "} ADD $column_new $type");
-  $ret[] = update_sql("UPDATE {" . $table . "} SET $column_new = " . $column . "_old");
-  if ($default) {
-    $ret[] = update_sql("ALTER TABLE {" . $table . "} ALTER $column_new SET $default");
-  }
-  if ($not_null) {
-    $ret[] = update_sql("ALTER TABLE {" . $table . "} ALTER $column_new SET NOT NULL");
-  }
-  $ret[] = update_sql("ALTER TABLE {" . $table . "} DROP " . $column . "_old");
-}
-
 /**
  * Disable anything in the {system} table that is not compatible with the
  * current version of Drupal core.
  */
 function update_fix_compatibility() {
-  $ret = array();
   $incompatible = array();
-  $query = db_query("SELECT name, type, status FROM {system} WHERE status = 1 AND type IN ('module','theme')");
-  while ($result = db_fetch_object($query)) {
-    if (update_check_incompatibility($result->name, $result->type)) {
-      $incompatible[] = $result->name;
+  $result = db_query("SELECT name, type, status FROM {system} WHERE status = 1 AND type IN ('module','theme')");
+  foreach ($result as $row) {
+    if (update_check_incompatibility($row->name, $row->type)) {
+      $incompatible[] = $row->name;
     }
   }
   if (!empty($incompatible)) {
-    $ret[] = update_sql("UPDATE {system} SET status = 0 WHERE name IN ('" . implode("','", $incompatible) . "')");
+  	db_update('system')
+  	  ->fields(array('status' => 0))
+  	  ->condition('name', $incompatible, 'IN')
+  	  ->execute();
   }
-  return $ret;
 }
 
 /**
@@ -202,24 +88,19 @@ function update_prepare_d7_bootstrap() {
     );
     update_extra_requirements($requirements);
   }
+
+  // The new {blocked_ips} table is used in Drupal 7 to store a list of
+  // banned IP addresses. If this table doesn't exist then we are still
+  // running on a Drupal 6 database, so we suppress the unavoidable errors
+  // that occur by creating a static list.
+  $GLOBALS['conf']['blocked_ips'] = array();
+
   // Allow the database system to work even if the registry has not been
   // created yet.
   drupal_bootstrap(DRUPAL_BOOTSTRAP_DATABASE);
   drupal_install_initialize_database();
   spl_autoload_unregister('drupal_autoload_class');
   spl_autoload_unregister('drupal_autoload_interface');
-  // The new {blocked_ips} table is used in Drupal 7 to store a list of
-  // banned IP addresses. If this table doesn't exist then we are still
-  // running on a Drupal 6 database, so suppress the unavoidable errors
-  // that occur.
-  try {
-    drupal_bootstrap(DRUPAL_BOOTSTRAP_ACCESS);
-  }
-  catch (Exception $e) {
-    if (db_table_exists('blocked_ips')) {
-      throw $e;
-    }
-  }
 }
 
 /**
@@ -233,7 +114,6 @@ function update_prepare_d7_bootstrap() {
  */
 function update_fix_d7_requirements() {
   global $conf;
-  $ret = array();
 
   // Rewrite the settings.php file if necessary.
   // @see update_prepare_d7_bootstrap().
@@ -246,11 +126,11 @@ function update_fix_d7_requirements() {
     // Add the cache_path table.
     $schema['cache_path'] = drupal_get_schema_unprocessed('system', 'cache');
     $schema['cache_path']['description'] = 'Cache table used for path alias lookups.';
-    db_create_table($ret, 'cache_path', $schema['cache_path']);
+    db_create_table('cache_path', $schema['cache_path']);
 
     // Add column for locale context.
     if (db_table_exists('locales_source')) {
-      db_add_field($ret, 'locales_source', 'context', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => '', 'description' => 'The context this string applies to.'));
+      db_add_field('locales_source', 'context', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => '', 'description' => 'The context this string applies to.'));
     }
 
     // Rename 'site_offline_message' variable to 'maintenance_mode_message'.
@@ -264,8 +144,6 @@ function update_fix_d7_requirements() {
   }
 
   update_fix_d7_install_profile();
-
-  return $ret;
 }
 
 /**
@@ -273,14 +151,13 @@ function update_fix_d7_requirements() {
  *
  * Install profiles are now treated as modules by Drupal, and have an upgrade path
  * based on their schema version in the system table.
- * 
+ *
  * The install profile will be set to schema_version 0, as it has already been
  * installed. Any other hook_update_N functions provided by the install profile
  * will be run by update.php.
  */
 function update_fix_d7_install_profile() {
   $profile = drupal_get_profile();
-
 
   $results = db_select('system', 's')
     ->fields('s', array('name', 'schema_version'))
@@ -365,12 +242,30 @@ function update_parse_db_url($db_url) {
  * Perform one update and store the results which will later be displayed on
  * the finished page.
  *
- * An update function can force the current and all later updates for this
- * module to abort by returning a $ret array with an element like:
- * $ret['#abort'] = array('success' => FALSE, 'query' => 'What went wrong');
- * The schema version will not be updated in this case, and all the
- * aborted updates will continue to appear on update.php as updates that
+ * If an update function completes successfully, it should return a message
+ * as a string indicating success, for example:
+ * @code
+ * return t('New index added successfully.');
+ * @endcode
+ *
+ * Alternatively, it may return nothing. In that case, no message
+ * will be displayed at all.
+ *
+ * If it fails for whatever reason, it should throw an instance of
+ * DrupalUpdateException with an appropriate error message, for example:
+ * @code
+ * throw new DrupalUpdateException(t('Description of what went wrong'));
+ * @endcode
+ *
+ * If an exception is thrown, the current and all later updates for this module
+ * will be aborted. The schema version will not be updated in this case, and all
+ * the aborted updates will continue to appear on update.php as updates that
  * have not yet been run.
+ *
+ * If an update function needs to be re-run as part of a batch process, it
+ * should accept the $sandbox array by reference as its first parameter
+ * and set the #finished property to the percentage completed that it is, as a
+ * fraction of 1.
  *
  * @param $module
  *   The module whose update will be run.
@@ -386,14 +281,47 @@ function update_do_one($module, $number, &$context) {
     return;
   }
 
-  $function = $module . '_update_' . $number;
-  if (function_exists($function)) {
-    $ret = $function($context['sandbox']);
+  if (!isset($context['log'])) {
+    $context['log'] = variable_get('update_log_queries', 0);
   }
 
+  $ret = array();
+  $function = $module . '_update_' . $number;
+  if (function_exists($function)) {
+    try {
+      if ($context['log']) {
+        Database::startLog($function);
+      }
+      $ret['results']['query'] = $function($context['sandbox']);
+      $ret['results']['success'] = TRUE;
+
+      // @TODO Remove this block after all updates have been converted to
+      // return only strings.
+      if (is_array($ret['results']['query'])) {
+        $ret = $ret['results']['query'];
+      }
+    }
+    // @TODO We may want to do different error handling for different exception
+    // types, but for now we'll just print the message.
+    catch (Exception $e) {
+      $ret['#abort'] = array('success' => FALSE, 'query' => $e->getMessage());
+    }
+
+    if ($context['log']) {
+      $ret['queries'] = Database::getLog($function);
+    }
+  }
+
+  // @TODO Remove this block after all updates have been converted to return
+  // only strings.
   if (isset($ret['#finished'])) {
     $context['finished'] = $ret['#finished'];
     unset($ret['#finished']);
+  }
+
+  if (isset($context['sandbox']['#finished'])) {
+    $context['finished'] = $context['sandbox']['#finished'];
+    unset($context['sandbox']['#finished']);
   }
 
   if (!isset($context['results'][$module])) {
@@ -407,15 +335,19 @@ function update_do_one($module, $number, &$context) {
   if (!empty($ret['#abort'])) {
     $context['results'][$module]['#abort'] = TRUE;
   }
+
   // Record the schema update if it was completed successfully.
   if ($context['finished'] == 1 && empty($context['results'][$module]['#abort'])) {
     drupal_set_installed_schema_version($module, $number);
-    // Conserve memory and avoid errors by resetting all static variables.
-    drupal_static_reset();
   }
 
   $context['message'] = 'Updating ' . check_plain($module) . ' module';
 }
+
+/**
+ * @class Exception class used to throw error if a module update fails.
+ */
+class DrupalUpdateException extends Exception { }
 
 /**
  * Start the database update batch process.
@@ -518,7 +450,7 @@ function update_finished($success, $results, $operations) {
 function update_get_update_list() {
   // Make sure that the system module is first in the list of updates.
   $ret = array('system' => array());
-  
+
   $modules = drupal_get_installed_schema_version(NULL, FALSE, TRUE);
   foreach ($modules as $module => $schema_version) {
     $pending = array();
@@ -532,7 +464,7 @@ function update_get_update_list() {
         $ret[$module]['warning'] = '<em>' . $module . '</em> module can not be updated. Its schema version is ' . $schema_version . '. Updates up to and including ' . $last_removed . ' have been removed in this release. In order to update <em>' . $module . '</em> module, you will first <a href="http://drupal.org/upgrade">need to upgrade</a> to the last version in which these updates were available.';
         continue;
       }
-      
+
       $updates = drupal_map_assoc($updates);
       foreach (array_keys($updates) as $update) {
         if ($update > $schema_version) {
@@ -550,7 +482,7 @@ function update_get_update_list() {
       }
     }
   }
-  
+
   if (empty($ret['system'])) {
     unset($ret['system']);
   }

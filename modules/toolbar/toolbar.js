@@ -1,4 +1,4 @@
-// $Id: toolbar.js,v 1.3 2009/08/31 16:48:37 webchick Exp $
+// $Id: toolbar.js,v 1.6 2009/09/15 20:50:48 dries Exp $
 (function ($) {
 
 /**
@@ -78,6 +78,10 @@ Drupal.admin.toolbar.toggle = function() {
   else {
     Drupal.admin.toolbar.collapse();
   }
+}
+
+Drupal.admin.toolbar.height = function() {
+  return $("#toolbar").height();
 }
 
 })(jQuery);

@@ -1,5 +1,5 @@
 <?php
-// $Id: system.admin.inc,v 1.197 2009/08/26 10:53:45 dries Exp $
+// $Id: system.admin.inc,v 1.207 2009/09/30 13:09:30 dries Exp $
 
 /**
  * @file
@@ -184,7 +184,7 @@ function system_settings_overview() {
     db_check_setup();
   }
 
-  $item = menu_get_item('admin/settings');
+  $item = menu_get_item('admin/config');
   $content = system_admin_menu_block($item);
 
   $output = theme('admin_block_content', $content);
@@ -233,7 +233,7 @@ function system_themes_form() {
     );
     $options[$theme->name] = $theme->info['name'];
 
-    if (!empty($theme->status) || $theme->name == variable_get('admin_theme', 0)) {
+    if (drupal_theme_access($theme)) {
       $form[$theme->name]['operations'] = array('#markup' => l(t('configure'), 'admin/appearance/settings/' . $theme->name) );
     }
     else {
@@ -378,7 +378,7 @@ function system_themes_form_submit($form, &$form_state) {
  * @ingroup forms
  * @see system_theme_settings_submit()
  */
-function system_theme_settings(&$form_state, $key = '') {
+function system_theme_settings($form, &$form_state, $key = '') {
   $directory_path = file_directory_path();
   if (!file_prepare_directory($directory_path, FILE_CREATE_DIRECTORY)) {
     drupal_set_message(t('The directory %directory does not exist or is not writable.', array('%directory' => $directory_path)), 'warning');
@@ -633,7 +633,7 @@ function _system_is_incompatible(&$incompatible, $files, $file) {
  * @return
  *   The form array.
  */
-function system_modules($form_state = array()) {
+function system_modules($form, $form_state = array()) {
   // Get current list of modules.
   $files = system_get_module_data();
 
@@ -834,7 +834,6 @@ function _system_modules_build_row($info, $extra) {
  * @ingroup forms
  */
 function system_modules_confirm_form($modules, $storage) {
-  $form = array();
   $items = array();
 
   $form['validation_modules'] = array('#type' => 'value', '#value' => $modules);
@@ -1000,6 +999,7 @@ function system_modules_submit($form, &$form_state) {
   registry_rebuild();
   drupal_theme_rebuild();
   node_types_rebuild();
+  menu_rebuild();
   cache_clear_all('schema', 'cache');
   cache_clear_all('entity_info', 'cache');
   drupal_clear_css_cache();
@@ -1033,7 +1033,7 @@ function system_modules_submit($form, &$form_state) {
  * @return
  *   A form array representing the currently disabled modules.
  */
-function system_modules_uninstall($form_state = NULL) {
+function system_modules_uninstall($form, $form_state = NULL) {
   // Make sure the install API is available.
   include_once DRUPAL_ROOT . '/includes/install.inc';
 
@@ -1042,19 +1042,16 @@ function system_modules_uninstall($form_state = NULL) {
     return $confirm_form;
   }
 
-  $form = array();
-
   // Pull all disabled modules from the system table.
   $disabled_modules = db_query("SELECT name, filename, info FROM {system} WHERE type = 'module' AND status = 0 AND schema_version > :schema ORDER BY name", array(':schema' => SCHEMA_UNINSTALLED));
   foreach ($disabled_modules as $module) {
-
     // Grab the module info
     $info = unserialize($module->info);
 
-    // Load the .install file, and check for an uninstall hook.
+    // Load the .install file, and check for an uninstall or schema hook.
     // If the hook exists, the module can be uninstalled.
     module_load_install($module->name);
-    if (module_hook($module->name, 'uninstall')) {
+    if (module_hook($module->name, 'uninstall') || module_hook($module->name, 'schema')) {
       $form['modules'][$module->name]['name'] = array('#markup' => $info['name'] ? $info['name'] : $module->name);
       $form['modules'][$module->name]['description'] = array('#markup' => t($info['description']));
       $options[$module->name] = '';
@@ -1185,7 +1182,7 @@ function system_ip_blocking() {
  * @see system_ip_blocking_form_validate()
  * @see system_ip_blocking_form_submit()
  */
-function system_ip_blocking_form($form_state) {
+function system_ip_blocking_form($form, $form_state) {
   $form['ip'] = array(
     '#title' => t('IP address'),
     '#type' => 'textfield',
@@ -1231,7 +1228,7 @@ function system_ip_blocking_form_submit($form, &$form_state) {
  *
  * @see system_ip_blocking_delete_submit()
  */
-function system_ip_blocking_delete(&$form_state, $iid) {
+function system_ip_blocking_delete($form, &$form_state, $iid) {
   $form['blocked_ip'] = array(
     '#type' => 'value',
     '#value' => $iid,
@@ -1417,7 +1414,7 @@ function system_performance_settings() {
   $disabled = !$is_writable;
   $disabled_message = '';
   if(!$is_writable) {
-    $disabled_message = ' ' . t('<strong class="error">Please set up the <a href="!file-system">public files directory</a> to make these optimizations available.</strong>', array('!file-system' => url('admin/settings/file-system')));
+    $disabled_message = ' ' . t('<strong class="error">Please set up the <a href="!file-system">public files directory</a> to make these optimizations available.</strong>', array('!file-system' => url('admin/config/media/file-system')));
   }
 
   $form['bandwidth_optimization'] = array(
@@ -1579,7 +1576,7 @@ function system_rss_feeds_settings() {
   $form['feed_item_length'] = array(
     '#type' => 'select',
     '#title' => t('Feed content'),
-    '#default_value' => 'teaser',
+    '#default_value' => 'fulltext',
     '#options' => array('title' => t('Titles only'), 'teaser' => t('Titles plus teaser'), 'fulltext' => t('Full text')),
     '#description' => t('Global setting for the default display of content items in each feed.')
   );
@@ -1793,7 +1790,7 @@ function system_regional_settings_submit($form, &$form_state) {
  */
 function system_date_time_lookup() {
   $result = format_date(REQUEST_TIME, 'custom', $_GET['format']);
-  drupal_json($result);
+  drupal_json_output($result);
 }
 
 /**
@@ -1825,7 +1822,7 @@ function system_site_maintenance_mode() {
  * @ingroup forms
  * @see system_settings_form()
  */
-function system_clean_url_settings() {
+function system_clean_url_settings($form, &$form_state) {
   global $base_url;
 
   // When accessing this form using a non-clean URL, allow a re-check to make
@@ -1855,7 +1852,7 @@ function system_clean_url_settings() {
   else {
     drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
 
-    $form['#redirect'] = $base_url . '/admin/config/search/clean-urls';
+    $form_state['redirect'] = $base_url . '/admin/config/search/clean-urls';
     $form['clean_url_description'] = array(
       '#type' => 'markup',
       '#markup' => '<p>' . t('Use URLs like <code>example.com/user</code> instead of <code>example.com/?q=user</code>.') . ' ' . t('If you are directed to a <em>Page not found (404)</em> error after testing for clean URLs, see the <a href="@handbook">online handbook</a>.', array('@handbook' => 'http://drupal.org/node/15365')) . '</p>',
@@ -1927,6 +1924,11 @@ function system_php() {
 function system_batch_page() {
   require_once DRUPAL_ROOT . '/includes/batch.inc';
   $output = _batch_page();
+  
+  // Use the same theme that the page that started the batch.
+  $batch = &batch_get();
+  $GLOBALS['custom_theme'] = $batch['theme'];
+
   if ($output === FALSE) {
     drupal_access_denied();
   }
@@ -2294,3 +2296,276 @@ function theme_system_themes_form($form) {
   $output .= drupal_render_children($form);
   return $output;
 }
+
+/**
+ * Menu callback; Displays an overview of available and configured actions.
+ */
+function system_actions_manage() {
+  actions_synchronize();
+  $actions = actions_list();
+  $actions_map = actions_actions_map($actions);
+  $options = array(t('Choose an advanced action'));
+  $unconfigurable = array();
+
+  foreach ($actions_map as $key => $array) {
+    if ($array['configurable']) {
+      $options[$key] = $array['label'] . '...';
+    }
+    else {
+      $unconfigurable[] = $array;
+    }
+  }
+
+  $row = array();
+  $instances_present = db_query("SELECT aid FROM {actions} WHERE parameters <> ''")->fetchField();
+  $header = array(
+    array('data' => t('Action type'), 'field' => 'type'),
+    array('data' => t('Label'), 'field' => 'label'),
+    array('data' => $instances_present ? t('Operations') : '', 'colspan' => '2')
+  );
+  $query = db_select('actions')->extend('PagerDefault')->extend('TableSort');
+  $result = $query
+    ->fields('actions')
+    ->limit(50)
+    ->orderByHeader($header)
+    ->execute();
+
+  foreach ($result as $action) {
+    $row[] = array(
+      array('data' => $action->type),
+      array('data' => $action->label),
+      array('data' => $action->parameters ? l(t('configure'), "admin/config/system/actions/configure/$action->aid") : ''),
+      array('data' => $action->parameters ? l(t('delete'), "admin/config/system/actions/delete/$action->aid") : '')
+    );
+  }
+
+  if ($row) {
+    $pager = theme('pager', NULL);
+    if (!empty($pager)) {
+      $row[] = array(array('data' => $pager, 'colspan' => '3'));
+    }
+    $build['system_actions_header'] = array('#markup' => '<h3>' . t('Actions available to Drupal:') . '</h3>');
+    $build['system_actions_table'] = array('#markup' => theme('table', $header, $row));
+  }
+
+  if ($actions_map) {
+    $build['system_actions_manage_form'] = drupal_get_form('system_actions_manage_form', $options);
+  }
+
+  return $build;
+}
+
+/**
+ * Define the form for the actions overview page.
+ *
+ * @param $form_state
+ *   An associative array containing the current state of the form; not used.
+ * @param $options
+ *   An array of configurable actions.
+ * @return
+ *   Form definition.
+ *
+ * @ingroup forms
+ * @see system_actions_manage_form_submit()
+ */
+function system_actions_manage_form($form, &$form_state, $options = array()) {
+  $form['parent'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Make a new advanced action available'),
+    '#prefix' => '<div class="container-inline">',
+    '#suffix' => '</div>',
+  );
+  $form['parent']['action'] = array(
+    '#type' => 'select',
+    '#default_value' => '',
+    '#options' => $options,
+    '#description' => '',
+  );
+  $form['parent']['buttons']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Create'),
+  );
+  return $form;
+}
+
+/**
+ * Process system_actions_manage form submissions.
+ *
+ * @see system_actions_manage_form()
+ */
+function system_actions_manage_form_submit($form, &$form_state) {
+  if ($form_state['values']['action']) {
+    $form_state['redirect'] = 'admin/config/system/actions/configure/' . $form_state['values']['action'];
+  }
+}
+
+/**
+ * Menu callback; Creates the form for configuration of a single action.
+ *
+ * We provide the "Description" field. The rest of the form is provided by the
+ * action. We then provide the Save button. Because we are combining unknown
+ * form elements with the action configuration form, we use an 'actions_' prefix
+ * on our elements.
+ *
+ * @param $action
+ *   md5 hash of an action ID or an integer. If it is an md5 hash, we are
+ *   creating a new instance. If it is an integer, we are editing an existing
+ *   instance.
+ * @return
+ *   A form definition.
+ *
+ * @see system_actions_configure_validate()
+ * @see system_actions_configure_submit()
+ */
+function system_actions_configure($form, &$form_state, $action = NULL) {
+  if ($action === NULL) {
+    drupal_goto('admin/config/system/actions');
+  }
+
+  $actions_map = actions_actions_map(actions_list());
+  $edit = array();
+
+  // Numeric action denotes saved instance of a configurable action.
+  if (is_numeric($action)) {
+    $aid = $action;
+    // Load stored parameter values from database.
+    $data = db_query("SELECT * FROM {actions} WHERE aid = :aid", array(':aid' => $aid))->fetch();
+    $edit['actions_label'] = $data->label;
+    $edit['actions_type'] = $data->type;
+    $function = $data->callback;
+    $action = md5($data->callback);
+    $params = unserialize($data->parameters);
+    if ($params) {
+      foreach ($params as $name => $val) {
+        $edit[$name] = $val;
+      }
+    }
+  }
+  // Otherwise, we are creating a new action instance.
+  else {
+    $function = $actions_map[$action]['callback'];
+    $edit['actions_label'] = $actions_map[$action]['label'];
+    $edit['actions_type'] = $actions_map[$action]['type'];
+  }
+
+  $form['actions_label'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Label'),
+    '#default_value' => $edit['actions_label'],
+    '#maxlength' => '255',
+    '#description' => t('A unique label for this advanced action. This label will be displayed in the interface of modules that integrate with actions, such as Trigger module.'),
+    '#weight' => -10
+  );
+  $action_form = $function . '_form';
+  $form = array_merge($form, $action_form($edit));
+  $form['actions_type'] = array(
+    '#type' => 'value',
+    '#value' => $edit['actions_type'],
+  );
+  $form['actions_action'] = array(
+    '#type' => 'hidden',
+    '#value' => $action,
+  );
+  // $aid is set when configuring an existing action instance.
+  if (isset($aid)) {
+    $form['actions_aid'] = array(
+      '#type' => 'hidden',
+      '#value' => $aid,
+    );
+  }
+  $form['actions_configured'] = array(
+    '#type' => 'hidden',
+    '#value' => '1',
+  );
+  $form['buttons']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#weight' => 13
+  );
+
+  return $form;
+}
+
+/**
+ * Validate system_actions_configure() form submissions.
+ */
+function system_actions_configure_validate($form, &$form_state) {
+  $function = actions_function_lookup($form_state['values']['actions_action']) . '_validate';
+  // Hand off validation to the action.
+  if (function_exists($function)) {
+    $function($form, $form_state);
+  }
+}
+
+/**
+ * Process system_actions_configure() form submissions.
+ */
+function system_actions_configure_submit($form, &$form_state) {
+  $function = actions_function_lookup($form_state['values']['actions_action']);
+  $submit_function = $function . '_submit';
+
+  // Action will return keyed array of values to store.
+  $params = $submit_function($form, $form_state);
+  $aid = isset($form_state['values']['actions_aid']) ? $form_state['values']['actions_aid'] : NULL;
+
+  actions_save($function, $form_state['values']['actions_type'], $params, $form_state['values']['actions_label'], $aid);
+  drupal_set_message(t('The action has been successfully saved.'));
+
+  $form_state['redirect'] = 'admin/config/system/actions/manage';
+}
+
+/**
+ * Create the form for confirmation of deleting an action.
+ *
+ * @see system_actions_delete_form_submit()
+ * @ingroup forms
+ */
+function system_actions_delete_form($form, &$form_state, $action) {
+  $form['aid'] = array(
+    '#type' => 'hidden',
+    '#value' => $action->aid,
+  );
+  return confirm_form($form,
+    t('Are you sure you want to delete the action %action?', array('%action' => $action->label)),
+    'admin/config/system/actions/manage',
+    t('This cannot be undone.'),
+    t('Delete'),
+    t('Cancel')
+  );
+}
+
+/**
+ * Process system_actions_delete form submissions.
+ *
+ * Post-deletion operations for action deletion.
+ */
+function system_actions_delete_form_submit($form, &$form_state) {
+  $aid = $form_state['values']['aid'];
+  $action = actions_load($aid);
+  actions_delete($aid);
+  $label = check_plain($action->label);
+  watchdog('user', 'Deleted action %aid (%action)', array('%aid' => $aid, '%action' => $label));
+  drupal_set_message(t('Action %action was deleted', array('%action' => $label)));
+  $form_state['redirect'] = 'admin/config/system/actions/manage';
+}
+
+/**
+ * Post-deletion operations for deleting action orphans.
+ *
+ * @param $orphaned
+ *   An array of orphaned actions.
+ */
+function system_action_delete_orphans_post($orphaned) {
+  foreach ($orphaned as $callback) {
+    drupal_set_message(t("Deleted orphaned action (%action).", array('%action' => $callback)));
+  }
+}
+
+/**
+ * Remove actions that are in the database but not supported by any enabled module.
+ */
+function system_actions_remove_orphans() {
+  actions_synchronize(TRUE);
+  drupal_goto('admin/config/system/actions/manage');
+}
+

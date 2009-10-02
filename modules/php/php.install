@@ -1,5 +1,5 @@
 <?php
-// $Id: php.install,v 1.12 2009/08/28 16:23:04 dries Exp $
+// $Id: php.install,v 1.14 2009/09/20 07:32:18 dries Exp $
 
 /**
  * @file
@@ -10,7 +10,7 @@
  * Implement hook_install().
  */
 function php_install() {
-  $format_exists = (bool) db_query_range('SELECT 1 FROM {filter_format} WHERE name = :name', array(':name' => 'PHP code'), 0, 1)->fetchField();
+  $format_exists = (bool) db_query_range('SELECT 1 FROM {filter_format} WHERE name = :name', 0, 1, array(':name' => 'PHP code'))->fetchField();
   // Add a PHP code text format, if it does not exist. Do this only for the
   // first install (or if the format has been manually deleted) as there is no
   // reliable method to identify the format in an uninstall hook or in
@@ -19,7 +19,6 @@ function php_install() {
     $format = db_insert('filter_format')
       ->fields(array(
         'name' => 'PHP code',
-        'roles' => '',
         'cache' => 0,
       ))
       ->execute();

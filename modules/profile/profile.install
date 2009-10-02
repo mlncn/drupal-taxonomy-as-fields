@@ -1,5 +1,5 @@
 <?php
-// $Id: profile.install,v 1.20 2009/06/01 22:07:09 dries Exp $
+// $Id: profile.install,v 1.22 2009/09/29 15:13:56 dries Exp $
 
 /**
  * @file
@@ -7,20 +7,9 @@
  */
 
 /**
- * Implement hook_install().
- */
-function profile_install() {
-  // Create tables.
-  drupal_install_schema('profile');
-}
-
-/**
  * Implement hook_uninstall().
  */
 function profile_uninstall() {
-  // Remove tables
-  drupal_uninstall_schema('profile');
-
   variable_del('profile_block_author_fields');
 }
 
@@ -162,8 +151,6 @@ function profile_schema() {
  * Rename {profile_fields} table to {profile_field} and {profile_values} to {profile_value}.
  */
 function profile_update_7001() {
-  $ret = array();
-  db_rename_table($ret, 'profile_fields', 'profile_field');
-  db_rename_table($ret, 'profile_values', 'profile_value');
-  return $ret;
+  db_rename_table('profile_fields', 'profile_field');
+  db_rename_table('profile_values', 'profile_value');
 }

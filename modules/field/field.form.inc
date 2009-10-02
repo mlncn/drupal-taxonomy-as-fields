@@ -1,5 +1,5 @@
 <?php
-// $Id: field.form.inc,v 1.23 2009/08/27 04:40:12 webchick Exp $
+// $Id: field.form.inc,v 1.26 2009/09/29 01:08:35 dries Exp $
 
 /**
  * @file
@@ -13,7 +13,7 @@ function field_default_form($obj_type, $object, $field, $instance, $langcode, $i
   // This could be called with no object, as when a UI module creates a
   // dummy form to set default values.
   if ($object) {
-    list($id, , ) = field_attach_extract_ids($obj_type, $object);
+    list($id, , ) = field_extract_ids($obj_type, $object);
   }
   $addition = array();
 
@@ -145,7 +145,7 @@ function field_multiple_value_form($field, $instance, $langcode, $items, &$form,
 
   $form_element = array(
     '#theme' => 'field_multiple_value_form',
-    '#multiple' => $field['cardinality'],
+    '#cardinality' => $field['cardinality'],
     '#title' => $title,
     '#required' => $instance['required'],
     '#description' => $description,
@@ -224,7 +224,7 @@ function field_multiple_value_form($field, $instance, $langcode, $items, &$form,
 function theme_field_multiple_value_form($element) {
   $output = '';
 
-  if ($element['#multiple'] > 1 || $element['#multiple'] == FIELD_CARDINALITY_UNLIMITED) {
+  if ($element['#cardinality'] > 1 || $element['#cardinality'] == FIELD_CARDINALITY_UNLIMITED) {
     $table_id = $element['#field_name'] . '_values';
     $order_class = $element['#field_name'] . '-delta-order';
     $required = !empty($element['#required']) ? '<span class="form-required" title="' . t('This field is required. ') . '">*</span>' : '';
@@ -362,9 +362,5 @@ function field_add_more_js($form, $form_state) {
   $field_form[$langcode][$delta]['#prefix'] = '<div class="ajax-new-content">' . (isset($field_form[$langcode][$delta]['#prefix']) ? $field_form[$langcode][$delta]['#prefix'] : '');
   $field_form[$langcode][$delta]['#suffix'] = (isset($field_form[$langcode][$delta]['#suffix']) ? $field_form[$langcode][$delta]['#suffix'] : '') . '</div>';
 
-  $output = theme('status_messages') . drupal_render($field_form);
-
-  $commands = array();
-  $commands[] = ajax_command_replace(NULL, $output);
-  ajax_render($commands);
+  return drupal_render($field_form);
 }

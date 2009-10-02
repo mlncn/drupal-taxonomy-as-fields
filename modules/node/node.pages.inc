@@ -1,5 +1,5 @@
 <?php
-// $Id: node.pages.inc,v 1.79 2009/09/05 15:05:03 dries Exp $
+// $Id: node.pages.inc,v 1.83 2009/09/29 15:31:15 dries Exp $
 
 /**
  * @file
@@ -107,7 +107,7 @@ function node_object_prepare($node) {
 /**
  * Generate the node add/edit form array.
  */
-function node_form(&$form_state, $node) {
+function node_form($form, &$form_state, $node) {
   global $user;
 
   if (isset($form_state['node'])) {
@@ -300,10 +300,10 @@ function node_form(&$form_state, $node) {
  * Button submit function: handle the 'Delete' button on the node form.
  */
 function node_form_delete_submit($form, &$form_state) {
-  $destination = '';
-  if (isset($_REQUEST['destination'])) {
+  $destination = array();
+  if (isset($_GET['destination'])) {
     $destination = drupal_get_destination();
-    unset($_REQUEST['destination']);
+    unset($_GET['destination']);
   }
   $node = $form['#node'];
   $form_state['redirect'] = array('node/' . $node->nid . '/delete', $destination);
@@ -453,7 +453,7 @@ function node_form_submit_build_node($form, &$form_state) {
 /**
  * Menu callback -- ask for confirmation of node deletion
  */
-function node_delete_confirm(&$form_state, $node) {
+function node_delete_confirm($form, &$form_state, $node) {
   $form['nid'] = array(
     '#type' => 'value',
     '#value' => $node->nid,
@@ -536,7 +536,7 @@ function node_revision_overview($node) {
 /**
  * Ask for confirmation of the reversion to prevent against CSRF attacks.
  */
-function node_revision_revert_confirm($form_state, $node_revision) {
+function node_revision_revert_confirm($form, $form_state, $node_revision) {
   $form['#node_revision'] = $node_revision;
   return confirm_form($form, t('Are you sure you want to revert to the revision from %revision-date?', array('%revision-date' => format_date($node_revision->revision_timestamp))), 'node/' . $node_revision->nid . '/revisions', '', t('Revert'), t('Cancel'));
 }
@@ -556,19 +556,15 @@ function node_revision_revert_confirm_submit($form, &$form_state) {
   $form_state['redirect'] = 'node/' . $node_revision->nid . '/revisions';
 }
 
-function node_revision_delete_confirm($form_state, $node_revision) {
+function node_revision_delete_confirm($form, $form_state, $node_revision) {
   $form['#node_revision'] = $node_revision;
   return confirm_form($form, t('Are you sure you want to delete the revision from %revision-date?', array('%revision-date' => format_date($node_revision->revision_timestamp))), 'node/' . $node_revision->nid . '/revisions', t('This action cannot be undone.'), t('Delete'), t('Cancel'));
 }
 
 function node_revision_delete_confirm_submit($form, &$form_state) {
   $node_revision = $form['#node_revision'];
-  db_delete('node_revision')
-    ->condition('nid', $node_revision->nid)
-    ->condition('vid', $node_revision->vid)
-    ->execute();
-  module_invoke_all('node_delete_revision', $node_revision);
-  field_attach_delete_revision('node', $node_revision);
+  node_revision_delete($node_revision->vid);
+
   watchdog('content', '@type: deleted %title revision %revision.', array('@type' => $node_revision->type, '%title' => $node_revision->title, '%revision' => $node_revision->vid));
   drupal_set_message(t('Revision from %revision-date of @type %title has been deleted.', array('%revision-date' => format_date($node_revision->revision_timestamp), '@type' => node_type_get_name($node_revision), '%title' => $node_revision->title)));
   $form_state['redirect'] = 'node/' . $node_revision->nid;

@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.inc,v 1.226 2009/08/22 14:34:17 webchick Exp $
+// $Id: locale.inc,v 1.229 2009/09/29 15:13:54 dries Exp $
 
 /**
  * @file
@@ -166,9 +166,8 @@ function locale_languages_add_screen() {
 /**
  * Predefined language setup form.
  */
-function locale_languages_predefined_form() {
+function locale_languages_predefined_form($form) {
   $predefined = _locale_prepare_predefined_list();
-  $form = array();
   $form['language list'] = array('#type' => 'fieldset',
     '#title' => t('Predefined language'),
     '#collapsible' => TRUE,
@@ -186,8 +185,7 @@ function locale_languages_predefined_form() {
 /**
  * Custom language addition form.
  */
-function locale_languages_custom_form() {
-  $form = array();
+function locale_languages_custom_form($form) {
   $form['custom language'] = array('#type' => 'fieldset',
     '#title' => t('Custom language'),
     '#collapsible' => TRUE,
@@ -210,9 +208,8 @@ function locale_languages_custom_form() {
  * @param $langcode
  *   Language code of the language to edit.
  */
-function locale_languages_edit_form(&$form_state, $langcode) {
+function locale_languages_edit_form($form, &$form_state, $langcode) {
   if ($language = db_query("SELECT * FROM {languages} WHERE language = :language", array(':language' => $langcode))->fetchObject()) {
-    $form = array();
     _locale_languages_common_controls($form, $language);
     $form['submit'] = array(
       '#type' => 'submit',
@@ -406,7 +403,7 @@ function locale_languages_edit_form_submit($form, &$form_state) {
 /**
  * User interface for the language deletion confirmation screen.
  */
-function locale_languages_delete_form(&$form_state, $langcode) {
+function locale_languages_delete_form($form, &$form_state, $langcode) {
 
   // Do not allow deletion of English locale.
   if ($langcode == 'en') {
@@ -698,7 +695,7 @@ function locale_translation_filter_form_submit($form, &$form_state) {
 /**
  * User interface for the translation import screen.
  */
-function locale_translate_import_form() {
+function locale_translate_import_form($form) {
   // Get all languages, except English
   drupal_static_reset('language_list');
   $names = locale_language_list('name');
@@ -716,7 +713,6 @@ function locale_translate_import_form() {
     $default = key($names);
   }
 
-  $form = array();
   $form['import'] = array('#type' => 'fieldset',
     '#title' => t('Import translation'),
   );
@@ -769,7 +765,7 @@ function locale_translate_import_form_submit($form, &$form_state) {
     }
 
     // Now import strings into the language
-    if ($ret = _locale_import_po($file, $langcode, $form_state['values']['mode'], $form_state['values']['group']) == FALSE) {
+    if ($return = _locale_import_po($file, $langcode, $form_state['values']['mode'], $form_state['values']['group']) == FALSE) {
       $variables = array('%filename' => $file->filename);
       drupal_set_message(t('The translation import of %filename failed.', $variables), 'error');
       watchdog('locale', 'The translation import of %filename failed.', $variables, WATCHDOG_ERROR);
@@ -816,7 +812,7 @@ function locale_translate_export_screen() {
  * @param $names
  *   An associate array with localized language names
  */
-function locale_translate_export_po_form(&$form_state, $names) {
+function locale_translate_export_po_form($form, &$form_state, $names) {
   $form['export'] = array('#type' => 'fieldset',
     '#title' => t('Export translation'),
     '#collapsible' => TRUE,
@@ -881,7 +877,7 @@ function locale_translate_export_po_form_submit($form, &$form_state) {
 /**
  * User interface for string editing.
  */
-function locale_translate_edit_form(&$form_state, $lid) {
+function locale_translate_edit_form($form, &$form_state, $lid) {
   // Fetch source string, if possible.
   $source = db_query('SELECT source, context, textgroup, location FROM {locales_source} WHERE lid = :lid', array(':lid' => $lid))->fetchObject();
   if (!$source) {
@@ -1051,7 +1047,7 @@ function locale_translate_delete_page($lid) {
 /**
  * User interface for the string deletion confirmation screen.
  */
-function locale_translate_delete_form(&$form_state, $source) {
+function locale_translate_delete_form($form, &$form_state, $source) {
   $form['lid'] = array('#type' => 'value', '#value' => $source->lid);
   return confirm_form($form, t('Are you sure you want to delete the string "%source"?', array('%source' => $source->source)), 'admin/config/regional/translate/translate', t('Deleting the string will remove all translations of this string in all languages. This action cannot be undone.'), t('Delete'), t('Cancel'));
 }
@@ -2179,7 +2175,7 @@ function _locale_export_string($str) {
  */
 function _locale_export_wrap($str, $len) {
   $words = explode(' ', $str);
-  $ret = array();
+  $return = array();
 
   $cur = "";
   $nstr = 1;
@@ -2190,16 +2186,16 @@ function _locale_export_wrap($str, $len) {
       $nstr = 0;
     }
     elseif (strlen("$cur $word") > $len) {
-      $ret[] = $cur . " ";
+      $return[] = $cur . " ";
       $cur = $word;
     }
     else {
       $cur = "$cur $word";
     }
   }
-  $ret[] = $cur;
+  $return[] = $cur;
 
-  return implode("\n", $ret);
+  return implode("\n", $return);
 }
 
 /**
@@ -2429,7 +2425,7 @@ function _locale_rebuild_js($langcode = NULL) {
       $data .= "'pluralFormula': function (\$n) { return Number({$language->formula}); }, ";
     }
 
-    $data .= "'strings': " . drupal_to_js($translations) . " };";
+    $data .= "'strings': " . drupal_json_encode($translations) . " };";
     $data_hash = md5($data);
   }
 

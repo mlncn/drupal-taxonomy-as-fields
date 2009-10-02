@@ -1,5 +1,5 @@
 <?php
-// $Id: openid.pages.inc,v 1.19 2009/07/29 06:39:34 dries Exp $
+// $Id: openid.pages.inc,v 1.22 2009/09/21 06:44:14 dries Exp $
 
 /**
  * @file
@@ -83,16 +83,17 @@ function openid_user_add_validate($form, &$form_state) {
   if (db_query("SELECT authname FROM {authmap} WHERE authname = :authname", (array(':authname' => $claimed_id)))->fetchField()) {
     form_set_error('openid_identifier', t('That OpenID is already in use on this site.'));
   }
-  else {
-    $return_to = url('user/' . arg(1) . '/openid', array('absolute' => TRUE));
-    openid_begin($form_state['values']['openid_identifier'], $return_to);
-  }
+}
+
+function openid_user_add_submit($form, &$form_state) {
+  $return_to = url('user/' . arg(1) . '/openid', array('absolute' => TRUE));
+  openid_begin($form_state['values']['openid_identifier'], $return_to);
 }
 
 /**
  * Menu callback; Delete the specified OpenID identity from the system.
  */
-function openid_user_delete_form($form_state, $account, $aid = 0) {
+function openid_user_delete_form($form, $form_state, $account, $aid = 0) {
   $authname = db_query("SELECT authname FROM {authmap} WHERE uid = :uid AND aid = :aid AND module = 'openid'", array(
     ':uid' => $account->uid,
     ':aid' => $aid,
@@ -101,14 +102,14 @@ function openid_user_delete_form($form_state, $account, $aid = 0) {
   return confirm_form(array(), t('Are you sure you want to delete the OpenID %authname for %user?', array('%authname' => $authname, '%user' => $account->name)), 'user/' . $account->uid . '/openid');
 }
 
-function openid_user_delete_form_submit(&$form_state, $form_values) {
+function openid_user_delete_form_submit($form, &$form_state) {
   $query = db_delete('authmap')
-    ->condition('uid', $form_state['#args'][0]->uid)
-    ->condition('aid', $form_state['#args'][1])
+    ->condition('uid', $form_state['args'][0]->uid)
+    ->condition('aid', $form_state['args'][1])
     ->condition('module', 'openid')
     ->execute();
   if ($query) {
     drupal_set_message(t('OpenID deleted.'));
   }
-  $form_state['#redirect'] = 'user/' . $form_state['#args'][0]->uid . '/openid';
+  $form_state['redirect'] = 'user/' . $form_state['args'][0]->uid . '/openid';
 }

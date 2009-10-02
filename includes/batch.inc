@@ -1,5 +1,5 @@
 <?php
-// $Id: batch.inc,v 1.37 2009/08/26 15:00:17 dries Exp $
+// $Id: batch.inc,v 1.39 2009/09/21 07:56:07 dries Exp $
 
 
 /**
@@ -140,7 +140,7 @@ function _batch_do() {
   // Perform actual processing.
   list($percentage, $message) = _batch_process();
 
-  drupal_json(array('status' => TRUE, 'percentage' => $percentage, 'message' => $message));
+  drupal_json_output(array('status' => TRUE, 'percentage' => $percentage, 'message' => $message));
 }
 
 /**
@@ -426,29 +426,24 @@ function _batch_finished() {
   if ($_batch['progressive']) {
     // Revert the 'destination' that was saved in batch_process().
     if (isset($_batch['destination'])) {
-      $_REQUEST['destination'] = $_batch['destination'];
+      $_GET['destination'] = $_batch['destination'];
     }
 
     // Determine the target path to redirect to.
-    if (isset($_batch['form_state']['redirect'])) {
-      $redirect = $_batch['form_state']['redirect'];
-    }
-    elseif (isset($_batch['redirect'])) {
-      $redirect = $_batch['redirect'];
-    }
-    else {
-      $redirect = $_batch['source_page'];
+    if (!isset($_batch['form_state']['redirect'])) {
+      if (isset($_batch['redirect'])) {
+        $_batch['form_state']['redirect'] = $_batch['redirect'];
+      }
+      else {
+        $_batch['form_state']['redirect'] = $_batch['source_page'];
+      }
     }
 
     // Use drupal_redirect_form() to handle the redirection logic.
-    $form = isset($batch['form']) ? $batch['form'] : array();
-    if (empty($_batch['form_state']['rebuild']) && empty($_batch['form_state']['storage'])) {
-      drupal_redirect_form($form, $redirect);
-    }
+    drupal_redirect_form($_batch['form_state']);
 
-    // We get here if $form['#redirect'] was FALSE, or if the form is a
-    // multi-step form. We save the final $form_state value to be retrieved
-    // by drupal_get_form(), and redirect to the originating page.
+    // If no redirection happened, save the final $form_state value to be
+    // retrieved by drupal_get_form() and redirect to the originating page.
     $_SESSION['batch_form_state'] = $_batch['form_state'];
     drupal_goto($_batch['source_page']);
   }

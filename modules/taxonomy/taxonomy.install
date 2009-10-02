@@ -1,26 +1,15 @@
 <?php
-// $Id: taxonomy.install,v 1.21 2009/08/04 06:50:07 webchick Exp $
+// $Id: taxonomy.install,v 1.23 2009/09/29 15:13:56 dries Exp $
 
 /**
  * @file
  * Install, update and uninstall functions for the taxonomy module.
  */
 
- /**
- * Implement hook_install().
- */
-function taxonomy_install() {
-  // Create tables.
-  drupal_install_schema('taxonomy');
-}
-
 /**
  * Implement hook_uninstall().
  */
 function taxonomy_uninstall() {
-  // Remove tables.
-  drupal_uninstall_schema('taxonomy');
-
   // Remove variables.
   variable_del('taxonomy_override_selector');
   variable_del('taxonomy_terms_per_page_admin');
@@ -304,7 +293,6 @@ function taxonomy_schema() {
  * Add vocabulary machine_name column.
  */
 function taxonomy_update_7002() {
-  $ret = array();
   $field = array(
     'type' => 'varchar',
     'length' => 255,
@@ -313,7 +301,7 @@ function taxonomy_update_7002() {
     'description' => 'The vocabulary machine name.',
   );
 
-  db_add_field($ret, 'taxonomy_vocabulary', 'machine_name', $field);
+  db_add_field('taxonomy_vocabulary', 'machine_name', $field);
 
   foreach (taxonomy_get_vocabularies() as $vid => $vocabulary) {
     $machine_name = 'vocabulary_' . $vid;
@@ -323,7 +311,6 @@ function taxonomy_update_7002() {
       ->execute();
     field_attach_create_bundle($machine_name);
   }
-  return $ret;
 }
 
 /**
@@ -333,8 +320,5 @@ function taxonomy_update_7002() {
  * itself is retained to allow for data to be upgraded.
  */
 function taxonomy_update_7003() {
-  $ret = array();
-  db_drop_field($ret, 'taxonomy_vocabulary', 'relations');
-
-  return $ret;
+  db_drop_field('taxonomy_vocabulary', 'relations');
 }

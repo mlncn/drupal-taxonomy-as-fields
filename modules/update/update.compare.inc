@@ -1,5 +1,5 @@
 <?php
-// $Id: update.compare.inc,v 1.29 2009/08/24 00:42:34 webchick Exp $
+// $Id: update.compare.inc,v 1.31 2009/09/29 16:30:29 webchick Exp $
 
 /**
  * @file
@@ -117,6 +117,10 @@ function _update_process_info_list(&$projects, $list, $project_type, $status) {
       $file->info['_info_file_ctime'] = filectime($info_filename);
     }
 
+    if (!isset($file->info['datestamp'])) {
+      $file->info['datestamp'] = 0;
+    }
+
     $project_name = $file->info['project'];
 
     // Figure out what project type we're going to use to display this module
@@ -139,7 +143,7 @@ function _update_process_info_list(&$projects, $list, $project_type, $status) {
       $projects[$project_name] = array(
         'name' => $project_name,
         'info' => $file->info,
-        'datestamp' => isset($file->info['datestamp']) ? $file->info['datestamp'] : 0,
+        'datestamp' => $file->info['datestamp'],
         'includes' => array($file->name => $file->info['name']),
         'project_type' => $project_display_type,
         'project_status' => $status,
@@ -153,6 +157,7 @@ function _update_process_info_list(&$projects, $list, $project_type, $status) {
       // for disabled modules, too.
       $projects[$project_name]['includes'][$file->name] = $file->info['name'];
       $projects[$project_name]['info']['_info_file_ctime'] = max($projects[$project_name]['info']['_info_file_ctime'], $file->info['_info_file_ctime']);
+      $projects[$project_name]['datestamp'] = max($projects[$project_name]['datestamp'], $file->info['datestamp']);
     }
     elseif (empty($status)) {
       // If we have a project_name that matches, but the project_display_type
@@ -175,12 +180,7 @@ function update_get_project_name($file) {
   if (isset($file->info['project'])) {
     $project_name = $file->info['project'];
   }
-  elseif (isset($file->info['package']) && (strpos($file->info['package'], 'Core') !== FALSE)) {
-    $project_name = 'drupal';
-  }
-  elseif (in_array($file->name, array('garland', 'minnelli', 'stark'))) {
-    // Unfortunately, there's no way to tell if a theme is part of core,
-    // so we must hard-code a list here.
+  elseif (isset($file->info['package']) && (strpos($file->info['package'], 'Core') === 0)) {
     $project_name = 'drupal';
   }
   return $project_name;

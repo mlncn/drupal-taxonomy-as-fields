@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.test,v 1.13 2009/07/14 20:53:16 webchick Exp $
+// $Id: menu.test,v 1.18 2009/10/01 13:22:43 dries Exp $
 
 /**
  * @file
@@ -18,6 +18,10 @@ class MenuIncTestCase extends DrupalWebTestCase {
   function setUp() {
     // Enable dummy module that implements hook_menu.
     parent::setUp('menu_test');
+    // Make the tests below more robust by explicitly setting the default theme
+    // and administrative theme that they expect.
+    variable_set('theme_default', 'garland');
+    variable_set('admin_theme', 'seven');
   }
 
   /**
@@ -27,6 +31,80 @@ class MenuIncTestCase extends DrupalWebTestCase {
     $this->drupalGet('node');
     $this->assertText('A title with @placeholder', t('Raw text found on the page'));
     $this->assertNoText(t('A title with @placeholder', array('@placeholder' => 'some other text')), t('Text with placeholder substitutions not found.'));
+  }
+
+  /**
+   * Test the theme callback when it is set to use an administrative theme.
+   */
+  function testThemeCallbackAdministrative() {
+    $this->drupalGet('menu-test/theme-callback/use-admin-theme');
+    $this->assertText('Requested theme: seven. Actual theme: seven.', t('The administrative theme can be correctly set in a theme callback.'));
+    $this->assertRaw('seven/style.css', t("The administrative theme's CSS appears on the page."));
+  }
+
+  /**
+   * Test that the theme callback is properly inherited.
+   */
+  function testThemeCallbackInheritance() {
+    $this->drupalGet('menu-test/theme-callback/use-admin-theme/inheritance');
+    $this->assertText('Requested theme: seven. Actual theme: seven. Theme callback inheritance is being tested.', t('Theme callback inheritance correctly uses the administrative theme.'));
+    $this->assertRaw('seven/style.css', t("The administrative theme's CSS appears on the page."));
+  }
+
+  /**
+   * Test the theme callback when the site is in maintenance mode.
+   */
+  function testThemeCallbackMaintenanceMode() {
+    variable_set('maintenance_mode', TRUE);
+
+    // For a regular user, the fact that the site is in maintenance mode means
+    // we expect the theme callback system to be bypassed entirely.
+    $this->drupalGet('menu-test/theme-callback/use-admin-theme');
+    $this->assertRaw('minnelli/minnelli.css', t("The maintenance theme's CSS appears on the page."));
+
+    // An administrator, however, should continue to see the requested theme.
+    $admin_user = $this->drupalCreateUser(array('access site in maintenance mode'));
+    $this->drupalLogin($admin_user);
+    $this->drupalGet('menu-test/theme-callback/use-admin-theme');
+    $this->assertText('Requested theme: seven. Actual theme: seven.', t('The theme callback system is correctly triggered for an administrator when the site is in maintenance mode.'));
+    $this->assertRaw('seven/style.css', t("The administrative theme's CSS appears on the page."));
+  }
+
+  /**
+   * Test the theme callback when it is set to use an optional theme.
+   */
+  function testThemeCallbackOptionalTheme() {
+    // Request a theme that is not enabled.
+    $this->drupalGet('menu-test/theme-callback/use-stark-theme');
+    $this->assertText('Requested theme: stark. Actual theme: garland.', t('The theme callback system falls back on the default theme when a theme that is not enabled is requested.'));
+    $this->assertRaw('garland/style.css', t("The default theme's CSS appears on the page."));
+
+    // Now enable the theme and request it again.
+    $admin_user = $this->drupalCreateUser(array('administer site configuration'));
+    $this->drupalLogin($admin_user);
+    $this->drupalPost('admin/appearance', array('status[stark]' => 1), t('Save configuration'));
+    $this->drupalLogout();
+    $this->drupalGet('menu-test/theme-callback/use-stark-theme');
+    $this->assertText('Requested theme: stark. Actual theme: stark.', t('The theme callback system uses an optional theme once it has been enabled.'));
+    $this->assertRaw('stark/layout.css', t("The optional theme's CSS appears on the page."));
+  }
+
+  /**
+   * Test the theme callback when it is set to use a theme that does not exist.
+   */
+  function testThemeCallbackFakeTheme() {
+    $this->drupalGet('menu-test/theme-callback/use-fake-theme');
+    $this->assertText('Requested theme: fake_theme. Actual theme: garland.', t('The theme callback system falls back on the default theme when a theme that does not exist is requested.'));
+    $this->assertRaw('garland/style.css', t("The default theme's CSS appears on the page."));
+  }
+
+  /**
+   * Test the theme callback when no theme is requested.
+   */
+  function testThemeCallbackNoThemeRequested() {
+    $this->drupalGet('menu-test/theme-callback/no-theme-requested');
+    $this->assertText('Requested theme: NONE. Actual theme: garland.', t('The theme callback system falls back on the default theme when no theme is requested.'));
+    $this->assertRaw('garland/style.css', t("The default theme's CSS appears on the page."));
   }
 
   /**
@@ -73,6 +151,15 @@ class MenuIncTestCase extends DrupalWebTestCase {
     $this->assertNoLink(t('Menu link #1'), 0, t('Not found menu link #1'));
     $this->assertNoLink(t('Menu link #1'), 0, t('Not found menu link #1-1'));
     $this->assertLink(t('Menu link #2'), 0, t('Found menu link #2'));
+  }
+
+  /**
+   * Test menu_get_names().
+   */
+  function testMenuGetNames() {
+    // The main-menu is there but has no items by default, so not returned by
+    // menu_get_names(). Therefore we cannot check for that.
+    $this->assertEqual(menu_get_names(), array('admin_shortcuts', 'management', 'navigation', 'original', 'user-menu'), t('Expected menu names were returned.'));
   }
 
   /**
@@ -125,6 +212,21 @@ class MenuIncTestCase extends DrupalWebTestCase {
     $this->assertEqual($compare_item, $item, t('Modified menu item is equal to newly retrieved menu item.'), 'menu');
   }
 
+  /**
+   * Test menu maintainance hooks.
+   */
+  function testMenuItemHooks() {
+    // Create an item.
+    menu_link_maintain('menu_test', 'insert', 'menu_test_maintain/4', 'Menu link #4');
+    $this->assertEqual(menu_test_static_variable(), 'insert', t('hook_menu_link_insert() fired correctly'));
+    // Update the item.
+    menu_link_maintain('menu_test', 'update', 'menu_test_maintain/4', 'Menu link updated');
+    $this->assertEqual(menu_test_static_variable(), 'update', t('hook_menu_link_update() fired correctly'));
+    // Delete the item.
+    menu_link_maintain('menu_test', 'delete', 'menu_test_maintain/4', '');
+    $this->assertEqual(menu_test_static_variable(), 'delete', t('hook_menu_link_delete() fired correctly'));
+  }
+
 }
 
 /**
@@ -164,3 +266,59 @@ class MenuRebuildTestCase extends DrupalWebTestCase {
   }
 
 }
+
+/**
+ * Menu tree data related tests.
+ */
+class MenuTreeDataTestCase extends DrupalUnitTestCase {
+  /**
+   * Dummy link structure acceptable for menu_tree_data().
+   */
+  var $links = array(
+    1 => array('mlid' => 1, 'depth' => 1),
+    2 => array('mlid' => 2, 'depth' => 1),
+    3 => array('mlid' => 3, 'depth' => 2),
+    4 => array('mlid' => 4, 'depth' => 3),
+    5 => array('mlid' => 5, 'depth' => 1),
+  );
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Menu tree generation',
+      'description' => 'Tests recursive menu tree generation functions.',
+      'group' => 'Menu',
+    );
+  }
+
+  /**
+   * Validate the generation of a proper menu tree hierarchy.
+   */
+  function testMenuTreeData() {
+    $tree = menu_tree_data($this->links);
+
+    // Validate that parent items #1, #2, and #5 exist on the root level.
+    $this->assertSameLink($this->links[1], $tree[1]['link'], t('Parent item #1 exists.'));
+    $this->assertSameLink($this->links[2], $tree[2]['link'], t('Parent item #2 exists.'));
+    $this->assertSameLink($this->links[5], $tree[5]['link'], t('Parent item #5 exists.'));
+
+    // Validate that child item #4 exists at the correct location in the hierarchy.
+    $this->assertSameLink($this->links[4], $tree[2]['below'][3]['below'][4]['link'], t('Child item #4 exists in the hierarchy.'));
+  }
+
+  /**
+   * Check that two menu links are the same by comparing the mlid.
+   *
+   * @param $link1
+   *   A menu link item.
+   * @param $link2
+   *   A menu link item.
+   * @param $message
+   *   The message to display along with the assertion.
+   * @return
+   *   TRUE if the assertion succeeded, FALSE otherwise.
+   */
+  protected function assertSameLink($link1, $link2, $message = '') {
+    return $this->assert($link1['mlid'] == $link2['mlid'], $message ? $message : t('First link is identical to second link'));
+  }
+}
+

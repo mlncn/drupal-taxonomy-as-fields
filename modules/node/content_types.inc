@@ -1,5 +1,5 @@
 <?php
-// $Id: content_types.inc,v 1.92 2009/09/05 15:05:03 dries Exp $
+// $Id: content_types.inc,v 1.95 2009/09/28 22:14:30 dries Exp $
 
 /**
  * @file
@@ -21,11 +21,11 @@ function node_overview_types() {
       $type_url_str = str_replace('_', '-', $type->type);
       $row = array(theme('node_admin_overview', $name, $type));
       // Set the edit column.
-      $row[] = array('data' => l(t('edit'), 'admin/structure/node-type/' . $type_url_str));
+      $row[] = array('data' => l(t('edit'), 'admin/structure/types/manage/' . $type_url_str));
 
       // Set the delete column.
       if ($type->custom) {
-        $row[] = array('data' => l(t('delete'), 'admin/structure/node-type/' . $type_url_str . '/delete'));
+        $row[] = array('data' => l(t('delete'), 'admin/structure/types/manage/' . $type_url_str . '/delete'));
       }
       else {
         $row[] = array('data' => '');
@@ -57,7 +57,7 @@ function theme_node_admin_overview($name, $type) {
 /**
  * Generates the node type editing form.
  */
-function node_type_form(&$form_state, $type = NULL) {
+function node_type_form($form, &$form_state, $type = NULL) {
   if (!isset($type->type)) {
     // This is a new type. Node module managed types are custom and unlocked.
     $type = node_type_set_defaults(array('custom' => 1, 'locked' => 0));
@@ -316,7 +316,7 @@ function node_type_form_submit($form, &$form_state) {
   $type->locked = $form_state['values']['locked'];
 
   if ($op == t('Delete content type')) {
-    $form_state['redirect'] = 'admin/structure/node-type/' . str_replace('_', '-', $type->old_type) . '/delete';
+    $form_state['redirect'] = 'admin/structure/types/manage/' . str_replace('_', '-', $type->old_type) . '/delete';
     return;
   }
 
@@ -350,6 +350,7 @@ function node_type_form_submit($form, &$form_state) {
   }
 
   node_types_rebuild();
+  menu_rebuild();
   $t_args = array('%name' => $type->name);
 
   if ($status == SAVED_UPDATED) {
@@ -414,7 +415,7 @@ function node_type_reset($type) {
 /**
  * Menu callback; delete a single content type.
  */
-function node_type_delete_confirm(&$form_state, $type) {
+function node_type_delete_confirm($form, &$form_state, $type) {
   $form['type'] = array('#type' => 'value', '#value' => $type->type);
   $form['name'] = array('#type' => 'value', '#value' => $type->name);
 
@@ -444,6 +445,7 @@ function node_type_delete_confirm_submit($form, &$form_state) {
   watchdog('menu', 'Deleted content type %name.', $t_args, WATCHDOG_NOTICE);
 
   node_types_rebuild();
+  menu_rebuild();
 
   $form_state['redirect'] = 'admin/structure/types';
   return;

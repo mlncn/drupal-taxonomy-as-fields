@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.785 2009/09/05 15:05:04 dries Exp $
+// $Id: system.module,v 1.800 2009/09/30 18:36:02 dries Exp $
 
 /**
  * @file
@@ -110,8 +110,8 @@ function system_help($path, $arg) {
       $output = '<p>' . t('Select the default theme for Drupal. To configure site-wide display settings, click the "configure" task above. Alternatively, to override these settings in a specific theme, click the "configure" link for that theme. Note that different themes may have different regions available for displaying content.') . '</p>';
       $output .= '<p>' . t('To change the appearance of your site, a number of <a href="@themes">contributed themes</a> are available.', array('@themes' => 'http://drupal.org/project/themes')) . '</p>';
       return $output;
-    case 'admin/appearance/settings/' . $arg[4]:
-      $reference = explode('.', $arg[4], 2);
+    case 'admin/appearance/settings/' . $arg[3]:
+      $reference = explode('.', $arg[3], 2);
       $theme = array_pop($reference);
       return '<p>' . t('These options control the display settings for the <code>%template</code> theme. When your site is displayed using this theme, these settings will be used. By clicking "Reset to defaults," you can choose to use the <a href="@global">global settings</a> for this theme.', array('%template' => $theme, '@global' => url('admin/appearance/settings'))) . '</p>';
     case 'admin/appearance/settings':
@@ -279,32 +279,29 @@ function system_entity_info() {
 }
 
 /**
- * Implement hook_elements().
+ * Implement hook_element_info().
  */
-function system_elements() {
-  // Top level form
-  $type['form'] = array(
+function system_element_info() {
+  // Top level elements.
+  $types['form'] = array(
     '#method' => 'post',
     '#action' => request_uri(),
     '#theme_wrappers' => array('form'),
   );
-
-  $type['page'] = array(
+  $types['page'] = array(
     '#show_messages' => TRUE,
     '#theme' => 'page',
+    '#theme_wrappers' => array('html'),
   );
-
-  $type['list'] = array(
+  $types['list'] = array(
     '#title' => '',
     '#list_type' => 'ul',
     '#attributes' => array(),
     '#items' => array(),
   );
 
-  /**
-   * Input elements.
-   */
-  $type['submit'] = array(
+  // Input elements.
+  $types['submit'] = array(
     '#input' => TRUE,
     '#name' => 'op',
     '#button_type' => 'submit',
@@ -312,8 +309,7 @@ function system_elements() {
     '#process' => array('ajax_process_form'),
     '#theme_wrappers' => array('button'),
   );
-
-  $type['button'] = array(
+  $types['button'] = array(
     '#input' => TRUE,
     '#name' => 'op',
     '#button_type' => 'submit',
@@ -321,8 +317,7 @@ function system_elements() {
     '#process' => array('ajax_process_form'),
     '#theme_wrappers' => array('button'),
   );
-
-  $type['image_button'] = array(
+  $types['image_button'] = array(
     '#input' => TRUE,
     '#button_type' => 'submit',
     '#executes_submit_callback' => TRUE,
@@ -332,8 +327,7 @@ function system_elements() {
     '#src' => NULL,
     '#theme_wrappers' => array('image_button'),
   );
-
-  $type['textfield'] = array(
+  $types['textfield'] = array(
     '#input' => TRUE,
     '#size' => 60,
     '#maxlength' => 128,
@@ -342,8 +336,7 @@ function system_elements() {
     '#theme' => 'textfield',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['password'] = array(
+  $types['password'] = array(
     '#input' => TRUE,
     '#size' => 60,
     '#maxlength' => 128,
@@ -351,14 +344,12 @@ function system_elements() {
     '#theme' => 'password',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['password_confirm'] = array(
+  $types['password_confirm'] = array(
     '#input' => TRUE,
     '#process' => array('form_process_password_confirm'),
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['textarea'] = array(
+  $types['textarea'] = array(
     '#input' => TRUE,
     '#cols' => 60,
     '#rows' => 5,
@@ -367,15 +358,13 @@ function system_elements() {
     '#theme' => 'textarea',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['radios'] = array(
+  $types['radios'] = array(
     '#input' => TRUE,
     '#process' => array('form_process_radios'),
     '#theme_wrappers' => array('radios'),
     '#pre_render' => array('form_pre_render_conditional_form_element'),
   );
-
-  $type['radio'] = array(
+  $types['radio'] = array(
     '#input' => TRUE,
     '#default_value' => NULL,
     '#process' => array('ajax_process_form'),
@@ -383,16 +372,14 @@ function system_elements() {
     '#theme_wrappers' => array('form_element'),
     '#form_element_skip_title' => TRUE,
   );
-
-  $type['checkboxes'] = array(
+  $types['checkboxes'] = array(
     '#input' => TRUE,
     '#tree' => TRUE,
     '#process' => array('form_process_checkboxes'),
     '#theme_wrappers' => array('checkboxes'),
     '#pre_render' => array('form_pre_render_conditional_form_element'),
   );
-
-  $type['checkbox'] = array(
+  $types['checkbox'] = array(
     '#input' => TRUE,
     '#return_value' => 1,
     '#process' => array('ajax_process_form'),
@@ -400,8 +387,7 @@ function system_elements() {
     '#theme_wrappers' => array('form_element'),
     '#form_element_skip_title' => TRUE,
   );
-
-  $type['select'] = array(
+  $types['select'] = array(
     '#input' => TRUE,
     '#size' => 0,
     '#multiple' => FALSE,
@@ -409,64 +395,54 @@ function system_elements() {
     '#theme' => 'select',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['weight'] = array(
+  $types['weight'] = array(
     '#input' => TRUE,
     '#delta' => 10,
     '#default_value' => 0,
     '#process' => array('form_process_weight', 'ajax_process_form'),
   );
-
-  $type['date'] = array(
+  $types['date'] = array(
     '#input' => TRUE,
     '#element_validate' => array('date_validate'),
     '#process' => array('form_process_date'),
     '#theme' => 'date',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['file'] = array(
+  $types['file'] = array(
     '#input' => TRUE,
     '#size' => 60,
     '#theme' => 'file',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['tableselect'] = array(
+  $types['tableselect'] = array(
     '#input' => TRUE,
     '#js_select' => TRUE,
     '#multiple' => TRUE,
     '#process' => array('form_process_tableselect'),
     '#options' => array(),
     '#empty' => '',
-    '#theme' => 'tableselect'
+    '#theme' => 'tableselect',
   );
 
-  /**
-   * Form structure.
-   */
-  $type['item'] = array(
+  // Form structure.
+  $types['item'] = array(
     '#markup' => '',
     '#theme' => 'markup',
     '#theme_wrappers' => array('form_element'),
   );
-
-  $type['hidden'] = array(
+  $types['hidden'] = array(
     '#input' => TRUE,
     '#process' => array('ajax_process_form'),
     '#theme' => 'hidden',
   );
-
-  $type['value'] = array(
+  $types['value'] = array(
     '#input' => TRUE,
   );
-
-  $type['markup'] = array(
+  $types['markup'] = array(
     '#markup' => '',
     '#theme' => 'markup',
   );
-
-  $type['fieldset'] = array(
+  $types['fieldset'] = array(
     '#collapsible' => FALSE,
     '#collapsed' => FALSE,
     '#value' => NULL,
@@ -474,19 +450,17 @@ function system_elements() {
     '#pre_render' => array('form_pre_render_fieldset'),
     '#theme_wrappers' => array('fieldset'),
   );
-
-  $type['vertical_tabs'] = array(
+  $types['vertical_tabs'] = array(
     '#theme_wrappers' => array('vertical_tabs'),
     '#default_tab' => '',
     '#process' => array('form_process_vertical_tabs'),
   );
-
-  $type['token'] = array(
+  $types['token'] = array(
     '#input' => TRUE,
     '#theme' => array('hidden'),
   );
 
-  return $type;
+  return $types;
 }
 
 /**
@@ -535,6 +509,8 @@ function system_menu() {
     'page callback' => 'system_main_admin_page',
     'weight' => 9,
     'menu_name' => 'management',
+    'theme callback' => 'variable_get',
+    'theme arguments' => array('admin_theme'),
     'file' => 'system.admin.inc',
   );
   $items['admin/compact'] = array(
@@ -561,15 +537,6 @@ function system_menu() {
   );
 
   // Menu items that are basically just menu blocks.
-  $items['admin/settings'] = array(
-    'title' => 'Site configuration',
-    'description' => 'Configure site settings.',
-    'position' => 'right',
-    'weight' => -2,
-    'page callback' => 'system_settings_overview',
-    'access arguments' => array('access administration pages'),
-    'file' => 'system.admin.inc',
-  );
   $items['admin/structure'] = array(
     'title' => 'Structure',
     'description' => 'Control how your site looks and feels.',
@@ -599,6 +566,7 @@ function system_menu() {
   );
   $items['admin/appearance/settings'] = array(
     'title' => 'Configure',
+    'description' => 'Configure default and theme specific settings.',
     'page arguments' => array('system_theme_settings'),
     'access arguments' => array('administer site configuration'),
     'type' => MENU_LOCAL_TASK,
@@ -851,7 +819,7 @@ function system_menu() {
   );
   $items['admin/config/search/clean-urls/check'] = array(
     'title' => 'Clean URL check',
-    'page callback' => 'drupal_json',
+    'page callback' => 'drupal_json_output',
     'page arguments' => array(array('status' => TRUE)),
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
@@ -877,7 +845,7 @@ function system_menu() {
   );
   $items['admin/config/system/site-information'] = array(
     'title' => 'Site information',
-    'description' => 'Change basic site information, such as the site name, slogan, e-mail address, mission, front page and more.',
+    'description' => 'Change basic site name, e-mail address, slogan, default front page, number of posts per page, error pages and cron.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('system_site_information_settings'),
     'access arguments' => array('administer site configuration'),
@@ -1343,7 +1311,7 @@ function blocked_ip_load($iid) {
  * Menu item access callback - only admin or enabled themes can be accessed.
  */
 function _system_themes_access($theme) {
-  return user_access('administer site configuration') && ($theme->status || $theme->name == variable_get('admin_theme', 0));
+  return user_access('administer site configuration') && drupal_theme_access($theme);
 }
 
 /**
@@ -1427,8 +1395,6 @@ function system_filetransfer_backend_form_ssh() {
  * Helper function because SSH and FTP backends share the same elements
  */
 function _system_filetransfer_backend_form_common() {
-  $form = array();
-
   $form['hostname'] = array (
     '#type' => 'textfield',
     '#title' => t('Host'),
@@ -1459,14 +1425,10 @@ function _system_filetransfer_backend_form_common() {
  * Implement hook_init().
  */
 function system_init() {
-  // Use the administrative theme if the user is looking at a page in the admin/* path.
+  // Add the CSS for this module.
   if (arg(0) == 'admin' || (variable_get('node_admin_theme', '0') && arg(0) == 'node' && (arg(1) == 'add' || arg(2) == 'edit'))) {
-    global $custom_theme;
-    $custom_theme = variable_get('admin_theme', 0);
     drupal_add_css(drupal_get_path('module', 'system') . '/admin.css', array('weight' => CSS_SYSTEM));
   }
-
-  // Add the CSS for this module.
   drupal_add_css(drupal_get_path('module', 'system') . '/defaults.css', array('weight' => CSS_SYSTEM));
   drupal_add_css(drupal_get_path('module', 'system') . '/system.css', array('weight' => CSS_SYSTEM));
   drupal_add_css(drupal_get_path('module', 'system') . '/system-menus.css', array('weight' => CSS_SYSTEM));
@@ -1512,25 +1474,24 @@ function system_preprocess_page(&$variables) {
 }
 
 /**
- * Implement hook_user_form().
+ * Implement hook_form_FORM_ID_alter().
  */
-function system_user_form(&$edit, $account, $category) {
-  if ($category == 'account') {
+function system_form_user_profile_form_alter(&$form, &$form_state) {
+  if ($form['#user_category'] == 'account') {
     if (variable_get('configurable_timezones', 1)) {
-      system_user_timezone($edit, $form);
+      system_user_timezone($form, $form_state);
     }
     return $form;
   }
 }
 
 /**
- * Implement hook_user_register().
+ * Implement hook_form_FORM_ID_alter().
  */
-function system_user_register(&$edit, $account, $category) {
+function system_form_user_register_alter(&$form, &$form_state) {
   if (variable_get('configurable_timezones', 1)) {
-    $form = array();
     if (variable_get('user_default_timezone', DRUPAL_USER_TIMEZONE_DEFAULT) == DRUPAL_USER_TIMEZONE_SELECT) {
-      system_user_timezone($edit, $form);
+      system_user_timezone($form, $form_state);
     }
     else {
       $form['account']['timezone'] = array(
@@ -1555,8 +1516,11 @@ function system_user_login(&$edit, $account) {
 /**
  * Add the time zone field to the user edit and register forms.
  */
-function system_user_timezone(&$edit, &$form) {
+function system_user_timezone(&$form, &$form_state) {
   global $user;
+
+  $account = $form['#user'];
+
   $form['timezone'] = array(
     '#type' => 'fieldset',
     '#title' => t('Locale settings'),
@@ -1566,11 +1530,11 @@ function system_user_timezone(&$edit, &$form) {
   $form['timezone']['timezone'] = array(
     '#type' => 'select',
     '#title' => t('Time zone'),
-    '#default_value' => $edit['timezone'] ? $edit['timezone'] : ($edit['uid'] == $user->uid ? variable_get('date_default_timezone', '') : ''),
-    '#options' => system_time_zones(($edit['uid'] != $user->uid)),
+    '#default_value' => isset($account->timezone) ? $account->timezone : ($account->uid == $user->uid ? variable_get('date_default_timezone', '') : ''),
+    '#options' => system_time_zones($account->uid != $user->uid),
     '#description' => t('Select the desired local time and time zone. Dates and times throughout this site will be displayed using this time zone.'),
   );
-  if (!$edit['timezone'] && $edit['uid'] == $user->uid) {
+  if (!isset($account->timezone) && $account->uid == $user->uid) {
     $form['timezone']['#description'] = t('Your time zone setting will be automatically detected if possible. Please confirm the selection and click save.');
     $form['timezone']['timezone']['#attributes'] = array('class' => array('timezone-detect'));
     drupal_add_js('misc/timezone.js');
@@ -1696,12 +1660,26 @@ function system_admin_menu_block($item) {
   }
 
   $content = array();
+  $default_task = NULL;
+  $has_subitems = FALSE;
   $result = db_query("
-    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
-    FROM {menu_links} ml
-    LEFT JOIN {menu_router} m ON ml.router_path = m.path
-    WHERE ml.plid = :plid AND ml.menu_name = :name AND hidden = 0", array(':plid' => $item['mlid'], ':name' => $item['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
+    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, m.description, m.path, m.weight as router_weight, ml.*
+    FROM {menu_router} m 
+    LEFT JOIN {menu_links} ml ON m.path = ml.router_path
+    WHERE (ml.plid = :plid AND ml.menu_name = :name AND hidden = 0) OR (m.tab_parent = :path AND m.type IN (:local_task, :default_task))", array(':plid' => $item['mlid'], ':name' => $item['menu_name'], ':path' => $item['path'], ':local_task' => MENU_LOCAL_TASK, ':default_task' => MENU_DEFAULT_LOCAL_TASK), array('fetch' => PDO::FETCH_ASSOC));
   foreach ($result as $link) {
+    if (!isset($link['link_path'])) {
+      // If this was not an actual link, fake the tab as a menu link, so we
+      // don't need to special case it beyond this point.
+      $link['link_title'] = $link['title'];
+      $link['link_path'] = $link['path'];
+      $link['options'] = 'a:0:{}';
+      $link['weight'] = $link['router_weight'];
+    }
+    else {
+      // We found a non-tab subitem, remember that.
+      $has_subitems = TRUE;
+    }
     _menu_link_translate($link);
     if (!$link['access']) {
       continue;
@@ -1713,7 +1691,16 @@ function system_admin_menu_block($item) {
     }
     // Prepare for sorting as in function _menu_tree_check_access().
     // The weight is offset so it is always positive, with a uniform 5-digits.
-    $content[(50000 + $link['weight']) . ' ' . drupal_strtolower($link['title']) . ' ' . $link['mlid']] = $link;
+    $key = (50000 + $link['weight']) . ' ' . drupal_strtolower($link['title']) . ' ' . $link['mlid'];
+    $content[$key] = $link;
+    if ($link['type'] == MENU_DEFAULT_LOCAL_TASK) {
+      $default_task = $key;
+    }
+  }
+  if ($has_subitems) {
+    // If we've had at least one non-tab subitem, remove the link for the 
+    // default task, since that is already broken down to subitems.
+    unset($content[$default_task]);
   }
   ksort($content);
   $cache[$item['mlid']] = $content;
@@ -1906,7 +1893,7 @@ function _system_get_module_data() {
 
     // Invoke hook_system_info_alter() to give installed modules a chance to
     // modify the data in the .info files if necessary.
-    drupal_alter('system_info', $modules[$key]->info, $modules[$key]);
+    drupal_alter('system_info', $modules[$key]->info, $modules[$key], 'module');
   }
 
   // The install profile is required.
@@ -1999,7 +1986,7 @@ function _system_get_theme_data() {
 
       // Invoke hook_system_info_alter() to give installed modules a chance to
       // modify the data in the .info files if necessary.
-      drupal_alter('system_info', $themes[$key]->info, $themes[$key]);
+      drupal_alter('system_info', $themes[$key]->info, $themes[$key], 'theme');
 
       if (!empty($themes[$key]->info['base theme'])) {
         $sub_themes[] = $key;
@@ -2147,7 +2134,8 @@ function system_region_list($theme_key, $show = REGIONS_ALL) {
   $list = &drupal_static(__FUNCTION__, array());
 
   if (empty($list[$theme_key][$show])) {
-    $info = unserialize(db_query("SELECT info FROM {system} WHERE type = :type AND name = :name", array(':type' => 'theme', ':name' => $theme_key))->fetchField());
+    $themes = list_themes();
+    $info = $themes[$theme_key]->info;
     // If requested, suppress hidden regions. @see block_admin_display_form().
     foreach ($info['regions'] as $name => $label) {
       if ($show == REGIONS_ALL || !isset($info['regions_hidden']) || !in_array($name, $info['regions_hidden'])) {
@@ -2161,11 +2149,13 @@ function system_region_list($theme_key, $show = REGIONS_ALL) {
 /**
  * Implement hook_system_info_alter().
  */
-function system_system_info_alter(&$info, $file) {
+function system_system_info_alter(&$info, $file, $type) {
   // Remove page-top from the blocks UI since it is reserved for modules to
   // populate from outside the blocks system.
-  $info['regions_hidden'][] = 'page_top';
-  $info['regions_hidden'][] = 'page_bottom';
+  if ($type == 'theme') {
+    $info['regions_hidden'][] = 'page_top';
+    $info['regions_hidden'][] = 'page_bottom';
+  }
 }
 
 /**
@@ -2345,7 +2335,7 @@ function system_admin_compact_mode() {
 function system_admin_compact_page($mode = 'off') {
   global $user;
   user_save($user, array('admin_compact_mode' => ($mode == 'on')));
-  drupal_goto(drupal_get_destination());
+  drupal_goto();
 }
 
 /**
@@ -2361,7 +2351,7 @@ function system_get_module_admin_tasks($module) {
 
   if (empty($items)) {
     $result = db_query("
-       SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, ml.*
+       SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, ml.*
        FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND module = 'system' AND m.number_parts > 2", array(), array('fetch' => PDO::FETCH_ASSOC));
     foreach ($result as $item) {
       _menu_link_translate($item);
@@ -2440,333 +2430,35 @@ function system_cron() {
 }
 
 /**
- * Implement hook_hook_info().
- */
-function system_hook_info() {
-  return array(
-    'system' => array(
-      'cron' => array(
-        'run' => array(
-          'runs when' => t('When cron runs'),
-        ),
-      ),
-    ),
-  );
-}
-
-/**
  * Implement hook_action_info().
  */
 function system_action_info() {
   return array(
     'system_message_action' => array(
       'type' => 'system',
-      'description' => t('Display a message to the user'),
+      'label' => t('Display a message to the user'),
       'configurable' => TRUE,
-      'hooks' => array(
-        'node' => array('view', 'insert', 'update', 'delete'),
-        'comment' => array('view', 'insert', 'update', 'delete'),
-        'user' => array('view', 'insert', 'update', 'delete', 'login'),
-        'taxonomy' => array('insert', 'update', 'delete'),
-      ),
+      'triggers' => array('any'),
     ),
     'system_send_email_action' => array(
-      'description' => t('Send e-mail'),
       'type' => 'system',
+      'label' => t('Send e-mail'),
       'configurable' => TRUE,
-      'hooks' => array(
-        'node' => array('view', 'insert', 'update', 'delete'),
-        'comment' => array('view', 'insert', 'update', 'delete'),
-        'user' => array('view', 'insert', 'update', 'delete', 'login'),
-        'taxonomy' => array('insert', 'update', 'delete'),
-        'cron' => array('run'),
-      )
+      'triggers' => array('any'),
     ),
     'system_block_ip_action' => array(
-      'description' => t('Ban IP address of current user'),
       'type' => 'user',
+      'label' => t('Ban IP address of current user'),
       'configurable' => FALSE,
-      'hooks' => array(),
+      'triggers' => array(),
     ),
     'system_goto_action' => array(
-      'description' => t('Redirect to URL'),
       'type' => 'system',
+      'label' => t('Redirect to URL'),
       'configurable' => TRUE,
-      'hooks' => array(
-        'node' => array('view', 'insert', 'update', 'delete'),
-        'comment' => array('view', 'insert', 'update', 'delete'),
-        'user' => array('view', 'insert', 'update', 'delete', 'login'),
-      )
-    )
+      'triggers' => array('any'),
+    ),
   );
-}
-
-/**
- * Menu callback. Display an overview of available and configured actions.
- */
-function system_actions_manage() {
-  actions_synchronize();
-  $actions = actions_list();
-  $actions_map = actions_actions_map($actions);
-  $options = array(t('Choose an advanced action'));
-  $unconfigurable = array();
-
-  foreach ($actions_map as $key => $array) {
-    if ($array['configurable']) {
-      $options[$key] = $array['description'] . '...';
-    }
-    else {
-      $unconfigurable[] = $array;
-    }
-  }
-
-  $row = array();
-  $instances_present = db_query("SELECT aid FROM {actions} WHERE parameters <> ''")->fetchField();
-  $header = array(
-    array('data' => t('Action type'), 'field' => 'type'),
-    array('data' => t('Description'), 'field' => 'description'),
-    array('data' => $instances_present ? t('Operations') : '', 'colspan' => '2')
-  );
-  $query = db_select('actions')->extend('PagerDefault')->extend('TableSort');
-  $result = $query
-    ->fields('actions')
-    ->limit(50)
-    ->orderByHeader($header)
-    ->execute();
-
-  foreach ($result as $action) {
-    $row[] = array(
-      array('data' => $action->type),
-      array('data' => $action->description),
-      array('data' => $action->parameters ? l(t('configure'), "admin/config/system/actions/configure/$action->aid") : ''),
-      array('data' => $action->parameters ? l(t('delete'), "admin/config/system/actions/delete/$action->aid") : '')
-    );
-  }
-
-  if ($row) {
-    $pager = theme('pager', NULL);
-    if (!empty($pager)) {
-      $row[] = array(array('data' => $pager, 'colspan' => '3'));
-    }
-    $build['system_actions_header'] = array('#markup' => '<h3>' . t('Actions available to Drupal:') . '</h3>');
-    $build['system_actions_table'] = array('#markup' => theme('table', $header, $row));
-  }
-
-  if ($actions_map) {
-    $build['system_actions_manage_form'] = drupal_get_form('system_actions_manage_form', $options);
-  }
-
-  return $build;
-}
-
-/**
- * Define the form for the actions overview page.
- *
- * @see system_actions_manage_form_submit()
- * @ingroup forms
- * @param $form_state
- *   An associative array containing the current state of the form; not used.
- * @param $options
- *   An array of configurable actions.
- * @return
- *   Form definition.
- */
-function system_actions_manage_form($form_state, $options = array()) {
-  $form['parent'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Make a new advanced action available'),
-    '#prefix' => '<div class="container-inline">',
-    '#suffix' => '</div>',
-  );
-  $form['parent']['action'] = array(
-    '#type' => 'select',
-    '#default_value' => '',
-    '#options' => $options,
-    '#description' => '',
-  );
-  $form['parent']['buttons']['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Create'),
-  );
-  return $form;
-}
-
-/**
- * Process system_actions_manage form submissions.
- */
-function system_actions_manage_form_submit($form, &$form_state) {
-  if ($form_state['values']['action']) {
-    $form_state['redirect'] = 'admin/config/system/actions/configure/' . $form_state['values']['action'];
-  }
-}
-
-/**
- * Menu callback. Create the form for configuration of a single action.
- *
- * We provide the "Description" field. The rest of the form
- * is provided by the action. We then provide the Save button.
- * Because we are combining unknown form elements with the action
- * configuration form, we use actions_ prefix on our elements.
- *
- * @see system_actions_configure_validate()
- * @see system_actions_configure_submit()
- * @param $action
- *   md5 hash of action ID or an integer. If it's an md5 hash, we
- *   are creating a new instance. If it's an integer, we're editing
- *   an existing instance.
- * @return
- *   Form definition.
- */
-function system_actions_configure($form_state, $action = NULL) {
-  if ($action === NULL) {
-    drupal_goto('admin/config/system/actions');
-  }
-
-  $actions_map = actions_actions_map(actions_list());
-  $edit = array();
-
-  // Numeric action denotes saved instance of a configurable action;
-  // else we are creating a new action instance.
-  if (is_numeric($action)) {
-    $aid = $action;
-    // Load stored parameter values from database.
-    $data = db_query("SELECT * FROM {actions} WHERE aid = :aid", array(':aid' => $aid))->fetch();
-    $edit['actions_description'] = $data->description;
-    $edit['actions_type'] = $data->type;
-    $function = $data->callback;
-    $action = md5($data->callback);
-    $params = unserialize($data->parameters);
-    if ($params) {
-      foreach ($params as $name => $val) {
-        $edit[$name] = $val;
-      }
-    }
-  }
-  else {
-    $function = $actions_map[$action]['callback'];
-    $edit['actions_description'] = $actions_map[$action]['description'];
-    $edit['actions_type'] = $actions_map[$action]['type'];
-  }
-
-  $form['actions_description'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Description'),
-    '#default_value' => $edit['actions_description'],
-    '#maxlength' => '255',
-    '#description' => t('A unique description for this advanced action. This description will be displayed in the interface of modules that integrate with actions, such as Trigger module.'),
-    '#weight' => -10
-  );
-  $action_form = $function . '_form';
-  $form = array_merge($form, $action_form($edit));
-  $form['actions_type'] = array(
-    '#type' => 'value',
-    '#value' => $edit['actions_type'],
-  );
-  $form['actions_action'] = array(
-    '#type' => 'hidden',
-    '#value' => $action,
-  );
-  // $aid is set when configuring an existing action instance.
-  if (isset($aid)) {
-    $form['actions_aid'] = array(
-      '#type' => 'hidden',
-      '#value' => $aid,
-    );
-  }
-  $form['actions_configured'] = array(
-    '#type' => 'hidden',
-    '#value' => '1',
-  );
-  $form['buttons']['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Save'),
-    '#weight' => 13
-  );
-
-  return $form;
-}
-
-/**
- * Validate system_actions_configure form submissions.
- */
-function system_actions_configure_validate($form, $form_state) {
-  $function = actions_function_lookup($form_state['values']['actions_action']) . '_validate';
-  // Hand off validation to the action.
-  if (function_exists($function)) {
-    $function($form, $form_state);
-  }
-}
-
-/**
- * Process system_actions_configure form submissions.
- */
-function system_actions_configure_submit($form, &$form_state) {
-  $function = actions_function_lookup($form_state['values']['actions_action']);
-  $submit_function = $function . '_submit';
-
-  // Action will return keyed array of values to store.
-  $params = $submit_function($form, $form_state);
-  $aid = isset($form_state['values']['actions_aid']) ? $form_state['values']['actions_aid'] : NULL;
-
-  actions_save($function, $form_state['values']['actions_type'], $params, $form_state['values']['actions_description'], $aid);
-  drupal_set_message(t('The action has been successfully saved.'));
-
-  $form_state['redirect'] = 'admin/config/system/actions/manage';
-}
-
-/**
- * Create the form for confirmation of deleting an action.
- *
- * @ingroup forms
- * @see system_actions_delete_form_submit()
- */
-function system_actions_delete_form($form_state, $action) {
-
-  $form['aid'] = array(
-    '#type' => 'hidden',
-    '#value' => $action->aid,
-  );
-  return confirm_form($form,
-    t('Are you sure you want to delete the action %action?', array('%action' => $action->description)),
-    'admin/config/system/actions/manage',
-    t('This cannot be undone.'),
-    t('Delete'), t('Cancel')
-  );
-}
-
-/**
- * Process system_actions_delete form submissions.
- *
- * Post-deletion operations for action deletion.
- */
-function system_actions_delete_form_submit($form, &$form_state) {
-  $aid = $form_state['values']['aid'];
-  $action = actions_load($aid);
-  actions_delete($aid);
-  $description = check_plain($action->description);
-  watchdog('user', 'Deleted action %aid (%action)', array('%aid' => $aid, '%action' => $description));
-  drupal_set_message(t('Action %action was deleted', array('%action' => $description)));
-  $form_state['redirect'] = 'admin/config/system/actions/manage';
-}
-
-/**
- * Post-deletion operations for deleting action orphans.
- *
- * @param $orphaned
- *   An array of orphaned actions.
- */
-function system_action_delete_orphans_post($orphaned) {
-  foreach ($orphaned as $callback) {
-    drupal_set_message(t("Deleted orphaned action (%action).", array('%action' => $callback)));
-  }
-}
-
-/**
- * Remove actions that are in the database but not supported by any enabled module.
- */
-function system_actions_remove_orphans() {
-  actions_synchronize(TRUE);
-  drupal_goto('admin/config/system/actions/manage');
 }
 
 /**
@@ -2991,7 +2683,7 @@ function system_timezone($abbreviation = '', $offset = -1, $is_daylight_saving_t
   // interpreted as the empty string.
   $abbreviation = $abbreviation ? $abbreviation : '';
   $timezone = timezone_name_from_abbr($abbreviation, intval($offset), $is_daylight_saving_time);
-  drupal_json($timezone);
+  drupal_json_output($timezone);
 }
 
 /**
@@ -3038,7 +2730,7 @@ function theme_meta_generator_html($version = VERSION) {
  * @ingroup themeable
  */
 function theme_meta_generator_header($version = VERSION) {
-  drupal_set_header('X-Generator', 'Drupal ' . $version . ' (http://drupal.org)');
+  drupal_add_http_header('X-Generator', 'Drupal ' . $version . ' (http://drupal.org)');
 }
 
 /**
@@ -3103,7 +2795,7 @@ function system_page_build(&$page) {
       // Trigger cron run via AJAX.
       '#attached' => array(
         'js' => array(
-          '(function($){ $.get(' . drupal_to_js(url('system/run-cron-image')) . '); })(jQuery);' => array('type' => 'inline', 'scope' => 'header'),
+          '(function($){ $.get(' . drupal_json_encode(url('system/run-cron-image')) . '); })(jQuery);' => array('type' => 'inline', 'scope' => 'header'),
         ),
       ),
       // Trigger cron run for clients not supporting JavaScript (fall-back).
@@ -3132,7 +2824,7 @@ function system_run_cron_image() {
 
   // Output a transparent 1x1 image to the browser; required for clients not
   // supporting JavaScript.
-  drupal_set_header('Content-Type', 'image/gif');
+  drupal_add_http_header('Content-Type', 'image/gif');
   echo "\x47\x49\x46\x38\x39\x61\x1\x0\x1\x0\x80\xff\x0\xc0\xc0\xc0\x0\x0\x0\x21\xf9\x4\x1\x0\x0\x0\x0\x2c\x0\x0\x0\x0\x1\x0\x1\x0\x0\x2\x2\x44\x1\x0\x3b";
 
   // Cron threshold semaphore is used to avoid errors every time the image

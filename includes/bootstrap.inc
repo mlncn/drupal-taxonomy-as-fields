@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.303 2009/09/05 13:05:30 dries Exp $
+// $Id: bootstrap.inc,v 1.307 2009/09/30 18:36:01 dries Exp $
 
 /**
  * @file
@@ -107,40 +107,35 @@ define('DRUPAL_BOOTSTRAP_PAGE_CACHE', 1);
 define('DRUPAL_BOOTSTRAP_DATABASE', 2);
 
 /**
- * Fourth bootstrap phase: identify and reject banned hosts.
+ * Fourth bootstrap phase: initialize the variable system.
  */
-define('DRUPAL_BOOTSTRAP_ACCESS', 3);
+define('DRUPAL_BOOTSTRAP_VARIABLES', 3);
 
 /**
- * Fifth bootstrap phase: initialize the variable system.
+ * Fifth bootstrap phase: initialize session handling.
  */
-define('DRUPAL_BOOTSTRAP_VARIABLES', 4);
+define('DRUPAL_BOOTSTRAP_SESSION', 4);
 
 /**
- * Sixth bootstrap phase: initialize session handling.
+ * Sixth bootstrap phase: set up the page header.
  */
-define('DRUPAL_BOOTSTRAP_SESSION', 5);
+define('DRUPAL_BOOTSTRAP_PAGE_HEADER', 5);
 
 /**
- * Seventh bootstrap phase: set up the page header.
+ * Seventh bootstrap phase: find out language of the page.
  */
-define('DRUPAL_BOOTSTRAP_PAGE_HEADER', 6);
+define('DRUPAL_BOOTSTRAP_LANGUAGE', 6);
 
 /**
- * Eighth bootstrap phase: find out language of the page.
+ * Eighth bootstrap phase: set $_GET['q'] to Drupal path of request.
  */
-define('DRUPAL_BOOTSTRAP_LANGUAGE', 7);
-
-/**
- * Ninth bootstrap phase: set $_GET['q'] to Drupal path of request.
- */
-define('DRUPAL_BOOTSTRAP_PATH', 8);
+define('DRUPAL_BOOTSTRAP_PATH', 7);
 
 /**
  * Final bootstrap phase: Drupal is fully loaded; validate and fix
  * input data.
  */
-define('DRUPAL_BOOTSTRAP_FULL', 9);
+define('DRUPAL_BOOTSTRAP_FULL', 8);
 
 /**
  * Role ID for anonymous users; should match what's in the "role" table.
@@ -164,21 +159,20 @@ define('DRUPAL_KILOBYTE', 1024);
 define('LANGUAGE_NEGOTIATION_NONE', 0);
 
 /**
- * Path based negotiation with fallback to default language
- * if no defined path prefix identified.
+ * Path based negotiation with fallback to default language if no defined path
+ * prefix identified.
  */
 define('LANGUAGE_NEGOTIATION_PATH_DEFAULT', 1);
 
 /**
- * Path based negotiation with fallback to user preferences
- * and browser language detection if no defined path prefix
- * identified.
+ * Path based negotiation with fallback to user preferences and browser
+ * language detection if no defined path prefix identified.
  */
 define('LANGUAGE_NEGOTIATION_PATH', 2);
 
 /**
- * Domain based negotiation with fallback to default language
- * if no language identified by domain.
+ * Domain based negotiation with fallback to default language if no language
+ * identified by domain.
  */
 define('LANGUAGE_NEGOTIATION_DOMAIN', 3);
 
@@ -229,9 +223,8 @@ define('REGISTRY_WRITE_LOOKUP_CACHE', 2);
 
 
 /**
- * Start the timer with the specified name. If you start and stop
- * the same timer multiple times, the measured intervals will be
- * accumulated.
+ * Start the timer with the specified name. If you start and stop the same
+ * timer multiple times, the measured intervals will be accumulated.
  *
  * @param name
  *   The name of the timer.
@@ -271,9 +264,8 @@ function timer_read($name) {
  * @param name
  *   The name of the timer.
  * @return
- *   A timer array. The array contains the number of times the
- *   timer has been started and stopped (count) and the accumulated
- *   timer value in ms (time).
+ *   A timer array. The array contains the number of times the timer has been
+ *   started and stopped (count) and the accumulated timer value in ms (time).
  */
 function timer_stop($name) {
   global $timers;
@@ -434,7 +426,7 @@ function drupal_override_server_variables($variables = array()) {
     'REMOTE_ADDR' => '127.0.0.1',
     'REQUEST_METHOD' => 'GET',
     'SERVER_NAME' => NULL,
-    'SERVER_SOFTWARE' => 'PHP CLI',
+    'SERVER_SOFTWARE' => NULL,
     'HTTP_USER_AGENT' => NULL,
   );
   // Replace elements of the $_SERVER array, as appropriate.
@@ -790,7 +782,7 @@ function drupal_page_is_cacheable($allow_caching = NULL) {
   }
 
   return $allow_caching_static && ($_SERVER['REQUEST_METHOD'] == 'GET' || $_SERVER['REQUEST_METHOD'] == 'HEAD')
-    && $_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI';
+    && !drupal_is_cli();
 }
 
 /**
@@ -851,7 +843,7 @@ function drupal_load($type, $name) {
  * @param $append
  *   Whether to append the value to an existing header or to replace it.
  */
-function drupal_set_header($name = NULL, $value = NULL, $append = FALSE) {
+function drupal_add_http_header($name = NULL, $value = NULL, $append = FALSE) {
   // The headers as name/value pairs.
   $headers = &drupal_static(__FUNCTION__, array());
 
@@ -893,8 +885,8 @@ function drupal_set_header($name = NULL, $value = NULL, $append = FALSE) {
  *   A string containing the header value, or FALSE if the header has been set,
  *   or NULL if the header has not been set.
  */
-function drupal_get_header($name = NULL) {
-  $headers = drupal_set_header();
+function drupal_get_http_header($name = NULL) {
+  $headers = drupal_add_http_header();
   if (isset($name)) {
     $name = strtolower($name);
     return isset($headers[$name]) ? $headers[$name] : NULL;
@@ -918,9 +910,9 @@ function _drupal_set_preferred_header_name($name = NULL) {
 }
 
 /**
- * Send the HTTP response headers previously set using drupal_set_header().
+ * Send the HTTP response headers previously set using drupal_add_http_header().
  * Add default headers, unless they have been replaced or unset using
- * drupal_set_header().
+ * drupal_add_http_header().
  *
  * @param $default_headers
  *   An array of headers as name/value pairs.
@@ -929,7 +921,7 @@ function _drupal_set_preferred_header_name($name = NULL) {
  */
 function drupal_send_headers($default_headers = array(), $only_default = FALSE) {
   $headers_sent = &drupal_static(__FUNCTION__, FALSE);
-  $headers = drupal_get_header();
+  $headers = drupal_get_http_header();
   if ($only_default && $headers_sent) {
     $headers = array();
   }
@@ -1002,7 +994,7 @@ function drupal_page_header() {
  *
  * The headers allow as much as possible in proxies and browsers without any
  * particular knowledge about the pages. Modules can override these headers
- * using drupal_set_header().
+ * using drupal_add_http_header().
  *
  * If the request is conditional (using If-Modified-Since and If-None-Match),
  * and the conditions match those currently in the cache, a 304 Not Modified
@@ -1014,10 +1006,10 @@ function drupal_serve_page_from_cache(stdClass $cache) {
   $return_compressed = $page_compression && isset($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== FALSE;
 
   // Get headers set in hook_boot(). Keys are lower-case.
-  $hook_boot_headers = drupal_get_header();
+  $hook_boot_headers = drupal_get_http_header();
 
   // Headers generated in this function, that may be replaced or unset using
-  // drupal_set_headers(). Keys are mixed-case.
+  // drupal_add_http_headers(). Keys are mixed-case.
   $default_headers = array();
 
   foreach ($cache->headers as $name => $value) {
@@ -1026,7 +1018,7 @@ function drupal_serve_page_from_cache(stdClass $cache) {
     // headers set in hook_boot().
     $name_lower = strtolower($name);
     if (in_array($name_lower, array('content-location', 'expires', 'cache-control', 'vary')) && !isset($hook_boot_headers[$name_lower])) {
-      drupal_set_header($name, $value);
+      drupal_add_http_header($name, $value);
       unset($cache->headers[$name]);
     }
   }
@@ -1058,7 +1050,7 @@ function drupal_serve_page_from_cache(stdClass $cache) {
 
   // Send the remaining headers.
   foreach ($cache->headers as $name => $value) {
-    drupal_set_header($name, $value);
+    drupal_add_http_header($name, $value);
   }
 
   $default_headers['Last-Modified'] = gmdate(DATE_RFC1123, $cache->created);
@@ -1392,18 +1384,7 @@ function drupal_anonymous_user($session = '') {
  * include bootstrap.inc, and call drupal_bootstrap(DRUPAL_BOOTSTRAP_DATABASE).
  *
  * @param $phase
- *   A constant. Allowed values are:
- *     DRUPAL_BOOTSTRAP_CONFIGURATION: initialize configuration.
- *     DRUPAL_BOOTSTRAP_EARLY_PAGE_CACHE: try to call a non-database cache fetch routine.
- *     DRUPAL_BOOTSTRAP_DATABASE: initialize database layer.
- *     DRUPAL_BOOTSTRAP_ACCESS: identify and reject banned hosts.
- *     DRUPAL_BOOTSTRAP_SESSION: initialize session handling.
- *     DRUPAL_BOOTSTRAP_VARIABLES: initialize variable handling.
- *     DRUPAL_BOOTSTRAP_LATE_PAGE_CACHE: load bootstrap.inc and module.inc, start
- *       the variable system and try to serve a page from the cache.
- *     DRUPAL_BOOTSTRAP_LANGUAGE: identify the language used on the page.
- *     DRUPAL_BOOTSTRAP_PATH: set $_GET['q'] to Drupal path of request.
- *     DRUPAL_BOOTSTRAP_FULL: Drupal is fully loaded, validate and fix input data.
+ *   A constant. Allowed values are the DRUPAL_BOOTSTRAP_* constants.
  * @param $new_phase
  *   A boolean, set to FALSE if calling drupal_bootstrap from inside a
  *   function called from drupal_bootstrap (recursion).
@@ -1549,7 +1530,7 @@ function _drupal_bootstrap($phase) {
       require_once DRUPAL_ROOT . '/' . variable_get('lock_inc', 'includes/lock.inc');
       lock_initialize();
 
-      if ($_SERVER['SERVER_SOFTWARE'] !== 'PHP CLI') {
+      if (!drupal_is_cli()) {
         ob_start();
         drupal_page_header();
       }
@@ -2001,4 +1982,11 @@ function &drupal_static($name, $default_value = NULL, $reset = FALSE) {
  */
 function drupal_static_reset($name = NULL) {
   drupal_static($name, NULL, TRUE);
+}
+
+/**
+ * Detect whether the current script is running in a command-line environment.
+ */
+function drupal_is_cli() {
+  return (!isset($_SERVER['SERVER_SOFTWARE']) && (php_sapi_name() == 'cli' || (is_numeric($_SERVER['argc']) && $_SERVER['argc'] > 0)));
 }

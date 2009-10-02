@@ -1,5 +1,5 @@
 <?php
-// $Id: text.module,v 1.25 2009/08/27 00:33:52 webchick Exp $
+// $Id: text.module,v 1.30 2009/09/26 15:57:38 dries Exp $
 
 /**
  * @file
@@ -15,18 +15,6 @@ function text_theme() {
       'arguments' => array('element' => NULL),
     ),
     'text_textfield' => array(
-      'arguments' => array('element' => NULL),
-    ),
-    'field_formatter_text_default' => array(
-      'arguments' => array('element' => NULL),
-    ),
-    'field_formatter_text_plain' => array(
-      'arguments' => array('element' => NULL),
-    ),
-    'field_formatter_text_trimmed' => array(
-      'arguments' => array('element' => NULL),
-    ),
-    'field_formatter_text_summary_or_trimmed' => array(
       'arguments' => array('element' => NULL),
     ),
   );
@@ -128,7 +116,7 @@ function text_field_schema($field) {
 /**
  * Implement hook_field_settings_form().
  */
-function text_field_settings_form($field, $instance) {
+function text_field_settings_form($field, $instance, $has_data) {
   $settings = $field['settings'];
 
   $form['max_length'] = array(
@@ -138,6 +126,9 @@ function text_field_settings_form($field, $instance) {
     '#required' => FALSE,
     '#description' => t('The maximum length of the field in characters. Leave blank for an unlimited size.'),
     '#element_validate' => array('_element_validate_integer_positive'),
+    // @todo: If $has_data, add a validate handler that only allows
+    // max_length to increase.
+    '#disabled' => $has_data,
   );
 
   return $form;
@@ -330,7 +321,7 @@ function theme_field_formatter_text_trimmed($element) {
 
 /**
  * Theme function for 'summary or trimmed' field formatter for
- * text_with_summary fields.  This formatter returns the summary
+ * text_with_summary fields. This formatter returns the summary
  * element of the field or, if the summary is empty, the trimmed
  * version of the full element of the field.
  */
@@ -533,48 +524,44 @@ function text_field_widget_settings_form($field, $instance) {
 }
 
 /**
- * Implement FAPI hook_elements().
- *
- * Any FAPI callbacks needed for individual widgets can be declared here,
- * and the element will be passed to those callbacks for processing.
- *
- * Drupal will automatically theme the element using a theme with
- * the same name as the hook_elements key.
+ * Implement hook_element_info().
  *
  * Autocomplete_path is not used by text_field_widget but other
  * widgets can use it (see nodereference and userreference).
  */
-function text_elements() {
-  return array(
-    'text_textfield' => array(
-      '#input' => TRUE,
-      '#columns' => array('value'), '#delta' => 0,
-      '#process' => array('text_textfield_elements_process'),
-      '#theme_wrappers' => array('text_textfield'),
-      '#autocomplete_path' => FALSE,
-    ),
-    'text_textarea' => array(
-      '#input' => TRUE,
-      '#columns' => array('value', 'format'), '#delta' => 0,
-      '#process' => array('text_textarea_elements_process'),
-      '#theme_wrappers' => array('text_textarea'),
-      '#filter_value' => FILTER_FORMAT_DEFAULT,
-    ),
-    'text_textarea_with_summary' => array(
-      '#input' => TRUE,
-      '#columns' => array('value', 'format', 'summary'), '#delta' => 0,
-      '#process' => array('text_textarea_with_summary_process'),
-      '#theme_wrappers' => array('text_textarea'),
-      '#filter_value' => FILTER_FORMAT_DEFAULT,
-    ),
+function text_element_info() {
+  $types['text_textfield'] = array(
+    '#input' => TRUE,
+    '#columns' => array('value'),
+    '#delta' => 0,
+    '#process' => array('text_textfield_elements_process'),
+    '#theme_wrappers' => array('text_textfield'),
+    '#autocomplete_path' => FALSE,
   );
+  $types['text_textarea'] = array(
+    '#input' => TRUE,
+    '#columns' => array('value', 'format'),
+    '#delta' => 0,
+    '#process' => array('text_textarea_elements_process'),
+    '#theme_wrappers' => array('text_textarea'),
+    '#filter_value' => filter_default_format(),
+  );
+  $types['text_textarea_with_summary'] = array(
+    '#input' => TRUE,
+    '#columns' => array('value', 'format', 'summary'),
+    '#delta' => 0,
+    '#process' => array('text_textarea_with_summary_process'),
+    '#theme_wrappers' => array('text_textarea'),
+    '#filter_value' => filter_default_format(),
+  );
+  return $types;
 }
 
 /**
  * Implement hook_field_widget().
  *
  * Attach a single form element to the form. It will be built out and
- * validated in the callback(s) listed in hook_elements. We build it
+ * validated in the callback(s) listed in hook_element_info(). We build it
  * out in the callbacks rather than here in hook_field_widget so it can be
  * plugged into any module that can provide it with valid
  * $field information.
@@ -667,7 +654,7 @@ function text_textfield_elements_process($element, $form_state, $form) {
 
   if (!empty($instance['settings']['text_processing'])) {
     $filter_key  = (count($element['#columns']) == 2) ? $element['#columns'][1] : 'format';
-    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : FILTER_FORMAT_DEFAULT;
+    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : filter_default_format();
     $element[$field_key]['#text_format'] = $format;
   }
 
@@ -700,7 +687,7 @@ function text_textarea_elements_process($element, $form_state, $form) {
 
   if (!empty($instance['settings']['text_processing'])) {
     $filter_key = (count($element['#columns']) == 2) ? $element['#columns'][1] : 'format';
-    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : FILTER_FORMAT_DEFAULT;
+    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : filter_default_format();
     $element[$field_key]['#text_format'] = $format;
   }
 
@@ -732,6 +719,10 @@ function text_textarea_with_summary_process($element, $form_state, $form) {
     '#description' => t('Leave blank to use trimmed value of full text as the summary.'),
     '#required' => $element['#required'],
     '#display' => $display,
+    '#attached' => array('js' => array(drupal_get_path('module', 'text') . '/text.js')),
+    '#attributes' => array('class' => array('text-textarea-summary')),
+    '#prefix' => '<div class="text-summary-wrapper">',
+    '#suffix' => '</div>',
   );
 
   $field_key = $element['#columns'][0];
@@ -744,11 +735,14 @@ function text_textarea_with_summary_process($element, $form_state, $form) {
     '#description' => $element['#description'],
     '#required' => $element['#required'],
     '#required' => $instance['required'],
+    '#attributes' => array('class' => array('text-full-textarea')),
+    '#prefix' => '<div class="text-full-wrapper">',
+    '#suffix' => '</div>',
   );
 
   if (!empty($instance['settings']['text_processing'])) {
     $filter_key  = (count($element['#columns']) == 2) ? $element['#columns'][1] : 'format';
-    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : FILTER_FORMAT_DEFAULT;
+    $format = isset($element['#value'][$filter_key]) ? $element['#value'][$filter_key] : filter_default_format();
     $element[$field_key]['#text_format'] = $format;
   }
 
@@ -769,7 +763,7 @@ function text_field_widget_formatted_text_value($form, $edit = FALSE) {
     // The format selector uses #access = FALSE if only one format is
     // available. In this case, we don't receive its value, and need to
     // manually set it.
-    $edit['format'] = !empty($edit[$default_key]) ? $edit[$default_key] : filter_resolve_format(FILTER_FORMAT_DEFAULT);
+    $edit['format'] = !empty($edit[$default_key]) ? $edit[$default_key] : filter_default_format();
     unset($edit[$default_key]);
     return $edit;
   }

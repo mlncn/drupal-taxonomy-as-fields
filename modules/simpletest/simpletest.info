@@ -1,6 +1,6 @@
-; $Id: simpletest.info,v 1.10 2009/08/31 18:30:26 webchick Exp $
-name = "SimpleTest"
-description = "Provides a framework for unit and functional testing."
+; $Id: simpletest.info,v 1.12 2009/09/21 06:52:40 dries Exp $
+name = Testing
+description = Provides a framework for unit and functional testing.
 package = Core
 version = VERSION
 core = 7.x
@@ -28,6 +28,7 @@ files[] = tests/lock.test
 files[] = tests/mail.test
 files[] = tests/menu.test
 files[] = tests/module.test
+files[] = tests/path.test
 files[] = tests/registry.test
 files[] = tests/schema.test
 files[] = tests/session.test

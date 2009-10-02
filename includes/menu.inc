@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.341 2009/08/24 01:49:41 webchick Exp $
+// $Id: menu.inc,v 1.348 2009/10/01 19:07:12 dries Exp $
 
 /**
  * @file
@@ -359,8 +359,9 @@ function menu_set_item($path, $router_item) {
  *   The router item, an associate array corresponding to one row in the
  *   menu_router table. The value of key map holds the loaded objects. The
  *   value of key access is TRUE if the current user can access this page.
- *   The values for key title, page_arguments, access_arguments will be
- *   filled in based on the database values and the objects loaded.
+ *   The values for key title, page_arguments, access_arguments, and
+ *   theme_arguments will be filled in based on the database values and the
+ *   objects loaded.
  */
 function menu_get_item($path = NULL, $router_item = NULL) {
   $router_items = &drupal_static(__FUNCTION__);
@@ -391,6 +392,7 @@ function menu_get_item($path = NULL, $router_item = NULL) {
       if ($router_item['access']) {
         $router_item['map'] = $map;
         $router_item['page_arguments'] = array_merge(menu_unserialize($router_item['page_arguments'], $map), array_slice($map, $router_item['number_parts']));
+        $router_item['theme_arguments'] = array_merge(menu_unserialize($router_item['theme_arguments'], $map), array_slice($map, $router_item['number_parts']));
       }
     }
     $router_items[$path] = $router_item;
@@ -413,7 +415,7 @@ function menu_execute_active_handler($path = NULL) {
   if ($router_item = menu_get_item($path)) {
     if ($router_item['access']) {
       if ($router_item['file']) {
-        require_once($router_item['file']);
+        require_once DRUPAL_ROOT . '/' . $router_item['file'];
       }
       return call_user_func_array($router_item['page_callback'], $router_item['page_arguments']);
     }
@@ -552,6 +554,14 @@ function _menu_check_access(&$item, $map) {
 function _menu_item_localize(&$item, $map, $link_translate = FALSE) {
   $callback = $item['title_callback'];
   $item['localized_options'] = $item['options'];
+  // All 'class' attributes are assumed to be an array during rendering, but
+  // links stored in the database may use an old string value.
+  // @todo In order to remove this code we need to implement a database update
+  //   including unserializing all existing link options and running this code
+  //   on them, as well as adding validation to menu_link_save().
+  if (isset($item['options']['attributes']['class']) && is_string($item['options']['attributes']['class'])) {
+    $item['localized_options']['attributes']['class'] = explode(' ', $item['options']['attributes']['class']);
+  }
   // If we are translating the title of a menu link, and its title is the same
   // as the corresponding router item, then we can use the title information
   // from the router. If it's customized, then we need to use the link title
@@ -805,16 +815,21 @@ function menu_tree($menu_name) {
 /**
  * Returns a rendered menu tree.
  *
+ * The menu item's LI element is given one of the following classes:
+ * - expanded: The menu item is showing its submenu.
+ * - collapsed: The menu item has a submenu which is not shown.
+ * - leaf: The menu item has no submenu.
+ *
  * @param $tree
  *   A data structure representing the tree as returned from menu_tree_data.
  * @return
- *   The rendered HTML of that data structure.
+ *   A structured array to be rendered by drupal_render().
  */
 function menu_tree_output($tree) {
-  $output = '';
+  $build = array();
   $items = array();
 
-  // Pull out just the menu items we are going to render so that we
+  // Pull out just the menu links we are going to render so that we
   // get an accurate count for the first/last classes.
   foreach ($tree as $data) {
     if (!$data['link']['hidden']) {
@@ -824,23 +839,47 @@ function menu_tree_output($tree) {
 
   $num_items = count($items);
   foreach ($items as $i => $data) {
-    $extra_class = array();
+    $class = array();
     if ($i == 0) {
-      $extra_class[] = 'first';
+      $class[] = 'first';
     }
     if ($i == $num_items - 1) {
-      $extra_class[] = 'last';
+      $class[] = 'last';
     }
-    $extra_class = implode(' ', $extra_class);
-    $link = theme('menu_item_link', $data['link']);
+    // Set a class if the link has children.
     if ($data['below']) {
-      $output .= theme('menu_item', $link, $data['link']['has_children'], menu_tree_output($data['below']), $data['link']['in_active_trail'], $extra_class);
+      $class[] = 'expanded';
+    }
+    elseif ($data['link']['has_children']) {
+      $class[] = 'collapsed';
     }
     else {
-      $output .= theme('menu_item', $link, $data['link']['has_children'], '', $data['link']['in_active_trail'], $extra_class);
+      $class[] = 'leaf';
     }
+    // Set a class if the link is in the active trail.
+    if ($data['link']['in_active_trail']) {
+      $class[] = 'active-trail';
+      $data['localized_options']['attributes']['class'][] = 'active-trail';
+    }
+
+    $element['#theme'] = 'menu_link';
+    $element['#attributes']['class'] = $class;
+    $element['#title'] = $data['link']['title'];
+    $element['#href'] = $data['link']['href'];
+    $element['#localized_options'] = !empty($data['localized_options']) ? $data['localized_options'] : array();
+    $element['#below'] = $data['below'] ? menu_tree_output($data['below']) : $data['below'];
+    $element['#original_link'] = $data['link'];
+    // Index using the link's unique mlid.
+    $build[$data['link']['mlid']] = $element;
   }
-  return $output ? theme('menu_tree', $output) : '';
+  if ($build) {
+    // Make sure drupal_render() does not re-order the links.
+    $build['#sorted'] = TRUE;
+    // Add the theme wrapper for outer markup.
+    $build['#theme_wrappers'][] = 'menu_tree';
+  }
+
+  return $build;
 }
 
 /**
@@ -899,6 +938,8 @@ function menu_tree_all_data($menu_name, $link = NULL, $max_depth = NULL) {
         'title',
         'title_callback',
         'title_arguments',
+        'theme_callback',
+        'theme_arguments',
         'type',
         'description',
       ));
@@ -1080,6 +1121,8 @@ function menu_tree_page_data($menu_name, $max_depth = NULL) {
           'title',
           'title_callback',
           'title_arguments',
+          'theme_callback',
+          'theme_arguments',
           'type',
           'description',
         ));
@@ -1225,48 +1268,45 @@ function menu_tree_data(array $links, array $parents = array(), $depth = 1) {
  * the next menu link.
  */
 function _menu_tree_data(&$links, $parents, $depth) {
-  $done = FALSE;
   $tree = array();
-  while (!$done && $item = array_pop($links)) {
+  while ($item = array_pop($links)) {
     // We need to determine if we're on the path to root so we can later build
     // the correct active trail and breadcrumb.
     $item['in_active_trail'] = in_array($item['mlid'], $parents);
-    // Look ahead to the next link, but leave it on the array so it's available
-    // to other recursive function calls if we return or build a sub-tree.
-    $next = end($links);
     // Add the current link to the tree.
     $tree[$item['mlid']] = array(
       'link' => $item,
       'below' => array(),
     );
+    // Look ahead to the next link, but leave it on the array so it's available
+    // to other recursive function calls if we return or build a sub-tree.
+    $next = end($links);
     // Check whether the next link is the first in a new sub-tree.
     if ($next && $next['depth'] > $depth) {
       // Recursively call _menu_tree_data to build the sub-tree.
       $tree[$item['mlid']]['below'] = _menu_tree_data($links, $parents, $next['depth']);
+      // Fetch next link after filling the sub-tree.
+      $next = end($links);
     }
-    else {
-      // Determine if we should exit the loop and return.
-      $done = (!$next || $next['depth'] < $depth);
+    // Determine if we should exit the loop and return.
+    if (!$next || $next['depth'] < $depth) {
+      break;
     }
   }
   return $tree;
 }
 
 /**
- * Generate the HTML output for a single menu link.
+ * Preprocess the rendered tree for theme_menu_tree.
  *
  * @ingroup themeable
  */
-function theme_menu_item_link($link) {
-  if (empty($link['localized_options'])) {
-    $link['localized_options'] = array();
-  }
-
-  return l($link['title'], $link['href'], $link['localized_options']);
+function template_preprocess_menu_tree(&$variables) {
+  $variables['tree'] = $variables['tree']['#children'];
 }
 
 /**
- * Generate the HTML output for a menu tree
+ * Theme wrapper for the HTML output for a menu sub-tree.
  *
  * @ingroup themeable
  */
@@ -1275,56 +1315,47 @@ function theme_menu_tree($tree) {
 }
 
 /**
- * Generate the HTML output for a menu item and submenu.
+ * Generate the HTML output for a menu link and submenu.
  *
- * The menu item's LI element is given one of the following classes:
- * - expanded: The menu item is showing its submenu.
- * - collapsed: The menu item has a submenu which is not shown.
- * - leaf: The menu item has no submenu.
+ * @param $element
+ *   Structured array data for a menu link.
  *
  * @ingroup themeable
- *
- * @param $link
- *   The fully-formatted link for this menu item.
- * @param $has_children
- *   Boolean value indicating if this menu item has children.
- * @param $menu
- *   Contains a fully-formatted submenu, if one exists for this menu item.
- *   Defaults to NULL.
- * @param $in_active_trail
- *   Boolean determining if the current page is below the menu item in the
- *   menu system. Defaults to FALSE.
- * @param $extra_class
- *   Extra classes that should be added to the class of the list item.
- *   Defaults to NULL.
  */
-function theme_menu_item($link, $has_children, $menu = '', $in_active_trail = FALSE, $extra_class = NULL) {
-  $class = ($menu ? 'expanded' : ($has_children ? 'collapsed' : 'leaf'));
-  if (!empty($extra_class)) {
-    $class .= ' ' . $extra_class;
+function theme_menu_link(array $element) {
+  $sub_menu = '';
+
+  if ($element['#below']) {
+    $sub_menu = drupal_render($element['#below']);
   }
-  if ($in_active_trail) {
-    $class .= ' active-trail';
-  }
-  return '<li class="' . $class . '">' . $link . $menu . "</li>\n";
+  $output = l($element['#title'], $element['#href'], $element['#localized_options']);
+  return '<li' . drupal_attributes($element['#attributes']) . '>' . $output . $sub_menu . "</li>\n";
 }
 
 /**
  * Generate the HTML output for a single local task link.
  *
+ * @param $link
+ *   A menu link array with 'title', 'href', and 'localized_options' keys.
+ * @param $active
+ *   A boolean indicating whether the local task is active.
+ *
  * @ingroup themeable
  */
 function theme_menu_local_task($link, $active = FALSE) {
-  return '<li ' . ($active ? 'class="active" ' : '') . '>' . $link . "</li>\n";
+  return '<li ' . ($active ? 'class="active" ' : '') . '>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
 }
 
 /**
  * Generate the HTML output for a single local action link.
  *
+ * @param $link
+ *   A menu link array with 'title', 'href', and 'localized_options' keys.
+ *
  * @ingroup themeable
  */
 function theme_menu_local_action($link) {
-  return '<li>' . $link . "</li>\n";
+  return '<li>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
 }
 
 /**
@@ -1365,6 +1396,38 @@ function menu_get_active_help() {
 }
 
 /**
+ * Gets the custom theme for the current page, if there is one.
+ *
+ * @param $initialize
+ *   This parameter should only be used internally; it is set to TRUE in order
+ *   to force the custom theme to be initialized from the menu router item for
+ *   the current page.
+ * @return
+ *   The machine-readable name of the custom theme, if there is one.
+ *
+ * @see menu_set_custom_theme()
+ */
+function menu_get_custom_theme($initialize = FALSE) {
+  $custom_theme = &drupal_static(__FUNCTION__);
+  // Skip this if the site is offline or being installed or updated, since the
+  // menu system may not be correctly initialized then.
+  if ($initialize && !_menu_site_is_offline(TRUE) && (!defined('MAINTENANCE_MODE') || (MAINTENANCE_MODE != 'update' && MAINTENANCE_MODE != 'install'))) {
+    $router_item = menu_get_item();
+    if (!empty($router_item['access']) && !empty($router_item['theme_callback']) && function_exists($router_item['theme_callback'])) {
+      $custom_theme = call_user_func_array($router_item['theme_callback'], $router_item['theme_arguments']);
+    }
+  }
+  return $custom_theme;
+}
+
+/**
+ * Sets a custom theme for the current page, if there is one.
+ */
+function menu_set_custom_theme() {
+  menu_get_custom_theme(TRUE);
+}
+
+/**
  * Build a list of named menus.
  */
 function menu_get_names() {
@@ -1373,7 +1436,7 @@ function menu_get_names() {
   if (empty($names)) {
     $names = db_select('menu_links')
       ->distinct()
-      ->fields('menu_links', 'menu_name')
+      ->fields('menu_links', array('menu_name'))
       ->orderBy('menu_name')
       ->execute()->fetchCol();
   }
@@ -1527,17 +1590,18 @@ function menu_local_tasks($level = 0) {
       $action_count = 0;
       foreach ($children[$path] as $item) {
         if ($item['access']) {
+          $link = $item;
           // The default task is always active.
           if ($item['type'] == MENU_DEFAULT_LOCAL_TASK) {
             // Find the first parent which is not a default local task or action.
             for ($p = $item['tab_parent']; $tasks[$p]['type'] == MENU_DEFAULT_LOCAL_TASK; $p = $tasks[$p]['tab_parent']);
-            $link = theme('menu_item_link', array('href' => $tasks[$p]['href']) + $item);
+            // Use the path of the parent instead.
+            $link['href'] = $tasks[$p]['href'];
             $tabs_current .= theme('menu_local_task', $link, TRUE);
             $next_path = $item['path'];
             $tab_count++;
           }
           else {
-            $link = theme('menu_item_link', $item);
             if ($item['type'] == MENU_LOCAL_TASK) {
               $tabs_current .= theme('menu_local_task', $link);
               $tab_count++;
@@ -1573,16 +1637,15 @@ function menu_local_tasks($level = 0) {
         }
         if ($item['access']) {
           $count++;
+          $link = $item;
           if ($item['type'] == MENU_DEFAULT_LOCAL_TASK) {
             // Find the first parent which is not a default local task.
             for ($p = $item['tab_parent']; $tasks[$p]['type'] == MENU_DEFAULT_LOCAL_TASK; $p = $tasks[$p]['tab_parent']);
-            $link = theme('menu_item_link', array('href' => $tasks[$p]['href']) + $item);
+            // Use the path of the parent instead.
+            $link['href'] = $tasks[$p]['href'];
             if ($item['path'] == $router_item['path']) {
               $root_path = $tasks[$p]['path'];
             }
-          }
-          else {
-            $link = theme('menu_item_link', $item);
           }
           // We check for the active tab.
           if ($item['path'] == $path) {
@@ -1709,7 +1772,25 @@ function menu_set_active_item($path) {
 }
 
 /**
- * Set (or get) the active trail for the current page - the path to root in the menu tree.
+ * Sets or gets the active trail (path to root menu root) of the current page.
+ *
+ * @param $new_trail
+ *   Menu trail to set, or NULL to use previously-set or calculated trail. If
+ *   supplying a trail, use the same format as the return value (see below).
+ * @return
+ *   Path to menu root of the current page, as an array of menu link items,
+ *   starting with the site's home page. Each link item is an associative array
+ *   with the following components:
+ *   - 'title': Title of the item.
+ *   - 'href': Drupal path of the item.
+ *   - 'localized_options': Options for passing into the l() function.
+ *   - 'type': A menu type constant, such as MENU_DEFAULT_LOCAL_TASK, or 0 to
+ *     indicate it's not really in the menu (used for the home page item).
+ *   If $new_trail is supplied, the value is saved in a static variable and
+ *   returned. If $new_trail is not supplied, and there is a saved value from
+ *   a previous call, the saved value is returned. If $new_trail is not supplied
+ *   and there is no saved value, the path to the current page is calculated,
+ *   saved as the static value, and returned.
  */
 function menu_set_active_trail($new_trail = NULL) {
   $trail = &drupal_static(__FUNCTION__);
@@ -1789,7 +1870,9 @@ function menu_set_active_trail($new_trail = NULL) {
 }
 
 /**
- * Get the active trail for the current page - the path to root in the menu tree.
+ * Gets the active trail (path to root menu root) of the current page.
+ *
+ * See menu_set_active_trail() for details of return value.
  */
 function menu_get_active_trail() {
   return menu_set_active_trail();
@@ -2139,6 +2222,9 @@ function _menu_delete_item($item, $force = FALSE) {
     }
     db_delete('menu_links')->condition('mlid', $item['mlid'])->execute();
 
+    // Notify modules we have deleted the item.
+    module_invoke_all('menu_link_delete', $item);
+
     // Update the has_children status of the parent.
     _menu_update_parental_status($item);
     menu_cache_clear($item['menu_name']);
@@ -2333,7 +2419,13 @@ function menu_link_save(&$item) {
     if ($existing_item && $menu_name != $existing_item['menu_name']) {
       menu_cache_clear($existing_item['menu_name']);
     }
-
+    // Notify modules we have acted on a menu item.
+    $hook = 'menu_link_insert';
+    if ($existing_item) {
+      $hook = 'menu_link_update';
+    }
+    module_invoke_all($hook, $item);
+    // Now clear the cache.
     _menu_clear_page_cache();
   }
   return $item['mlid'];
@@ -2436,21 +2528,11 @@ function menu_link_maintain($module, $op, $link_path, $link_title) {
       return menu_link_save($menu_link);
       break;
     case 'update':
-      db_update('menu_links')
-        ->fields(array('link_title' => $link_title))
-        ->condition('link_path', $link_path)
-        ->condition('customized', 0)
-        ->condition('module', $module)
-        ->execute();
-      $result = db_select('menu_links')
-        ->fields('menu_links', array('menu_name'))
-        ->condition('link_path', $link_path)
-        ->condition('customized', 0)
-        ->condition('module', $module)
-        ->groupBy('menu_name')
-        ->execute()->fetchCol();
-      foreach ($result as $menu_name) {
-        menu_cache_clear($menu_name);
+      $result = db_query("SELECT * FROM {menu_links} WHERE link_path = :link_path AND module = :module AND customized = 0", array(':link_path' => $link_path, ':module' => $module))->fetchAll(PDO::FETCH_ASSOC);
+      foreach ($result as $link) {
+        $link['link_title'] = $link_title;
+        $link['options'] = unserialize($link['options']);
+        menu_link_save($link);
       }
       break;
     case 'delete':
@@ -2704,6 +2786,13 @@ function _menu_router_build($callbacks) {
             $item['file path'] = $parent['file path'];
           }
         }
+        // Same for theme callbacks.
+        if (!isset($item['theme callback']) && isset($parent['theme callback'])) {
+          $item['theme callback'] = $parent['theme callback'];
+          if (!isset($item['theme arguments']) && isset($parent['theme arguments'])) {
+            $item['theme arguments'] = $parent['theme arguments'];
+          }
+        }
       }
     }
     if (!isset($item['access callback']) && isset($item['access arguments'])) {
@@ -2725,6 +2814,8 @@ function _menu_router_build($callbacks) {
       'block callback' => '',
       'title arguments' => array(),
       'title callback' => 't',
+      'theme arguments' => array(),
+      'theme callback' => '',
       'description' => '',
       'position' => '',
       'tab_parent' => '',
@@ -2774,6 +2865,8 @@ function _menu_router_save($menu, $masks) {
       'title',
       'title_callback',
       'title_arguments',
+      'theme_callback',
+      'theme_arguments',
       'type',
       'block_callback',
       'description',
@@ -2799,6 +2892,8 @@ function _menu_router_save($menu, $masks) {
       'title' => $item['title'],
       'title_callback' => $item['title callback'],
       'title_arguments' => ($item['title arguments'] ? serialize($item['title arguments']) : ''),
+      'theme_callback' => $item['theme callback'],
+      'theme_arguments' => serialize($item['theme arguments']),
       'type' => $item['type'],
       'block_callback' => $item['block callback'],
       'description' => $item['description'],
@@ -2829,20 +2924,24 @@ function menu_path_is_external($path) {
  * This function will log the current user out and redirect to front page
  * if the current user has no 'access site in maintenance mode' permission.
  *
+ * @param $check_only
+ *   If this is set to TRUE, the function will perform the access checks and
+ *   return the site offline status, but not log the user out or display any
+ *   messages.
  * @return
  *   FALSE if the site is not in maintenance mode, the user login page is
  *   displayed, or the user has the 'access site in maintenance mode'
  *   permission. TRUE for anonymous users not being on the login page when the
  *   site is in maintenance mode.
  */
-function _menu_site_is_offline() {
+function _menu_site_is_offline($check_only = FALSE) {
   // Check if site is in maintenance mode.
   if (variable_get('maintenance_mode', 0)) {
     if (user_access('access site in maintenance mode')) {
       // Ensure that the maintenance mode message is displayed only once
       // (allowing for page redirects) and specifically suppress its display on
       // the maintenance mode settings page.
-      if ($_GET['q'] != 'admin/config/development/maintenance') {
+      if (!$check_only && $_GET['q'] != 'admin/config/development/maintenance') {
         if (user_access('administer site configuration')) {
           drupal_set_message(t('Operating in maintenance mode. <a href="@url">Go online.</a>', array('@url' => url('admin/config/development/maintenance'))), 'status', FALSE);
         }
@@ -2857,8 +2956,10 @@ function _menu_site_is_offline() {
         return ($_GET['q'] != 'user' && $_GET['q'] != 'user/login');
       }
       // Logged in users are unprivileged here, so they are logged out.
-      require_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'user') . '/user.pages.inc';
-      user_logout();
+      if (!$check_only) {
+        require_once DRUPAL_ROOT . '/' . drupal_get_path('module', 'user') . '/user.pages.inc';
+        user_logout();
+      }
     }
   }
   return FALSE;

@@ -1,5 +1,5 @@
 <?php
-// $Id: file.field.inc,v 1.2 2009/09/05 15:05:02 dries Exp $
+// $Id: file.field.inc,v 1.4 2009/09/26 15:57:38 dries Exp $
 
 /**
  * @file
@@ -67,7 +67,7 @@ function file_field_schema($field) {
 /**
  * Implement hook_field_settings_form().
  */
-function file_field_settings_form($field, $instance) {
+function file_field_settings_form($field, $instance, $has_data) {
   $defaults = field_info_field_settings($field['type']);
   $settings = array_merge($defaults, $field['settings']);
 
@@ -98,6 +98,7 @@ function file_field_settings_form($field, $instance) {
     '#options' => $scheme_options,
     '#default_value' => $settings['uri_scheme'],
     '#description' => t('Select where the final files should be stored. Private file storage has significantly more overhead than public files, but allows restricted access to files within this field.'),
+    '#disabled' => $has_data,
   );
 
   $form['default_file'] = array(
@@ -292,7 +293,7 @@ function file_field_update($obj_type, $object, $field, $instance, $langcode, &$i
   }
 
   // Delete items from original object.
-  list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
   $load_function = $obj_type . '_load';
 
   $original = $load_function($id);
@@ -312,7 +313,7 @@ function file_field_update($obj_type, $object, $field, $instance, $langcode, &$i
  * Implement hook_field_delete().
  */
 function file_field_delete($obj_type, $object, $field, $instance, $langcode, &$items) {
-  list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
   foreach ($items as $delta => $item) {
     // For hook_file_references(), remember that this is being deleted.
     $item['file_field_name'] = $field['field_name'];

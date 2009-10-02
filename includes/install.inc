@@ -1,5 +1,5 @@
 <?php
-// $Id: install.inc,v 1.110 2009/08/24 03:13:44 webchick Exp $
+// $Id: install.inc,v 1.113 2009/09/25 14:54:49 dries Exp $
 
 /**
  * Indicates that a module has not been installed yet.
@@ -92,24 +92,32 @@ function drupal_load_updates() {
  *   Otherwise, FALSE.
  */
 function drupal_get_schema_versions($module) {
-  $updates = array();
-  $functions = get_defined_functions();
-  foreach ($functions['user'] as $function) {
-    if (strpos($function, $module . '_update_') === 0) {
-      $version = substr($function, strlen($module . '_update_'));
-      if (is_numeric($version)) {
-        $updates[] = $version;
+  $updates = &drupal_static(__FUNCTION__, NULL);
+  if (!isset($updates[$module])) {
+    $updates = array();
+    // Prepare regular expression to match all possible defined hook_update_N().
+    $regexp = '/^(?P<module>.+)_update_(?P<version>\d+)$/';
+    $functions = get_defined_functions();
+    // Narrow this down to functions ending with an integer, since all
+    // hook_update_N() functions end this way, and there are other
+    // possible functions which match '_update_'. We use preg_grep() here
+    // instead of foreaching through all defined functions, since the loop
+    // through all PHP functions can take significant page execution time
+    // and this function is called on every administrative page via
+    // system_requirements().
+    foreach (preg_grep('/_\d+$/', $functions['user']) as $function) {
+      // If this function is a module update function, add it to the list of
+      // module updates.
+      if (preg_match($regexp, $function, $matches)) {
+        $updates[$matches['module']][] = $matches['version'];
       }
     }
+    // Ensure that updates are applied in numerical order.
+    foreach ($updates as &$module_updates) {
+      sort($module_updates, SORT_NUMERIC);
+    }
   }
-  if (count($updates) == 0) {
-    return FALSE;
-  }
-
-  // Make sure updates are run in numeric order, not in definition order.
-  sort($updates, SORT_NUMERIC);
-
-  return $updates;
+  return isset($updates[$module]) ? $updates[$module] : FALSE;
 }
 
 /**
@@ -586,8 +594,9 @@ function drupal_install_modules($module_list = array(), $disable_modules_install
  */
 function _drupal_install_module($module) {
   if (drupal_get_installed_schema_version($module, TRUE) == SCHEMA_UNINSTALLED) {
-    module_load_install($module);
     drupal_load('module', $module);
+    drupal_install_schema($module);
+    // Now allow the module to perform install tasks.
     module_invoke($module, 'install');
     $versions = drupal_get_schema_versions($module);
     drupal_set_installed_schema_version($module, $versions ? max($versions) : SCHEMA_INSTALLED);
@@ -663,6 +672,8 @@ function drupal_uninstall_modules($module_list = array()) {
     // Uninstall the module.
     module_load_install($module);
     module_invoke($module, 'uninstall');
+    drupal_uninstall_schema($module);
+
     watchdog('system', '%module module uninstalled.', array('%module' => $module), WATCHDOG_INFO);
 
     // Now remove the menu links for all paths declared by this module.

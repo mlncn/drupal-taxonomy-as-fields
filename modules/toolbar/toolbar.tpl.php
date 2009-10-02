@@ -1,5 +1,5 @@
 <?php
-// $Id: toolbar.tpl.php,v 1.2 2009/07/29 12:28:41 dries Exp $
+// $Id: toolbar.tpl.php,v 1.4 2009/09/15 03:38:06 webchick Exp $
 
 /**
  * @file

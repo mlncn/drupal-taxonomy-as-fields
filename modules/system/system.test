@@ -1,5 +1,5 @@
 <?php
-// $Id: system.test,v 1.75 2009/09/01 16:50:12 webchick Exp $
+// $Id: system.test,v 1.80 2009/10/02 00:50:45 dries Exp $
 
 /**
  * Helper class for module test cases.
@@ -379,12 +379,12 @@ class CronRunTestCase extends DrupalWebTestCase {
 
     // Run cron anonymously with a random cron key.
     $key = $this->randomName(16);
-    $this->drupalGet($base_url . '/cron.php', array('external' => TRUE, 'query' => 'cron_key=' . $key));
+    $this->drupalGet($base_url . '/cron.php', array('external' => TRUE, 'query' => array('cron_key' => $key)));
     $this->assertResponse(403);
 
     // Run cron anonymously with the valid cron key.
     $key = variable_get('cron_key', 'drupal');
-    $this->drupalGet($base_url . '/cron.php', array('external' => TRUE, 'query' => 'cron_key=' . $key));
+    $this->drupalGet($base_url . '/cron.php', array('external' => TRUE, 'query' => array('cron_key' => $key)));
     $this->assertResponse(200);
 
     // Execute cron directly.
@@ -512,20 +512,14 @@ class AdminMetaTagTestCase extends DrupalWebTestCase {
 class AccessDeniedTestCase extends DrupalWebTestCase {
   protected $admin_user;
 
-  /**
-   * Implement getInfo().
-   */
   public static function getInfo() {
     return array(
       'name' => '403 functionality',
-      'description' => "Tests page access denied functionality, including custom 403 pages.",
+      'description' => 'Tests page access denied functionality, including custom 403 pages.',
       'group' => 'System'
     );
   }
 
-  /**
-   * Implement setUp().
-   */
   function setUp() {
     parent::setUp();
 
@@ -966,8 +960,6 @@ class SystemSettingsForm extends DrupalWebTestCase {
    * Tests the handling of automatic defaults in systems_settings_form().
    */
   function testAutomaticDefaults() {
-    $form = array();
-
     $form['system_settings_form_test'] = array(
       '#type' => 'checkbox',
       '#default_value' => FALSE,
@@ -1193,7 +1185,7 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
     $account = $this->drupalCreateUser();
     $node = $this->drupalCreateNode(array('uid' => $account->uid));
     $node->title = '<blink>Blinking Text</blink>';
-    global $user;
+    global $user, $language;
 
     $source  = '[node:title]';         // Title of the node we passed in
     $source .= '[node:author:name]';   // Node author's name
@@ -1205,13 +1197,13 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
 
     $target  = check_plain($node->title);
     $target .= check_plain($account->name);
-    $target .= format_interval(REQUEST_TIME - $node->created, 2);
+    $target .= format_interval(REQUEST_TIME - $node->created, 2, $language->language);
     $target .= check_plain($user->name);
     $target .= '[user:name]';
-    $target .= format_date(REQUEST_TIME, 'short');
+    $target .= format_date(REQUEST_TIME, 'short', '', NULL, $language->language);
     $target .= '[bogus:token]';
 
-    $result = token_replace($source, array('node' => $node));
+    $result = token_replace($source, array('node' => $node), array('language' => $language));
 
     // Check that the results of token_generate are sanitized properly. This does NOT
     // test the cleanliness of every token -- just that the $sanitize flag is being
@@ -1225,5 +1217,76 @@ class TokenReplaceTestCase extends DrupalWebTestCase {
 
     $generated = token_generate('node', $raw_tokens, array('node' => $node), array('sanitize' => FALSE));
     $this->assertFalse(strcmp($generated['[node:title]'], $node->title), t('Unsanitized token generated properly.'));
+  }
+}
+
+class InfoFileParserTestCase extends DrupalUnitTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Info file format parser',
+      'description' => 'Tests proper parsing of a .info file formatted string.',
+      'group' => 'System',
+    );
+  }
+
+  /**
+   * Test drupal_parse_info_format().
+   */
+  function testDrupalParseInfoFormat() {
+    $config = '
+simple = Value
+quoted = " Value"
+multiline = "Value
+  Value"
+array[] = Value1
+array[] = Value2
+array_assoc[a] = Value1
+array_assoc[b] = Value2
+array_deep[][][] = Value
+array_deep_assoc[a][b][c] = Value
+array_space[a b] = Value';
+
+    $expected = array(
+      'simple' => 'Value',
+      'quoted' => ' Value',
+      'multiline' => "Value\n  Value",
+      'array' => array(
+        0 => 'Value1',
+        1 => 'Value2',
+      ),
+      'array_assoc' => array(
+        'a' => 'Value1',
+        'b' => 'Value2',
+      ),
+      'array_deep' => array(
+        0 => array(
+          0 => array(
+            0 => 'Value',
+          ),
+        ),
+      ),
+      'array_deep_assoc' => array(
+        'a' => array(
+          'b' => array(
+            'c' => 'Value',
+          ),
+        ),
+      ),
+      'array_space' => array(
+        'a b' => 'Value',
+      ),
+    );
+
+    $parsed = drupal_parse_info_format($config);
+
+    $this->assertEqual($parsed['simple'], $expected['simple'], t('Set a simple value.'));
+    $this->assertEqual($parsed['quoted'], $expected['quoted'], t('Set a simple value in quotes.'));
+    $this->assertEqual($parsed['multiline'], $expected['multiline'], t('Set a multiline value.'));
+    $this->assertEqual($parsed['array'], $expected['array'], t('Set a simple array.'));
+    $this->assertEqual($parsed['array_assoc'], $expected['array_assoc'], t('Set an associative array.'));
+    $this->assertEqual($parsed['array_deep'], $expected['array_deep'], t('Set a nested array.'));
+    $this->assertEqual($parsed['array_deep_assoc'], $expected['array_deep_assoc'], t('Set a nested associative array.'));
+    $this->assertEqual($parsed['array_space'], $expected['array_space'], t('Set an array with a whitespace in the key.'));
+    $this->assertEqual($parsed, $expected, t('Entire parsed .info string and expected array are identical.'));
   }
 }

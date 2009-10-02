@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.984 2009/09/05 15:05:01 dries Exp $
+// $Id: common.inc,v 1.1004 2009/10/02 00:50:45 dries Exp $
 
 /**
  * @file
@@ -7,6 +7,37 @@
  *
  * The functions that are critical and need to be available even when serving
  * a cached page are instead located in bootstrap.inc.
+ */
+
+/**
+ * @defgroup php_wrappers PHP wrapper functions
+ * @{
+ * Functions that are wrappers or custom implementations of PHP functions.
+ *
+ * Certain PHP functions should not be used in Drupal. Instead, Drupal's
+ * replacement functions should be used.
+ *
+ * For example, for improved or more secure UTF8-handling, or RFC-compliant
+ * handling of URLs in Drupal.
+ *
+ * For ease of use and memorizing, all these wrapper functions use the same name
+ * as the original PHP function, but prefixed with "drupal_". Beware, however,
+ * that not all wrapper functions support the same arguments as the original
+ * functions.
+ *
+ * You should always use these wrapper functions in your code.
+ *
+ * Wrong:
+ * @code
+ *   $my_substring = substr($original_string, 0, 5);
+ * @endcode
+ *
+ * Correct:
+ * @code
+ *   $my_substring = drupal_substr($original_string, 0, 5);
+ * @endcode
+ *
+ * @} End of "defgroup php_wrappers".
  */
 
 /**
@@ -317,36 +348,86 @@ function drupal_get_feeds($delimiter = "\n") {
  */
 
 /**
- * Parse an array into a valid urlencoded query string.
+ * Process a URL query parameter array to remove unwanted elements.
  *
  * @param $query
- *   The array to be processed e.g. $_GET.
+ *   (optional) An array to be processed. Defaults to $_GET.
  * @param $exclude
- *   The array filled with keys to be excluded. Use parent[child] to exclude
- *   nested items.
+ *   (optional) A list of $query array keys to remove. Use "parent[child]" to
+ *   exclude nested items. Defaults to array('q').
  * @param $parent
- *   Should not be passed, only used in recursive calls.
+ *   Internal use only. Used to build the $query array key for nested items.
+ *
  * @return
- *   An urlencoded string which can be appended to/as the URL query string.
+ *   An array containing query parameters, which can be used for url().
  */
-function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
+function drupal_get_query_parameters(array $query = NULL, array $exclude = array('q'), $parent = '') {
+  // Set defaults, if none given.
+  if (!isset($query)) {
+    $query = $_GET;
+  }
+  // If $exclude is empty, there is nothing to filter.
+  if (empty($exclude)) {
+    return $query;
+  }
+  elseif (!$parent) {
+    $exclude = array_flip($exclude);
+  }
+
   $params = array();
-
   foreach ($query as $key => $value) {
-    $key = rawurlencode($key);
-    if ($parent) {
-      $key = $parent . '[' . $key . ']';
-    }
-
-    if (in_array($key, $exclude)) {
+    $string_key = ($parent ? $parent . '[' . $key . ']' : $key);
+    if (isset($exclude[$string_key])) {
       continue;
     }
 
     if (is_array($value)) {
-      $params[] = drupal_query_string_encode($value, $exclude, $key);
+      $params[$key] = drupal_get_query_parameters($value, $exclude, $string_key);
     }
     else {
-      $params[] = $key . '=' . rawurlencode($value);
+      $params[$key] = $value;
+    }
+  }
+
+  return $params;
+}
+
+/**
+ * Parse an array into a valid, rawurlencoded query string.
+ *
+ * This differs from http_build_query() as we need to rawurlencode() (instead of
+ * urlencode()) all query parameters.
+ *
+ * @param $query
+ *   The query parameter array to be processed, e.g. $_GET.
+ * @param $parent
+ *   Internal use only. Used to build the $query array key for nested items.
+ *
+ * @return
+ *   A rawurlencoded string which can be used as or appended to the URL query
+ *   string.
+ *
+ * @see drupal_get_query_parameters()
+ * @ingroup php_wrappers
+ */
+function drupal_http_build_query(array $query, $parent = '') {
+  $params = array();
+
+  foreach ($query as $key => $value) {
+    $key = ($parent ? $parent . '[' . rawurlencode($key) . ']' : rawurlencode($key));
+
+    // Recurse into children.
+    if (is_array($value)) {
+      $params[] = drupal_http_build_query($value, $key);
+    }
+    // If a query parameter value is NULL, only append its key.
+    elseif (!isset($value)) {
+      $params[] = $key;
+    }
+    else {
+      // For better readability of paths in query strings, we decode slashes.
+      // @see drupal_encode_path()
+      $params[] = $key . '=' . str_replace('%2F', '/', rawurlencode($value));
     }
   }
 
@@ -354,7 +435,7 @@ function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
 }
 
 /**
- * Prepare a destination query string for use in combination with drupal_goto().
+ * Prepare a 'destination' URL query parameter for use in combination with drupal_goto().
  *
  * Used to direct the user back to the referring page after completing a form.
  * By default the current URL is returned. If a destination exists in the
@@ -364,17 +445,129 @@ function drupal_query_string_encode($query, $exclude = array(), $parent = '') {
  * @see drupal_goto()
  */
 function drupal_get_destination() {
-  if (isset($_REQUEST['destination'])) {
-    return 'destination=' . urlencode($_REQUEST['destination']);
+  $destination = &drupal_static(__FUNCTION__);
+
+  if (isset($destination)) {
+    return $destination;
+  }
+
+  if (isset($_GET['destination'])) {
+    $destination = array('destination' => $_GET['destination']);
   }
   else {
-    // Use $_GET here to retrieve the original path in source form.
-    $path = isset($_GET['q']) ? $_GET['q'] : '';
-    $query = drupal_query_string_encode($_GET, array('q'));
+    $path = $_GET['q'];
+    $query = drupal_http_build_query(drupal_get_query_parameters());
     if ($query != '') {
       $path .= '?' . $query;
     }
-    return 'destination=' . urlencode($path);
+    $destination = array('destination' => $path);
+  }
+  return $destination;
+}
+
+/**
+ * Wrapper around parse_url() to parse a given URL into an associative array, suitable for url().
+ *
+ * The returned array contains a 'path' that may be passed separately to url().
+ * For example:
+ * @code
+ *   $options = drupal_parse_url($_GET['destination']);
+ *   $my_url = url($options['path'], $options);
+ *   $my_link = l('Example link', $options['path'], $options);
+ * @endcode
+ *
+ * This is required, because url() does not support relative URLs containing a
+ * query string or fragment in its $path argument. Instead, any query string
+ * needs to be parsed into an associative query parameter array in
+ * $options['query'] and the fragment into $options['fragment'].
+ *
+ * @param $url
+ *   The URL string to parse, f.e. $_GET['destination'].
+ *
+ * @return
+ *   An associative array containing the keys:
+ *   - 'path': The path of the URL. If the given $url is external, this includes
+ *     the scheme and host.
+ *   - 'query': An array of query parameters of $url, if existent.
+ *   - 'fragment': The fragment of $url, if existent.
+ *
+ * @see url()
+ * @see drupal_goto()
+ * @ingroup php_wrappers
+ */
+function drupal_parse_url($url) {
+  $options = array(
+    'path' => NULL,
+    'query' => array(),
+    'fragment' => '',
+  );
+
+  // External URLs: not using parse_url() here, so we do not have to rebuild
+  // the scheme, host, and path without having any use for it.
+  if (strpos($url, '://') !== FALSE) {
+    // Split off everything before the query string into 'path'.
+    $parts = explode('?', $url);
+    $options['path'] = $parts[0];
+    // If there is a query string, transform it into keyed query parameters.
+    if (isset($parts[1])) {
+      $query_parts = explode('#', $parts[1]);
+      parse_str($query_parts[0], $options['query']);
+      // Take over the fragment, if there is any.
+      if (isset($query_parts[1])) {
+        $options['fragment'] = $query_parts[1];
+      }
+    }
+  }
+  // Internal URLs.
+  else {
+    // parse_url() does not support relative URLs, so make it absolute. E.g. the
+    // relative URL "foo/bar:1" isn't properly parsed.
+    $parts = parse_url('http://example.com/' . $url);
+    // Strip the leading slash that was just added.
+    $options['path'] = substr($parts['path'], 1);
+    if (isset($parts['query'])) {
+      parse_str($parts['query'], $options['query']);
+    }
+    if (isset($parts['fragment'])) {
+      $options['fragment'] = $parts['fragment'];
+    }
+  }
+
+  return $options;
+}
+
+/**
+ * Encode a path for usage in a URL.
+ *
+ * Wrapper around rawurlencode() which avoids Apache quirks. Should be used when
+ * placing arbitrary data into the path component of an URL.
+ *
+ * Do not use this function to pass a path to url(). url() properly handles
+ * and encodes paths internally.
+ * This function should only be used on paths, not on query string arguments.
+ * Otherwise, unwanted double encoding will occur.
+ *
+ * Notes:
+ * - For esthetic reasons, we do not escape slashes. This also avoids a 'feature'
+ *   in Apache where it 404s on any path containing '%2F'.
+ * - mod_rewrite unescapes %-encoded ampersands, hashes, and slashes when clean
+ *   URLs are used, which are interpreted as delimiters by PHP. These
+ *   characters are double escaped so PHP will still see the encoded version.
+ * - With clean URLs, Apache changes '//' to '/', so every second slash is
+ *   double escaped.
+ *
+ * @param $path
+ *   The URL path component to encode.
+ */
+function drupal_encode_path($path) {
+  if (!empty($GLOBALS['conf']['clean_url'])) {
+    return str_replace(array('%2F', '%26', '%23', '//'),
+                       array('/', '%2526', '%2523', '/%252F'),
+                       rawurlencode($path)
+    );
+  }
+  else {
+    return str_replace('%2F', '/', rawurlencode($path));
   }
 }
 
@@ -417,10 +610,9 @@ function drupal_get_destination() {
  *   supported.
  * @see drupal_get_destination()
  */
-function drupal_goto($path = '', $query = NULL, $fragment = NULL, $http_response_code = 302) {
-
-  if (isset($_REQUEST['destination'])) {
-    extract(parse_url(urldecode($_REQUEST['destination'])));
+function drupal_goto($path = '', array $query = array(), $fragment = NULL, $http_response_code = 302) {
+  if (isset($_GET['destination'])) {
+    extract(drupal_parse_url(urldecode($_GET['destination'])));
   }
 
   $args = array(
@@ -456,7 +648,7 @@ function drupal_goto($path = '', $query = NULL, $fragment = NULL, $http_response
  */
 function drupal_site_offline() {
   drupal_maintenance_theme();
-  drupal_set_header('503 Service unavailable');
+  drupal_add_http_header('503 Service unavailable');
   drupal_set_title(t('Site under maintenance'));
   print theme('maintenance_page', filter_xss_admin(variable_get('maintenance_mode_message',
     t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal'))))));
@@ -466,13 +658,13 @@ function drupal_site_offline() {
  * Generates a 404 error if the request can not be handled.
  */
 function drupal_not_found() {
-  drupal_set_header('404 Not Found');
+  drupal_add_http_header('404 Not Found');
 
   watchdog('page not found', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
 
   // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_REQUEST['destination'])) {
-    $_REQUEST['destination'] = $_GET['q'];
+  if (!isset($_GET['destination'])) {
+    $_GET['destination'] = $_GET['q'];
   }
 
   $path = drupal_get_normal_path(variable_get('site_404', ''));
@@ -498,12 +690,12 @@ function drupal_not_found() {
  * Generates a 403 error if the request is not allowed.
  */
 function drupal_access_denied() {
-  drupal_set_header('403 Forbidden');
+  drupal_add_http_header('403 Forbidden');
   watchdog('access denied', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
 
   // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_REQUEST['destination'])) {
-    $_REQUEST['destination'] = $_GET['q'];
+  if (!isset($_GET['destination'])) {
+    $_GET['destination'] = $_GET['q'];
   }
 
   $path = drupal_get_normal_path(variable_get('site_403', ''));
@@ -578,11 +770,13 @@ function drupal_http_request($url, array $options = array()) {
 
   if ($uri == FALSE) {
     $result->error = 'unable to parse URL';
+    $result->code = -1001;
     return $result;
   }
 
   if (!isset($uri['scheme'])) {
     $result->error = 'missing schema';
+    $result->code = -1002;
     return $result;
   }
 
@@ -611,6 +805,7 @@ function drupal_http_request($url, array $options = array()) {
       break;
     default:
       $result->error = 'invalid schema ' . $uri['scheme'];
+      $result->code = -1003;
       return $result;
   }
 
@@ -878,7 +1073,7 @@ function _drupal_decode_exception($exception) {
     // The first element in the stack is the call, the second element gives us the caller.
     // We skip calls that occurred in one of the classes of the database layer
     // or in one of its global functions.
-    $db_functions = array('db_query', 'pager_query', 'db_query_range', 'db_query_temporary', 'update_sql');
+    $db_functions = array('db_query',  'db_query_range');
     while (!empty($backtrace[1]) && ($caller = $backtrace[1]) &&
         ((isset($caller['class']) && (strpos($caller['class'], 'Query') !== FALSE || strpos($caller['class'], 'Database') !== FALSE || strpos($caller['class'], 'PDO') !== FALSE)) ||
         in_array($caller['function'], $db_functions))) {
@@ -947,7 +1142,7 @@ function _drupal_log_error($error, $fatal = FALSE) {
   }
 
   if ($fatal) {
-    drupal_set_header('500 Service unavailable (with message)');
+    drupal_add_http_header('500 Service unavailable (with message)');
   }
 
   if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest') {
@@ -2130,42 +2325,35 @@ function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
  */
 
 /**
- * Generate a URL from a Drupal menu path. Will also pass-through existing URLs.
+ * Generate a URL.
  *
  * @param $path
- *   The Drupal path being linked to, such as "admin/content", or an
- *   existing URL like "http://drupal.org/". The special path
- *   '<front>' may also be given and will generate the site's base URL.
+ *   The Drupal path being linked to, such as "admin/content", or an existing
+ *   URL like "http://drupal.org/". The special path '<front>' may also be given
+ *   and will generate the site's base URL.
  * @param $options
  *   An associative array of additional options, with the following keys:
- *   - 'query'
- *       A URL-encoded query string to append to the link, or an array of query
- *       key/value-pairs without any URL-encoding.
- *   - 'fragment'
- *       A fragment identifier (or named anchor) to append to the link.
- *       Do not include the '#' character.
- *   - 'absolute' (default FALSE)
- *       Whether to force the output to be an absolute link (beginning with
- *       http:). Useful for links that will be displayed outside the site, such
- *       as in an RSS feed.
- *   - 'alias' (default FALSE)
- *       Whether the given path is an alias already.
- *   - 'external'
- *       Whether the given path is an external URL.
- *   - 'language'
- *       An optional language object. Used to build the URL to link to and
- *       look up the proper alias for the link.
- *   - 'https'
- *       Whether this URL should point to a secure location. If not specified,
- *       the current scheme is used, so the user stays on http or https
- *       respectively. TRUE enforces HTTPS and FALSE enforces HTTP, but HTTPS
- *       can only be enforced when the variable 'https' is set to TRUE.
- *   - 'base_url'
- *       Only used internally, to modify the base URL when a language dependent
- *       URL requires so.
- *   - 'prefix'
- *       Only used internally, to modify the path when a language dependent URL
- *       requires so.
+ *   - 'query': An array of query key/value-pairs (without any URL-encoding) to
+ *     append to the link.
+ *   - 'fragment': A fragment identifier (or named anchor) to append to the
+ *     link. Do not include the leading '#' character.
+ *   - 'absolute': Defaults to FALSE. Whether to force the output to be an
+ *     absolute link (beginning with http:). Useful for links that will be
+ *     displayed outside the site, such as in a RSS feed.
+ *   - 'alias': Defaults to FALSE. Whether the given path is a URL alias
+ *     already.
+ *   - 'external': Whether the given path is an external URL.
+ *   - 'language': An optional language object. Used to build the URL to link to
+ *     and look up the proper alias for the link.
+ *   - 'https': Whether this URL should point to a secure location. If not
+ *     specified, the current scheme is used, so the user stays on http or https
+ *     respectively. TRUE enforces HTTPS and FALSE enforces HTTP, but HTTPS can
+ *     only be enforced when the variable 'https' is set to TRUE.
+ *   - 'base_url': Only used internally, to modify the base URL when a language
+ *     dependent URL requires so.
+ *   - 'prefix': Only used internally, to modify the path when a language
+ *     dependent URL requires so.
+ *
  * @return
  *   A string containing a URL to the given path.
  *
@@ -2176,7 +2364,7 @@ function url($path = NULL, array $options = array()) {
   // Merge in defaults.
   $options += array(
     'fragment' => '',
-    'query' => '',
+    'query' => array(),
     'absolute' => FALSE,
     'alias' => FALSE,
     'https' => FALSE,
@@ -2197,21 +2385,19 @@ function url($path = NULL, array $options = array()) {
   if ($options['fragment']) {
     $options['fragment'] = '#' . $options['fragment'];
   }
-  if (is_array($options['query'])) {
-    $options['query'] = drupal_query_string_encode($options['query']);
-  }
 
   if ($options['external']) {
     // Split off the fragment.
     if (strpos($path, '#') !== FALSE) {
       list($path, $old_fragment) = explode('#', $path, 2);
+      // If $options contains no fragment, take it over from the path.
       if (isset($old_fragment) && !$options['fragment']) {
         $options['fragment'] = '#' . $old_fragment;
       }
     }
     // Append the query.
     if ($options['query']) {
-      $path .= (strpos($path, '?') !== FALSE ? '&' : '?') . $options['query'];
+      $path .= (strpos($path, '?') !== FALSE ? '&' : '?') . drupal_http_build_query($options['query']);
     }
     // Reassemble.
     return $path . $options['fragment'];
@@ -2262,28 +2448,31 @@ function url($path = NULL, array $options = array()) {
 
   $base = $options['absolute'] ? $options['base_url'] . '/' : base_path();
   $prefix = empty($path) ? rtrim($options['prefix'], '/') : $options['prefix'];
-  $path = drupal_encode_path($prefix . $path);
 
-  if (variable_get('clean_url', '0')) {
-    // With Clean URLs.
+  // With Clean URLs.
+  if (!empty($GLOBALS['conf']['clean_url'])) {
+    $path = drupal_encode_path($prefix . $path);
     if ($options['query']) {
-      return $base . $path . '?' . $options['query'] . $options['fragment'];
+      return $base . $path . '?' . drupal_http_build_query($options['query']) . $options['fragment'];
     }
     else {
       return $base . $path . $options['fragment'];
     }
   }
+  // Without Clean URLs.
   else {
-    // Without Clean URLs.
-    $variables = array();
+    $path = $prefix . $path;
+    $query = array();
     if (!empty($path)) {
-      $variables[] = 'q=' . $path;
+      $query['q'] = $path;
     }
-    if (!empty($options['query'])) {
-      $variables[] = $options['query'];
+    if ($options['query']) {
+      // We do not use array_merge() here to prevent overriding $path via query
+      // parameters.
+      $query += $options['query'];
     }
-    if ($query = join('&', $variables)) {
-      return $base . $script . '?' . $query . $options['fragment'];
+    if ($query) {
+      return $base . $script . '?' . drupal_http_build_query($query) . $options['fragment'];
     }
     else {
       return $base . $options['fragment'];
@@ -2403,6 +2592,7 @@ function drupal_page_footer() {
 
   _registry_check_code(REGISTRY_WRITE_LOOKUP_CACHE);
   drupal_cache_system_paths();
+  module_implements_write_cache();
 }
 
 /**
@@ -2463,6 +2653,8 @@ function drupal_map_assoc($array, $function = NULL) {
  * @param $time_limit
  *   An integer specifying the new time limit, in seconds. A value of 0
  *   indicates unlimited execution time.
+ *
+ * @ingroup php_wrappers
  */
 function drupal_set_time_limit($time_limit) {
   if (function_exists('set_time_limit')) {
@@ -2863,9 +3055,6 @@ function drupal_load_stylesheet($file, $optimize = NULL) {
  *   Contents of the stylesheet including the imported stylesheets.
  */
 function drupal_load_stylesheet_content($contents, $optimize = FALSE) {
-  // Replaces @import commands with the actual stylesheet content.
-  // This happens recursively but omits external files.
-  $contents = preg_replace_callback('/@import\s*(?:url\()?[\'"]?(?![a-z]+:)([^\'"\()]+)[\'"]?\)?;/', '_drupal_load_stylesheet', $contents);
   // Remove multiple charset declarations for standards compliance (and fixing Safari problems).
   $contents = preg_replace('/^@charset\s+[\'"](\S*)\b[\'"];/i', '', $contents);
 
@@ -2877,6 +3066,10 @@ function drupal_load_stylesheet_content($contents, $optimize = FALSE) {
       [\n\r]                        # Remove line breaks.
       >x', '\1', $contents);
   }
+
+  // Replaces @import commands with the actual stylesheet content.
+  // This happens recursively but omits external files.
+  $contents = preg_replace_callback('/@import\s*(?:url\()?[\'"]?(?![a-z]+:)([^\'"\()]+)[\'"]?\)?;/', '_drupal_load_stylesheet', $contents);
   return $contents;
 }
 
@@ -3165,7 +3358,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
   foreach ($items as $item) {
     switch ($item['type']) {
       case 'setting':
-        $output .= '<script type="text/javascript">' . $embed_prefix . 'jQuery.extend(Drupal.settings, ' . drupal_to_js(call_user_func_array('array_merge_recursive', $item['data'])) . ");" . $embed_suffix . "</script>\n";
+        $output .= '<script type="text/javascript">' . $embed_prefix . 'jQuery.extend(Drupal.settings, ' . drupal_json_encode(call_user_func_array('array_merge_recursive', $item['data'])) . ");" . $embed_suffix . "</script>\n";
         break;
 
       case 'inline':
@@ -3221,7 +3414,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
  * callback function and each value an array of arguments. For example:
  *
  * @code
- * $build['#attached']['drupal_set_header'] = array(
+ * $build['#attached']['drupal_add_http_header'] = array(
  *   array('Content-Type', 'application/rss+xml; charset=utf-8'),
  * );
  * @endcode
@@ -3246,7 +3439,7 @@ function drupal_get_js($scope = 'header', $javascript = NULL) {
  * @see drupal_render().
  */
 function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_check = FALSE) {
-  // If there is nothing to process then return. 
+  // If there is nothing to process then return.
   if (empty($elements['#attached'])) {
     return;
   }
@@ -3583,7 +3776,7 @@ function drupal_clear_js_cache() {
  *
  * We use HTML-safe strings, i.e. with <, > and & escaped.
  */
-function drupal_to_js($var) {
+function drupal_json_encode($var) {
   // json_encode() does not escape <, > and &, so we do it with str_replace()
   return str_replace(array("<", ">", "&"), array('\x3c', '\x3e', '\x26'), json_encode($var));
 }
@@ -3597,44 +3790,12 @@ function drupal_to_js($var) {
  * @param $var
  *   (optional) If set, the variable will be converted to JSON and output.
  */
-function drupal_json($var = NULL) {
+function drupal_json_output($var = NULL) {
   // We are returning JavaScript, so tell the browser.
-  drupal_set_header('Content-Type', 'text/javascript; charset=utf-8');
+  drupal_add_http_header('Content-Type', 'text/javascript; charset=utf-8');
 
   if (isset($var)) {
-    echo drupal_to_js($var);
-  }
-}
-
-/**
- * Wrapper around urlencode() which avoids Apache quirks.
- *
- * Should be used when placing arbitrary data in an URL. Note that Drupal paths
- * are urlencoded() when passed through url() and do not require urlencoding()
- * of individual components.
- *
- * Notes:
- * - For esthetic reasons, we do not escape slashes. This also avoids a 'feature'
- *   in Apache where it 404s on any path containing '%2F'.
- * - mod_rewrite unescapes %-encoded ampersands, hashes, and slashes when clean
- *   URLs are used, which are interpreted as delimiters by PHP. These
- *   characters are double escaped so PHP will still see the encoded version.
- * - With clean URLs, Apache changes '//' to '/', so every second slash is
- *   double escaped.
- * - This function should only be used on paths, not on query string arguments,
- *   otherwise unwanted double encoding will occur.
- *
- * @param $text
- *   String to encode
- */
-function drupal_encode_path($text) {
-  if (variable_get('clean_url', '0')) {
-    return str_replace(array('%2F', '%26', '%23', '//'),
-                        array('/', '%2526', '%2523', '/%252F'),
-                        rawurlencode($text));
-  }
-  else {
-    return str_replace('%2F', '/', rawurlencode($text));
+    echo drupal_json_encode($var);
   }
 }
 
@@ -3744,7 +3905,7 @@ function _drupal_bootstrap_full() {
   set_exception_handler('_drupal_exception_handler');
 
   // Emit the correct charset HTTP header.
-  drupal_set_header('Content-Type', 'text/html; charset=utf-8');
+  drupal_add_http_header('Content-Type', 'text/html; charset=utf-8');
   // Detect string handling method
   unicode_check();
   // Undo magic quotes
@@ -3760,7 +3921,10 @@ function _drupal_bootstrap_full() {
     ini_set('log_errors', 1);
     ini_set('error_log', file_directory_path() . '/error.log');
   }
-
+  // Set a custom theme for the current page, if there is one. We need to run
+  // this before invoking hook_init(), since any modules which initialize the
+  // theme system will prevent a custom theme from being correctly set later.
+  menu_set_custom_theme();
   // Let all modules take action before menu system handles the request
   // We do not want this while running update.php.
   if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {
@@ -3796,9 +3960,9 @@ function drupal_page_set_cache() {
     );
 
     // Restore preferred header names based on the lower-case names returned
-    // by drupal_get_header().
+    // by drupal_get_http_header().
     $header_names = _drupal_set_preferred_header_name();
-    foreach (drupal_get_header() as $name_lower => $value) {
+    foreach (drupal_get_http_header() as $name_lower => $value) {
       $cache->headers[$header_names[$name_lower]] = $value;
     }
 
@@ -3836,6 +4000,11 @@ function drupal_cron_run() {
   // Fetch the cron semaphore
   $semaphore = variable_get('cron_semaphore', FALSE);
 
+  $return = FALSE;
+  // Grab the defined cron queues.
+  $queues = module_invoke_all('cron_queue_info');
+  drupal_alter('cron_queue_info', $queues);
+
   if ($semaphore) {
     if (REQUEST_TIME - $semaphore > 3600) {
       // Either cron has been running for more than an hour or the semaphore
@@ -3851,6 +4020,11 @@ function drupal_cron_run() {
     }
   }
   else {
+    // Make sure every queue exists. There is no harm in trying to recreate an
+    // existing queue.
+    foreach ($queues as $queue_name => $info) {
+      DrupalQueue::get($queue_name)->createQueue();
+    }
     // Register shutdown callback
     register_shutdown_function('drupal_cron_cleanup');
 
@@ -3868,8 +4042,19 @@ function drupal_cron_run() {
     variable_del('cron_semaphore');
 
     // Return TRUE so other functions can check if it did run successfully
-    return TRUE;
+    $return = TRUE;
   }
+
+  foreach ($queues as $queue_name => $info) {
+    $function = $info['worker callback'];
+    $end = time() + (isset($info['time']) ? $info['time'] : 15);
+    $queue = DrupalQueue::get($queue_name);
+    while (time() < $end && ($item = $queue->claimItem())) {
+      $function($item->data);
+      $queue->deleteItem($item);
+    }
+  }
+  return $return;
 }
 
 /**
@@ -4126,7 +4311,7 @@ function drupal_render(&$elements) {
   }
 
   // Try to fetch the element's markup from cache and return.
-  if ($cached_output = drupal_render_cache_get($elements)) {
+  if (isset($elements['#cache']) && $cached_output = drupal_render_cache_get($elements)) {
     return $cached_output;
   }
 
@@ -4287,7 +4472,7 @@ function show(&$element) {
  *
  * @see drupal_render()
  * @see drupal_render_cache_set()
- * 
+ *
  * @param $elements
  *   A renderable array.
  * @return
@@ -4324,7 +4509,7 @@ function drupal_render_cache_get($elements) {
  *   A renderable array.
  */
 function drupal_render_cache_set($markup, $elements) {
-  // Create the cache ID for the element 
+  // Create the cache ID for the element.
   if (!in_array($_SERVER['REQUEST_METHOD'], array('GET', 'HEAD')) || !$cid = drupal_render_cid_create($elements)) {
     return FALSE;
   }
@@ -4424,25 +4609,16 @@ function element_info($type) {
 
   if (!isset($cache)) {
     $basic_defaults = element_basic_defaults();
-    $cache = array();
-
-    foreach (module_implements('elements') as $module) {
-      $elements = module_invoke($module, 'elements');
-      if (isset($elements) && is_array($elements)) {
-        $cache = array_merge_recursive($cache, $elements);
-      }
-    }
-    if (!empty($cache)) {
-      foreach ($cache as $element_type => $info) {
-        $cache[$element_type] = array_merge_recursive($basic_defaults, $info);
-        $cache[$element_type]['#type'] = $element_type;
-      }
+    $cache = module_invoke_all('element_info');
+    foreach ($cache as $element_type => $info) {
+      $cache[$element_type] = array_merge_recursive($basic_defaults, $info);
+      $cache[$element_type]['#type'] = $element_type;
     }
     // Allow modules to alter the element type defaults.
     drupal_alter('element_info', $cache);
   }
 
-  return $cache[$type];
+  return isset($cache[$type]) ? $cache[$type] : array();
 }
 
 /**
@@ -4541,6 +4717,10 @@ function drupal_common_theme() {
     'placeholder' => array(
       'arguments' => array('text' => NULL)
     ),
+    'html' => array(
+      'arguments' => array('page' => NULL),
+      'template' => 'html',
+    ),
     'page' => array(
       'arguments' => array('page' => NULL),
       'template' => 'page',
@@ -4636,14 +4816,11 @@ function drupal_common_theme() {
       'arguments' => array('form' => NULL),
     ),
     // from menu.inc
-    'menu_item_link' => array(
-      'arguments' => array('item' => NULL),
+    'menu_link' => array(
+      'arguments' => array('element' => NULL),
     ),
     'menu_tree' => array(
       'arguments' => array('tree' => NULL),
-    ),
-    'menu_item' => array(
-      'arguments' => array('link' => NULL, 'has_children' => NULL, 'menu' => ''),
     ),
     'menu_local_task' => array(
       'arguments' => array('link' => NULL, 'active' => FALSE),
@@ -4741,11 +4918,9 @@ function drupal_install_schema($module) {
   $schema = drupal_get_schema_unprocessed($module);
   _drupal_schema_initialize($module, $schema);
 
-  $ret = array();
   foreach ($schema as $name => $table) {
-    db_create_table($ret, $name, $table);
+    db_create_table($name, $table);
   }
-  return $ret;
 }
 
 /**
@@ -4766,13 +4941,11 @@ function drupal_uninstall_schema($module) {
   $schema = drupal_get_schema_unprocessed($module);
   _drupal_schema_initialize($module, $schema);
 
-  $ret = array();
   foreach ($schema as $table) {
     if (db_table_exists($table['name'])) {
-      db_drop_table($ret, $table['name']);
+      db_drop_table($table['name']);
     }
   }
-  return $ret;
 }
 
 /**
@@ -4807,9 +4980,10 @@ function drupal_get_schema_unprocessed($module, $table = NULL) {
   if (!is_null($table) && isset($schema[$table])) {
     return $schema[$table];
   }
-  else {
+  else if (!empty($schema)) {
     return $schema;
   }
+  return array();
 }
 
 /**
@@ -5024,72 +5198,87 @@ function drupal_write_record($table, &$object, $primary_keys = array()) {
  */
 
 /**
- * Parse Drupal info file format.
+ * Parse Drupal module and theme info file format.
  *
- * Files should use an ini-like format to specify values.
- * White-space generally doesn't matter, except inside values.
- * e.g.
+ * Info files are NOT for placing arbitrary theme and module-specific settings.
+ * Use variable_get() and variable_set() for that.
  *
- * @verbatim
- *   key = value
- *   key = "value"
- *   key = 'value'
- *   key = "multi-line
- *
- *   value"
- *   key = 'multi-line
- *
- *   value'
- *   key
- *   =
- *   'value'
- * @endverbatim
- *
- * Arrays are created using a GET-like syntax:
- *
- * @verbatim
- *   key[] = "numeric array"
- *   key[index] = "associative array"
- *   key[index][] = "nested numeric array"
- *   key[index][index] = "nested associative array"
- * @endverbatim
- *
- * PHP constants are substituted in, but only when used as the entire value:
- *
- * Comments should start with a semi-colon at the beginning of a line.
- *
- * This function is NOT for placing arbitrary module-specific settings. Use
- * variable_get() and variable_set() for that.
- *
- * Information stored in the module.info file:
+ * Information stored in a module .info file:
  * - name: The real name of the module for display purposes.
  * - description: A brief description of the module.
  * - dependencies: An array of shortnames of other modules this module requires.
  * - package: The name of the package of modules this module belongs to.
  *
- * Example of .info file:
- * @verbatim
- *   name = Forum
- *   description = Enables threaded discussions about general topics.
- *   dependencies[] = taxonomy
- *   dependencies[] = comment
- *   package = Core
- *   version = VERSION
- * @endverbatim
+ * @see forum.info
+ *
+ * Information stored in a theme .info file:
+ * - name: The real name of the theme for display purposes
+ * - description: Brief description
+ * - screenshot: Path to screenshot relative to the theme's .info file.
+ * - engine: Theme engine, typically: engine = phptemplate
+ * - base: Name of a base theme, if applicable, eg: base = zen
+ * - regions: Listed regions eg: region[left] = Left sidebar
+ * - features: Features available eg: features[] = logo
+ * - stylesheets: Theme stylesheets eg: stylesheets[all][] = my-style.css
+ * - scripts: Theme scripts eg: scripts[] = my-script.css
+ *
+ * @see garland.info
  *
  * @param $filename
  *   The file we are parsing. Accepts file with relative or absolute path.
  * @return
  *   The info array.
+ *
+ * @see drupal_parse_info_format()
  */
 function drupal_parse_info_file($filename) {
-  $info = array();
-
   if (!file_exists($filename)) {
-    return $info;
+    return array();
   }
 
   $data = file_get_contents($filename);
+  return drupal_parse_info_format($data);
+}
+
+/**
+ * Parse data in Drupal's .info format.
+ *
+ * Data should be in an .ini-like format to specify values. White-space
+ * generally doesn't matter, except inside values:
+ * @code
+ *   key = value
+ *   key = "value"
+ *   key = 'value'
+ *   key = "multi-line
+ *   value"
+ *   key = 'multi-line
+ *   value'
+ *   key
+ *   =
+ *   'value'
+ * @endcode
+ *
+ * Arrays are created using a HTTP GET alike syntax:
+ * @code
+ *   key[] = "numeric array"
+ *   key[index] = "associative array"
+ *   key[index][] = "nested numeric array"
+ *   key[index][index] = "nested associative array"
+ * @endcode
+ *
+ * PHP constants are substituted in, but only when used as the entire value.
+ * Comments should start with a semi-colon at the beginning of a line.
+ *
+ * @param $data
+ *   A string to parse.
+ * @return
+ *   The info array.
+ *
+ * @see drupal_parse_info_file()
+ */
+function drupal_parse_info_format($data) {
+  $info = array();
+
   if (preg_match_all('
     @^\s*                           # Start at the beginning of a line, ignoring leading whitespace
     ((?:
@@ -5229,7 +5418,7 @@ function drupal_flush_all_caches() {
   }
 
   drupal_theme_rebuild();
-  // Rebuild content types, menu will be rebuilt as well.
+  menu_rebuild();
   node_types_rebuild();
   // Don't clear cache_form - in-progress form submissions may break.
   // Ordered so clearing the page cache will always be the last action.

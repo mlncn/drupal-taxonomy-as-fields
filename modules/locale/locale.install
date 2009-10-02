@@ -1,5 +1,5 @@
 <?php
-// $Id: locale.install,v 1.47 2009/08/17 19:14:40 webchick Exp $
+// $Id: locale.install,v 1.49 2009/09/29 15:13:55 dries Exp $
 
 /**
  * @file
@@ -13,9 +13,6 @@ function locale_install() {
   // locales_source.source and locales_target.target are not used as binary
   // fields; non-MySQL database servers need to ensure the field type is text
   // and that LIKE produces a case-sensitive comparison.
-
-  // Create tables.
-  drupal_install_schema('locale');
 
   db_insert('languages')
     ->fields(array(
@@ -39,10 +36,8 @@ function locale_install() {
  * Allow longer location.
  */
 function locale_update_7000() {
-  $ret = array();
-  db_drop_index($ret, 'locales_source', 'source');
-  db_add_index($ret, 'locales_source', 'source_context', array(array('source', 30), 'context'));
-  return $ret;
+  db_drop_index('locales_source', 'source');
+  db_add_index('locales_source', 'source_context', array(array('source', 30), 'context'));
 }
 
 /**
@@ -83,8 +78,6 @@ function locale_uninstall() {
   // try to query the unexisting {locales_source} and {locales_target} tables.
   drupal_language_initialize();
 
-  // Remove tables.
-  drupal_uninstall_schema('locale');
 }
 
 /**

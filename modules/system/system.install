@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.384 2009/09/05 13:05:31 dries Exp $
+// $Id: system.install,v 1.394 2009/09/30 13:09:30 dries Exp $
 
 /**
  * @file
@@ -62,17 +62,6 @@ function system_requirements($phase) {
   if (version_compare(phpversion(), DRUPAL_MINIMUM_PHP) < 0) {
     $requirements['php']['description'] = $t('Your PHP installation is too old. Drupal requires at least PHP %version.', array('%version' => DRUPAL_MINIMUM_PHP));
     $requirements['php']['severity'] = REQUIREMENT_ERROR;
-  }
-
-  // Make sure the tokenizer extension is enabled, which is required by the code registry.
-  $requirements['php_tokenizer'] = array(
-    'title' => $t('PHP tokenizer'),
-    'value' => $t('Enabled'),
-  );
-  if (!function_exists('token_get_all')) {
-    $requirements['php_tokenizer']['value'] = $t('Not enabled');
-    $requirements['php_tokenizer']['description'] = $t('Drupal requires the <a href="@url">tokenizer extension</a> to be enabled.', array('@url' => 'http://php.net/tokenizer'));
-    $requirements['php_tokenizer']['severity'] = REQUIREMENT_ERROR;
   }
 
   // Test PHP register_globals setting.
@@ -183,7 +172,7 @@ function system_requirements($phase) {
     }
 
     $description .= ' ' . $t('You can <a href="@cron">run cron manually</a>.', array('@cron' => url('admin/reports/status/run-cron')));
-    $description .= '<br />' . $t('To run cron from outside the site, go to <a href="!cron">!cron</a>', array('!cron' => url($base_url . '/cron.php', array('external' => TRUE, 'query' => 'cron_key=' . variable_get('cron_key', 'drupal')))));
+    $description .= '<br />' . $t('To run cron from outside the site, go to <a href="!cron">!cron</a>', array('!cron' => url($base_url . '/cron.php', array('external' => TRUE, 'query' => array('cron_key' => variable_get('cron_key', 'drupal'))))));
 
     $requirements['cron'] = array(
       'title' => $t('Cron maintenance tasks'),
@@ -338,7 +327,15 @@ function system_install() {
   $modules = array('system', 'filter', 'user', 'node');
   foreach ($modules as $module) {
     drupal_install_schema($module);
+    $versions = drupal_get_schema_versions($module);
+    $version = $versions ? max($versions) : SCHEMA_INSTALLED;
+    drupal_set_installed_schema_version($module, $version);
   }
+
+  // Clear out module list and hook implementation statics before calling
+  // system_get_theme_data().
+  module_list(TRUE);
+  module_implements('', FALSE, TRUE);
 
   // Load system theme data appropriately.
   system_get_theme_data();
@@ -347,17 +344,38 @@ function system_install() {
   // uid 2 which is not what we want. So we insert the first user here, the
   // anonymous user. uid is 1 here for now, but very soon it will be changed
   // to 0.
-  db_query("INSERT INTO {users} (name, mail) VALUES('%s', '%s')", '', '');
+  db_insert('users')
+    ->fields(array(
+      'name' => '',
+      'mail' => '',
+    ))
+    ->execute();
   // We need some placeholders here as name and mail are uniques and data is
   // presumed to be a serialized array. Install will change uid 1 immediately
   // anyways. So we insert the superuser here, the uid is 2 here for now, but
   // very soon it will be changed to 1.
-  db_query("INSERT INTO {users} (name, mail, created, status, data) VALUES('%s', '%s', %d, %d, '%s')", 'placeholder-for-uid-1', 'placeholder-for-uid-1', REQUEST_TIME, 1, serialize(array()));
+
+  db_insert('users')
+    ->fields(array(
+      'name' => 'placeholder-for-uid-1',
+      'mail' => 'placeholder-for-uid-1',
+      'created' => REQUEST_TIME,
+      'status' => 1,
+      'data' => serialize(array()),
+    ))
+    ->execute();
   // This sets the above two users uid 0 (anonymous). We avoid an explicit 0
   // otherwise MySQL might insert the next auto_increment value.
-  db_query("UPDATE {users} SET uid = uid - uid WHERE name = '%s'", '');
+  db_update('users')
+    ->expression('uid', 'uid - uid')
+    ->condition('name', '')
+    ->execute();
+
   // This sets uid 1 (superuser). We skip uid 2 but that's not a big problem.
-  db_query("UPDATE {users} SET uid = 1 WHERE name = '%s'", 'placeholder-for-uid-1');
+  db_update('users')
+    ->fields(array('uid' => 1))
+    ->condition('name', 'placeholder-for-uid-1')
+    ->execute();
 
   // Built-in roles.
   $rid_anonymous = db_insert('role')
@@ -385,7 +403,6 @@ function system_install() {
       ->execute();
   }
 
-
   variable_set('theme_default', 'garland');
 
   db_update('system')
@@ -409,15 +426,22 @@ function system_install() {
   $filtered_html_format = db_insert('filter_format')
     ->fields(array(
       'name' => 'Filtered HTML',
-      'roles' => ',' . DRUPAL_ANONYMOUS_RID . ',' . DRUPAL_AUTHENTICATED_RID . ',',
       'cache' => 1,
+      'weight' => 0,
     ))
     ->execute();
   $full_html_format = db_insert('filter_format')
     ->fields(array(
       'name' => 'Full HTML',
-      'roles' => '',
       'cache' => 1,
+      'weight' => 0,
+    ))
+    ->execute();
+  $plain_text_format = db_insert('filter_format')
+    ->fields(array(
+      'name' => 'Plain text',
+      'cache' => 1,
+      'weight' => 1,
     ))
     ->execute();
 
@@ -483,10 +507,27 @@ function system_install() {
       'weight' => 10,
       'status' => 1,
     ))
+  // Plain text:
+    // Escape all HTML.
+    ->values(array(
+      'format' => $plain_text_format,
+      'module' => 'filter',
+      'name' => 'filter_html_escape',
+      'weight' => 0,
+      'status' => 1,
+    ))
+    // Line break filter.
+    ->values(array(
+      'format' => $plain_text_format,
+      'module' => 'filter',
+      'name' => 'filter_autop',
+      'weight' => 1,
+      'status' => 1,
+    ))
     ->execute();
 
-  // Set the default input format to Filtered HTML.
-  variable_set('filter_default_format', $filtered_html_format);
+  // Set the fallback format to plain text.
+  variable_set('filter_fallback_format', $plain_text_format);
 
   $cron_key = md5(mt_rand());
 
@@ -550,8 +591,8 @@ function system_schema() {
         'not null' => TRUE,
         'size' => 'big',
       ),
-      'description' => array(
-        'description' => 'Description of the action.',
+      'label' => array(
+        'description' => 'Label of the action.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
@@ -909,6 +950,20 @@ function system_schema() {
       ),
       'title_arguments' => array(
         'description' => 'A serialized array of arguments for the title callback. If empty, the title will be used as the sole argument for the title callback.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'theme_callback' => array(
+        'description' => 'A function which returns the name of the theme that will be used to render this page. If left empty, the default theme will be used.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'theme_arguments' => array(
+        'description' => 'A serialized array of arguments for the theme callback.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
@@ -1491,7 +1546,6 @@ function system_update_last_removed() {
  * Rename blog and forum permissions to be consistent with other content types.
  */
 function system_update_7000() {
-  $ret = array();
   $result = db_query("SELECT rid, perm FROM {permission} ORDER BY rid");
   foreach ($result as $role) {
     $renamed_permission = preg_replace('/(?<=^|,\ )create\ blog\ entries(?=,|$)/', 'create blog content', $role->perm);
@@ -1507,28 +1561,25 @@ function system_update_7000() {
     $renamed_permission = preg_replace('/(?<=^|,\ )edit\ own\ forum\ topics(?=,|$)/', 'edit own forum content', $role->perm);
 
     if ($renamed_permission != $role->perm) {
-      $ret[] = update_sql("UPDATE {permission} SET perm = '$renamed_permission' WHERE rid = $role->rid");
+    	db_update('permission')
+    	  ->fields(array('perm' => $renamed_permission))
+    	  ->condition('rid', $role->rid)
+    	  ->execute();
     }
   }
-
-  return $ret;
 }
 
 /**
  * Generate a cron key and save it in the variables table.
  */
 function system_update_7001() {
-  $ret = array();
   variable_set('cron_key', md5(mt_rand()));
-  $ret[] = array('success' => TRUE, 'query' => "variable_set('cron_key')");
-  return $ret;
 }
 
 /**
  * Add a table to store blocked IP addresses.
  */
 function system_update_7002() {
-  $ret = array();
   $schema['blocked_ips'] = array(
     'description' => 'Stores blocked IP addresses.',
     'fields' => array(
@@ -1552,16 +1603,14 @@ function system_update_7002() {
     'primary key' => array('iid'),
   );
 
-  db_create_table($ret, 'blocked_ips', $schema['blocked_ips']);
-
-  return $ret;
+  db_create_table('blocked_ips', $schema['blocked_ips']);
 }
 
 /**
  * Update {blocked_ips} with valid IP addresses from {access}.
  */
 function system_update_7003() {
-  $ret = array();
+	$messages = array();
   $type = 'host';
   $result = db_query("SELECT mask FROM {access} WHERE status = :status AND type = :type", array(
     ':status' => 0,
@@ -1569,16 +1618,17 @@ function system_update_7003() {
   ));
   foreach ($result as $blocked) {
     if (filter_var($blocked->mask, FILTER_VALIDATE_IP, FILTER_FLAG_NO_RES_RANGE) !== FALSE) {
-      $ret[] = update_sql("INSERT INTO {blocked_ips} (ip) VALUES ('$blocked->mask')");
+    	db_insert('blocked_ips')
+    	  ->fields(array('ip' => $blocked->mask))
+    	  ->execute();
     }
     else {
       $invalid_host = check_plain($blocked->mask);
-      $ret[] = array('success' => TRUE, 'query' => 'The host ' . $invalid_host . ' is no longer blocked because it is not a valid IP address.');
+      $messages[] = t('The host !host is no longer blocked because it is not a valid IP address.', array('!host' => $invalid_host ));
     }
   }
   if (isset($invalid_host)) {
     drupal_set_message('Drupal no longer supports wildcard IP address blocking. Visitors whose IP addresses match ranges you have previously set using <em>access rules</em> will no longer be blocked from your site when you put the site online. See the <a href="http://drupal.org/node/24302">IP address and referrer blocking Handbook page</a> for alternative methods.', 'warning');
-    $ret[] = array('success' => TRUE, 'query' => '');
   }
   // Make sure not to block any IP addresses that were specifically allowed by access rules.
   if (!empty($result)) {
@@ -1586,19 +1636,22 @@ function system_update_7003() {
       ':status' => 1,
       ':type' => $type,
     ));
+    $or = db_condition('or');
     foreach ($result as $allowed) {
-      $ret[] = update_sql("DELETE FROM {blocked_ips} WHERE LOWER(ip) LIKE LOWER('$allowed->mask')");
+      $or->where('LOWER(ip) LIKE LOWER(:mask)', array(':mask' => $allowed->mask));
+    }
+    if (count($or)) {
+      db_delete('blocked_ips')
+        ->condition($or)
+        ->execute();
     }
   }
-
-  return $ret;
 }
 
 /**
  * Remove hardcoded numeric deltas from all blocks in core.
  */
 function system_update_7004(&$sandbox) {
-  $ret = array();
   // Get an array of the renamed block deltas, organized by module.
   $renamed_deltas = array(
     'blog' => array('0' => 'recent'),
@@ -1636,7 +1689,11 @@ function system_update_7004(&$sandbox) {
           ))
           ->fetchField();
           if ($block_exists) {
-            $ret[] = update_sql("UPDATE {" . $table . "} SET delta = '" . $new_delta . "' WHERE module = '" . $module . "' AND delta = '" . $old_delta . "'");
+          	db_update($table)
+          	  ->fields(array('delta' => $new_delta))
+          	  ->condition('module', $module)
+          	  ->condition('delta', $old_delta)
+          	  ->execute();
           }
         }
       }
@@ -1692,24 +1749,20 @@ function system_update_7004(&$sandbox) {
   }
   // Indicate our current progress to the batch update system.
   if ($sandbox['progress'] < $sandbox['max']) {
-    $ret['#finished'] = $sandbox['progress'] / $sandbox['max'];
+    $sandbox['#finished'] = $sandbox['progress'] / $sandbox['max'];
   }
-  return $ret;
 }
 
 /**
  * Remove throttle columns and variables.
  */
 function system_update_7005() {
-  $ret = array();
-  db_drop_field($ret, 'blocks', 'throttle');
-  db_drop_field($ret, 'system', 'throttle');
+  db_drop_field('blocks', 'throttle');
+  db_drop_field('system', 'throttle');
   variable_del('throttle_user');
   variable_del('throttle_anonymous');
   variable_del('throttle_level');
   variable_del('throttle_probability_limiter');
-
-  return $ret;
 }
 
 /**
@@ -1717,7 +1770,6 @@ function system_update_7005() {
  * longer needed.
  */
 function system_update_7006() {
-  $ret = array();
   $schema['registry'] = array(
     'fields' => array(
       'name'   => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
@@ -1751,11 +1803,10 @@ function system_update_7006() {
     'indexes' => array('expire' => array('expire')),
     'primary key' => array('cid'),
   );
-  db_create_table($ret, 'cache_registry', $schema['cache_registry']);
-  db_create_table($ret, 'registry', $schema['registry']);
-  db_create_table($ret, 'registry_file', $schema['registry_file']);
+  db_create_table('cache_registry', $schema['cache_registry']);
+  db_create_table('registry', $schema['registry']);
+  db_create_table('registry_file', $schema['registry_file']);
   registry_rebuild();
-  return $ret;
 }
 
 /**
@@ -1765,8 +1816,6 @@ function system_update_7006() {
  * all modules can use the updated permission scheme during their updates.
  */
 function system_update_7007() {
-  $ret = array();
-
   $schema['role_permission'] = array(
     'fields' => array(
       'rid' => array(
@@ -1787,9 +1836,10 @@ function system_update_7007() {
     ),
   );
 
-  db_create_table($ret, 'role_permission', $schema['role_permission']);
+  db_create_table('role_permission', $schema['role_permission']);
 
   // Copy the permissions from the old {permission} table to the new {role_permission} table.
+  $messages = array();
   $result = db_query("SELECT rid, perm FROM {permission} ORDER BY rid ASC");
   $query = db_insert('role_permission')->fields(array('rid', 'permission'));
   foreach ($result as $role) {
@@ -1799,12 +1849,12 @@ function system_update_7007() {
         'permission' => $perm,
       ));
     }
-    $ret[] = array('success' => TRUE, 'query' => "Inserted into {role_permission} the permissions for role ID " . $role->rid);
+    $messages[] = t('Inserted into {role_permission} the permissions for role ID !id', array('!id' => $role->rid));
   }
   $query->execute();
-  db_drop_table($ret, 'permission');
+  db_drop_table('permission');
 
-  return $ret;
+  return implode(', ', $messages);
 }
 
 
@@ -1813,20 +1863,18 @@ function system_update_7007() {
  * the choice order. Rename chorder to weight.
  */
 function system_update_7008() {
-  $ret = array();
   if (db_table_exists('poll_votes')) {
     // Add chid column and convert existing votes.
-    db_add_field($ret, 'poll_votes', 'chid', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0));
-    db_add_index($ret, 'poll_votes', 'chid', array('chid'));
-    $ret[] = update_sql("UPDATE {poll_votes} SET chid = (SELECT chid FROM {poll_choices} c WHERE {poll_votes}.chorder = c.chorder AND {poll_votes}.nid = c.nid)");
+    db_add_field('poll_votes', 'chid', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0));
+    db_add_index('poll_votes', 'chid', array('chid'));
+    db_query("UPDATE {poll_votes} SET chid = (SELECT chid FROM {poll_choices} c WHERE {poll_votes}.chorder = c.chorder AND {poll_votes}.nid = c.nid)");
     // Remove old chorder column.
-    db_drop_field($ret, 'poll_votes', 'chorder');
+    db_drop_field('poll_votes', 'chorder');
   }
   if (db_table_exists('poll_choices')) {
     // Change the chorder column to weight in poll_choices.
-    db_change_field($ret, 'poll_choices', 'chorder', 'weight', array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'size' => 'tiny'));
+    db_change_field('poll_choices', 'chorder', 'weight', array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'size' => 'tiny'));
   }
-  return $ret;
 }
 
 /**
@@ -1834,30 +1882,29 @@ function system_update_7008() {
  *
  */
 function system_update_7009() {
-  $ret = array();
-  $ret[] = update_sql("UPDATE {variable} SET name = 'menu_main_links_source' WHERE name = 'menu_primary_links_source'");
-
-  return $ret;
+	db_update('variable')
+	  ->fields(array('name' => 'main_menu_links_source'))
+	  ->condition('name', 'menu_primary_links_source')
+	  ->execute();
 }
 
 /**
  * Moved to system_update_6048().
  */
 function system_update_7010() {
-  return array();
+  return '';
 }
 
 /**
  * Split the 'bypass node access' permission from 'administer nodes'.
  */
 function system_update_7011() {
-  $ret = array();
   // Get existing roles that can 'administer nodes'.
   $rids = array();
   $rids = db_query("SELECT rid FROM {role_permission} WHERE permission = :perm", array(':perm' => 'administer nodes'))->fetchCol();
   // None found.
   if (empty($rids)) {
-    return $ret;
+    return;
   }
   $insert = db_insert('role_permission')->fields(array('rid', 'permission'));
   foreach ($rids as $rid) {
@@ -1867,7 +1914,6 @@ function system_update_7011() {
     ));
   }
   $insert->execute();
-  return $ret;
 }
 
 /**
@@ -1875,18 +1921,15 @@ function system_update_7011() {
  * {boxes} to {box}.
  */
 function system_update_7012() {
-  $ret = array();
-  db_rename_table($ret, 'blocks', 'block');
-  db_rename_table($ret, 'blocks_roles', 'block_role');
-  db_rename_table($ret, 'boxes', 'box');
-  return $ret;
+  db_rename_table('blocks', 'block');
+  db_rename_table('blocks_roles', 'block_role');
+  db_rename_table('boxes', 'box');
 }
 
 /**
  * Convert default time zone offset to default time zone name.
  */
 function system_update_7013() {
-  $ret = array();
   $timezone = NULL;
   $timezones = system_time_zones();
   // If the contributed Date module set a default time zone name, use this
@@ -1920,32 +1963,33 @@ function system_update_7013() {
   }
   variable_set('date_default_timezone', $timezone);
   drupal_set_message('The default time zone has been set to <em>' . check_plain($timezone) . '</em>. Please check the ' . l('date and time configuration page', 'admin/config/regional/settings') . ' to configure it correctly.', 'warning');
-  return $ret;
 }
 
 /**
  * Drop the bootstrap column from the {system} table. This was reverted.
  */
 function system_update_7014() {
-  $ret = array();
-  return $ret;
 }
 
 /**
  * Change the user logout path.
  */
 function system_update_7015() {
-  $ret = array();
-  $ret[] = update_sql("UPDATE {menu_links} SET link_path = 'user/logout' WHERE link_path = 'logout'");
-  $ret[] = update_sql("UPDATE {menu_links} SET router_path = 'user/logout' WHERE router_path = 'logout'");
-  return $ret;
+  db_update('menu_links')
+    ->fields(array('link_path' => 'user/logout'))
+    ->condition('link_path', 'logout')
+    ->execute();
+
+ db_update('menu_links')
+    ->fields(array('router_path' => 'user/logout'))
+    ->condition('router_path', 'logout')
+    ->execute();
 }
 
 /**
  * Remove custom datatype *_unsigned in PostgreSQL.
  */
 function system_update_7016() {
-  $ret = array();
   // Only run these queries if the driver used is pgsql.
   if (db_driver() == 'pgsql') {
     $result = db_query("SELECT c.relname AS table, a.attname AS field,
@@ -1965,28 +2009,25 @@ function system_update_7016() {
           $datatype = 'bigint';
           break;
       }
-      $ret[] = update_sql('ALTER TABLE ' . $row->table . ' ALTER COLUMN ' . $row->field . ' TYPE ' . $datatype);
-      $ret[] = update_sql('ALTER TABLE ' . $row->table . ' ADD CHECK (' . $row->field . ' >= 0)');
+      db_query('ALTER TABLE ' . $row->table . ' ALTER COLUMN ' . $row->field . ' TYPE ' . $datatype);
+      db_query('ALTER TABLE ' . $row->table . ' ADD CHECK (' . $row->field . ' >= 0)');
     }
-    $ret[] = update_sql('DROP DOMAIN smallint_unsigned');
-    $ret[] = update_sql('DROP DOMAIN int_unsigned');
-    $ret[] = update_sql('DROP DOMAIN bigint_unsigned');
+    db_query('DROP DOMAIN smallint_unsigned');
+    db_query('DROP DOMAIN int_unsigned');
+    db_query('DROP DOMAIN bigint_unsigned');
   }
-  return $ret;
 }
 
 /**
  * Change the theme setting 'toggle_node_info' into a per content type variable.
  */
 function system_update_7017() {
-  $ret = array();
   $types = node_type_get_types();
   if (count($types)) {
     foreach ($types as $type) {
       $node_info = theme_get_setting('toggle_node_info_' . $type->type);
       if ($node_info !== NULL) {
         variable_set('node_submitted_' . $type->type, $node_info);
-        $ret[] = array('success' => TRUE, 'query' => "variable_set('node_submitted_$type->type')");
       }
     }
   }
@@ -1999,97 +2040,174 @@ function system_update_7017() {
     }
   }
   variable_set('theme_settings', $theme_settings);
-  $ret[] = array('success' => TRUE, 'query' => "variable_set('theme_settings')");
-
-  return $ret;
 }
 
 /**
  * Shorten the {system}.type column and add an index on type and name.
  */
 function system_update_7018() {
-  $ret = array();
-  db_drop_index($ret, 'system', 'modules');
-  db_change_field($ret, 'system', 'type', 'type', array('type' => 'varchar', 'length' => 12, 'not null' => TRUE, 'default' => ''));
-  db_add_index($ret, 'system', 'modules', array('type', 'status', 'weight', 'name'));
-  db_add_index($ret, 'system', 'type_name', array('type', 'name'));
-  return $ret;
+  db_drop_index('system', 'modules');
+  db_drop_index('system', 'type_name');
+  db_change_field('system', 'type', 'type', array('type' => 'varchar', 'length' => 12, 'not null' => TRUE, 'default' => ''));
+  db_add_index('system', 'modules', array('type', 'status', 'weight', 'name'));
+  db_add_index('system', 'type_name', array('type', 'name'));
 }
 
 /**
  * Enable field module.
  */
 function system_update_7020() {
-  $ret = array();
   $module_list = array('field_sql_storage', 'field');
   drupal_install_modules($module_list);
   module_enable($module_list);
-  return $ret;
 }
 
 /**
  * Add new blocks to new regions, migrate custom variables to blocks.
  */
 function system_update_7021() {
-  $ret = array();
-
   // Collect a list of themes with blocks.
   $themes_with_blocks = array();
   $result = db_query("SELECT s.name FROM {system} s INNER JOIN {block} b ON s.name = b.theme WHERE s.type = 'theme' GROUP by s.name");
+
+  $insert = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'pages', 'cache'));
   foreach ($result as $theme) {
     $themes_with_blocks[] = $theme->name;
     // Add new system generated help block.
-    $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, pages, cache) VALUES ('system', 'help', '" . $theme->name . "', 1, 0, 'help', '', 1)");
+    $insert->values(array(
+      'module' => 'system',
+      'delta' => 'help',
+      'theme' => $theme->name,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'help',
+      'pages' => '',
+      'cache' => 1,
+    ));
     // Add new system generated main page content block.
-    $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, pages, cache) VALUES ('system', 'main', '" . $theme->name . "', 1, 0, 'content', '', -1)");
+    $insert->values(array(
+      'module' => 'system',
+      'delta' => 'main',
+      'theme' => $theme->name,
+      'status' => 1,
+      'weight' => 0,
+      'region' => 'content',
+      'pages' => '',
+      'cache' => -1,
+    ));
   }
+  $insert->execute();
 
   // Migrate blocks from left/right regions to first/second regions.
-  $ret[] = update_sql("UPDATE {block} SET region = 'sidebar_first' WHERE region = 'left'");
-  $ret[] = update_sql("UPDATE {block} SET region = 'sidebar_second' WHERE region = 'right'");
+  db_update('block')
+    ->fields(array('region' => 'sidebar_first'))
+    ->condition('region', 'left')
+    ->execute();
+  db_update('block')
+    ->fields(array('region' => 'sidebar_second'))
+    ->condition('region', 'right')
+    ->execute();
 
   // Migrate contact form information.
+  $default_format = variable_get('filter_default_format', 1);
   if ($contact_help = variable_get('contact_form_information', '')) {
-    $bid = db_insert('box')->fields(array('body' => $contact_help, 'info' => 'Contact page help', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    $bid = db_insert('box')
+      ->fields(array(
+        'body' => $contact_help,
+        'info' => 'Contact page help',
+        'format' => $default_format,
+      ))
+      ->execute();
+
+    $insert = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'visibility', 'pages', 'cache'));
     foreach ($themes_with_blocks as $theme) {
       // Add contact help block for themes, which had blocks.
-      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, cache) VALUES ('block', '" . $bid . "', '" . $theme . "', 1, 5, 'help', 1, 'contact', -1)");
+      $insert->values(array(
+        'module' => 'block',
+        'delta' => $bid,
+        'theme' => $theme,
+        'status' => 1,
+        'weight' => 5,
+        'region' => 'help',
+        'visibility' => 1,
+        'pages' => 'contact',
+        'cache' => -1,
+      ));
     }
     drupal_set_message('The contact form information setting was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the site-wide contact page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
   }
+  $insert->execute();
 
   // Migrate user help setting.
   if ($user_help = variable_get('user_registration_help', '')) {
-    $bid = db_insert('box')->fields(array('body' => $user_help, 'info' => 'User registration guidelines', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    $bid = db_insert('box')->fields(array('body' => $user_help, 'info' => 'User registration guidelines', 'format' => $default_format))->execute();
+
+    $insert = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'visibility', 'pages', 'cache'));
     foreach ($themes_with_blocks as $theme) {
       // Add user registration help block for themes, which had blocks.
-      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, cache) VALUES ('block', '" . $bid . "', '" . $theme . "', 1, 5, 'help', 1, 'user/register', -1)");
+      $insert->values(array(
+        'module' => 'block',
+        'delta' => $bid,
+        'theme' => $theme,
+        'status' => 1,
+        'weight' => 5,
+        'region' => 'help',
+        'visibility' => 1,
+        'pages' => 'user/register',
+        'cache' => -1,
+      ));
     }
     drupal_set_message('The user registration guidelines were migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the user registration page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
+    $insert->execute();
   }
 
   // Migrate site mission setting.
   if ($mission = variable_get('site_mission')) {
-    $bid = db_insert('box')->fields(array('body' => $mission, 'info' => 'Site mission', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    $bid = db_insert('box')->fields(array('body' => $mission, 'info' => 'Site mission', 'format' => $default_format))->execute();
+
+    $insert = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'visibility', 'pages', 'cache'));
     foreach ($themes_with_blocks as $theme) {
       // Add mission block for themes, which had blocks.
-      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, visibility, pages, cache) VALUES ('block', '" . $bid . "', '" . $theme . "', 1, 0, 'highlight', 1, '<front>', -1)");
+      $insert->values(array(
+        'module' => 'block',
+        'delta' => $bid,
+        'theme' => $theme,
+        'status' => 1,
+        'weight' => 0,
+        'region' => 'highlight',
+        'visibility' => 1,
+        'pages' => '<front>',
+        'cache' => -1,
+      ));
     }
     drupal_set_message('The site mission was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the front page in the highlighted content region. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a highlighted content region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
+    $insert->execute();
     // Migrate mission to RSS site description.
     variable_set('feed_description', $mission);
   }
 
   // Migrate site footer message to a custom block.
   if ($footer_message = variable_get('site_footer', '')) {
-    $bid = db_insert('box')->fields(array('body' => $footer_message, 'info' => 'Footer message', 'format' => FILTER_FORMAT_DEFAULT))->execute();
+    $bid = db_insert('box')->fields(array('body' => $footer_message, 'info' => 'Footer message', 'format' => $default_format))->execute();
+
+    $insert = db_insert('block')->fields(array('module', 'delta', 'theme', 'status', 'weight', 'region', 'pages', 'cache'));
     foreach ($themes_with_blocks as $theme) {
       // Add site footer block for themes, which had blocks.
       // Set low weight, so the block comes early (it used to be
       // before the other blocks).
-      $ret[] = update_sql("INSERT INTO {block} (module, delta, theme, status, weight, region, pages, cache) VALUES ('block', '" . $bid . "', '" . $theme . "', 1, -10, 'footer', '', -1)");
+      $insert->values(array(
+        'module' => 'block',
+        'delta' => $bid,
+        'theme' => $theme,
+        'status' => 1,
+        'weight' => -10,
+        'region' => 'footer',
+        'pages' => '',
+        'cache' => -1,
+      ));
     }
     drupal_set_message('The footer message was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to appear in the footer. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a footer region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
+    $insert->execute();
   }
 
   // Remove the variables (even if they were saved empty on the admin interface),
@@ -2101,16 +2219,12 @@ function system_update_7021() {
 
   // Rebuild theme data, so the new 'help' region is identified.
   system_get_theme_data();
-
-  return $ret;
 }
 
 /**
  * Add the queue tables.
  */
 function system_update_7022() {
-  $ret = array();
-
   $schema['queue'] = array(
     'description' => 'Stores items in queues.',
     'fields' => array(
@@ -2171,19 +2285,19 @@ function system_update_7022() {
     ),
     'primary key' => array('consumer_id'),
   );
-  db_create_table($ret, 'queue', $schema['queue']);
-  db_create_table($ret, 'queue_consumer_id', $schema['queue_consumer_id']);
 
-  return $ret;
+  db_create_table('queue', $schema['queue']);
+  db_create_table('queue_consumer_id', $schema['queue_consumer_id']);
 }
 
 /**
  * Change the PHP for settings permission.
  */
 function system_update_7023() {
-  $ret = array();
-  $ret[] = update_sql("UPDATE {role_permission} SET permission = 'use PHP for settings' WHERE permission = 'use PHP for block visibility'");
-  return $ret;
+	db_update('role_permission')
+	  ->fields(array('permission' => 'use PHP for settings'))
+	  ->condition('permission', 'use PHP for block visibility')
+	  ->execute();
 }
 
 /**
@@ -2193,28 +2307,22 @@ function system_update_7023() {
  * for driver-specific updates yet.
  */
 function system_update_7024() {
-  $ret = array();
-
   if (db_driver() == 'pgsql') {
-    $ret[] = update_sql('CREATE OR REPLACE FUNCTION "substring_index"(text, text, integer) RETURNS text AS
+    db_query('CREATE OR REPLACE FUNCTION "substring_index"(text, text, integer) RETURNS text AS
       \'SELECT array_to_string((string_to_array($1, $2)) [1:$3], $2);\'
       LANGUAGE \'sql\''
     );
   }
-
-  return $ret;
 }
 
 /**
  * Improve indexes on the {url_alias} table.
  */
 function system_update_7025() {
-  $ret = array();
-  db_drop_index($ret, 'url_alias', 'src_language');
-  db_drop_index($ret, 'url_alias', 'dst_language');
-  db_add_index($ret, 'url_alias', 'dst_language_pid', array('dst', 'language', 'pid'));
-  db_add_index($ret, 'url_alias', 'src_language_pid', array('src', 'language', 'pid'));
-  return $ret;
+  db_drop_index('url_alias', 'src_language');
+  db_drop_index('url_alias', 'dst_language');
+  db_add_index('url_alias', 'dst_language_pid', array('dst', 'language', 'pid'));
+  db_add_index('url_alias', 'src_language_pid', array('src', 'language', 'pid'));
 }
 
 /**
@@ -2222,38 +2330,34 @@ function system_update_7025() {
  *
  */
 function system_update_7026() {
-  $ret = array();
-  db_change_field($ret, 'url_alias', 'src', 'src', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
-  db_change_field($ret, 'url_alias', 'dst', 'dst', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
-  return $ret;
+  db_change_field('url_alias', 'src', 'src', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
+  db_change_field('url_alias', 'dst', 'dst', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE));
 }
 
 /**
  * Enable field type modules.
  */
 function system_update_7027() {
-  $ret = array();
   $module_list = array('text', 'number', 'list', 'options');
-  db_delete('system')->condition('type', 'module')->condition('name', $module_list)->execute();
+  db_delete('system')
+    ->condition('type', 'module')
+    ->condition('name', $module_list)
+    ->execute();
   drupal_install_modules($module_list);
   module_enable($module_list);
-  return $ret;
 }
 
 /**
  * Rename taxonomy tables.
  */
 function system_update_7028() {
-  $ret = array();
-  db_rename_table($ret, 'term_data', 'taxonomy_term_data');
-  db_rename_table($ret, 'term_hierarchy', 'taxonomy_term_hierarchy');
-  db_rename_table($ret, 'term_node', 'taxonomy_term_node');
-  db_rename_table($ret, 'term_relation', 'taxonomy_term_relation');
-  db_rename_table($ret, 'term_synonym', 'taxonomy_term_synonym');
-  db_rename_table($ret, 'vocabulary', 'taxonomy_vocabulary');
-  db_rename_table($ret, 'vocabulary_node_types', 'taxonomy_vocabulary_node_type');
-
-  return $ret;
+  db_rename_table('term_data', 'taxonomy_term_data');
+  db_rename_table('term_hierarchy', 'taxonomy_term_hierarchy');
+  db_rename_table('term_node', 'taxonomy_term_node');
+  db_rename_table('term_relation', 'taxonomy_term_relation');
+  db_rename_table('term_synonym', 'taxonomy_term_synonym');
+  db_rename_table('vocabulary', 'taxonomy_vocabulary');
+  db_rename_table('vocabulary_node_types', 'taxonomy_vocabulary_node_type');
 }
 
 /**
@@ -2261,62 +2365,51 @@ function system_update_7028() {
  * Preserves legacy behavior from Drupal 6.x.
  */
 function system_update_7029() {
-  $ret = array();
   db_insert('role_permission')
     ->fields(array(
       'rid' => DRUPAL_AUTHENTICATED_RID,
       'permission' => 'view own unpublished content',
     ))
     ->execute();
-  return $ret;
 }
 
 /**
  * Add an index to node_comment_statistics on comment_count.
  */
 function system_update_7030() {
-  $ret = array();
-  db_add_index($ret, 'node_comment_statistics', 'comment_count', array('comment_count'));
-  return $ret;
+  db_add_index('node_comment_statistics', 'comment_count', array('comment_count'));
 }
 
 /**
  * Add a missing index on the {menu_router} table.
  */
 function system_update_7031() {
-  $ret = array();
-  db_add_index($ret, 'menu_router', 'tab_root_weight_title', array(array('tab_root', 64), 'weight', 'title'));
-  return $ret;
+  db_add_index('menu_router', 'tab_root_weight_title', array(array('tab_root', 64), 'weight', 'title'));
 }
 
 /**
 * Alter field hostname to identifier in the {flood} table.
  */
 function system_update_7032() {
-  $ret = array();
-  db_drop_index($ret, 'flood', 'allow');
-  db_change_field($ret, 'flood', 'hostname', 'identifier', array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''));
-  db_add_index($ret, 'flood', 'allow', array('event', 'identifier', 'timestamp'));
-  return $ret;
+  db_drop_index('flood', 'allow');
+  db_change_field('flood', 'hostname', 'identifier', array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''));
+  db_add_index('flood', 'allow', array('event', 'identifier', 'timestamp'));
 }
 
 /**
  * Move CACHE_AGGRESSIVE to CACHE_NORMAL.
  */
 function system_update_7033() {
-  $ret = array();
   if (variable_get('cache') == 2) {
     variable_set('cache', CACHE_NORMAL);
-    $ret[] = array('success' => TRUE, 'query' => "Aggressive caching was disabled and replaced with normal caching, please read the page caching section in default.settings.php for more information on how to enable similar functionality.");
+    return t('Aggressive caching was disabled and replaced with normal caching, please read the page caching section in default.settings.php for more information on how to enable similar functionality.');
   }
-  return $ret;
 }
 
 /**
  * Migrate the file_downloads setting and create the new {file} table.
  */
 function system_update_7034() {
-  $ret = array();
   $files_directory = variable_get('file_directory_path', NULL);
   if (variable_get('file_downloads', 1) == 1) {
     // Our default is public, so we don't need to set anything.
@@ -2400,18 +2493,18 @@ function system_update_7034() {
     ),
     'primary key' => array('fid'),
   );
-  db_create_table($ret, 'file', $schema['file']);
-  return $ret;
+
+  db_create_table('file', $schema['file']);
 }
 
 /**
  * Migrate upload module files to the new {file} table.
  */
 function system_update_7035() {
-  $ret = array();
   if (!db_table_exists('upload')) {
-    return $ret;
+    return;
   }
+
   // The old {files} tables still exists.  We migrate core data from upload
   // module, but any contrib module using it will need to do its own update.
   $result = db_query('SELECT fid, uid, filename, filepath AS uri, filemime, filesize, status, timestamp FROM {files} f INNER JOIN {upload} u ON u.fid = f.fid', array(), array('fetch' => PDO::FETCH_ASSOC));
@@ -2421,7 +2514,7 @@ function system_update_7035() {
   $basename = variable_get('file_directory_path', conf_path() . '/files');
   $scheme = variable_get('file_default_scheme', 'public') . '://';
   $fids = array();
-  // TODO: does this function need to run in batch mode?
+  // TODO: does this function need to run in batch mode, or should we use a multi-insert?
   foreach ($result as $file) {
     $file['uri'] = $scheme . str_replace($basename, '', $file['uri']);
     $file['uri'] = file_stream_wrapper_uri_normalize($file['uri']);
@@ -2429,19 +2522,17 @@ function system_update_7035() {
     $fids[] = $file['fid'];
   }
   // TODO: delete the found fids from {files}?
-  return $ret;
 }
 
 /**
  * Split the 'access site in maintenance mode' permission from 'administer site configuration'.
  */
 function system_update_7036() {
-  $ret = array();
   // Get existing roles that can 'administer site configuration'.
   $rids = db_query("SELECT rid FROM {role_permission} WHERE permission = :perm", array(':perm' => 'administer site configuration'))->fetchCol();
   // None found.
   if (empty($rids)) {
-    return $ret;
+    return;
   }
   $insert = db_insert('role_permission')->fields(array('rid', 'permission'));
   foreach ($rids as $rid) {
@@ -2455,17 +2546,29 @@ function system_update_7036() {
   // Remove obsolete variable 'site_offline_message'.
   // @see update_fix_d7_requirements().
   variable_del('site_offline_message');
-
-  return $ret;
 }
 
 /**
  * Rename {box} table to {block_custom}.
  */
 function system_update_7037() {
-  $ret = array();
-  db_rename_table($ret, 'box', 'block_custom');
-  return $ret;
+  db_rename_table('box', 'block_custom');
+}
+
+/**
+ * Rename action description to label.
+ */
+function system_update_7038() {
+  db_change_field('actions', 'description', 'label', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => '0'));
+}
+
+/**
+ * Adds fields to the {menu_router} table to allow custom themes to be set per
+ * page.
+ */
+function system_update_7039() {
+  db_add_field('menu_router', 'theme_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  db_add_field('menu_router', 'theme_arguments', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
 }
 
 /**

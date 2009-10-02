@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.module,v 1.516 2009/08/31 17:06:08 dries Exp $
+// $Id: forum.module,v 1.519 2009/09/18 00:04:22 webchick Exp $
 
 /**
  * @file
@@ -252,10 +252,10 @@ function forum_node_validate($node, $form) {
       $vocabulary = $vid;
       $containers = variable_get('forum_containers', array());
       foreach ($node->taxonomy as $term) {
-        $used = db_query_range('SELECT 1 FROM {taxonomy_term_data} WHERE tid = :tid AND vid = :vid', array(
+        $used = db_query_range('SELECT 1 FROM {taxonomy_term_data} WHERE tid = :tid AND vid = :vid', 0, 1, array(
           ':tid' => $term,
           ':vid' => $vocabulary,
-        ), 0, 1)->fetchField();
+        ))->fetchField();
         if ($used && in_array($term, $containers)) {
           $term = taxonomy_term_load($term);
           form_set_error('taxonomy', t('The item %forum is only a container for forums. Please select one of the forums below it.', array('%forum' => $term->name)));
@@ -287,7 +287,7 @@ function forum_node_presave($node) {
           $node->tid = $term_id;
         }
       }
-      $old_tid = db_query_range("SELECT f.tid FROM {forum} f INNER JOIN {node} n ON f.vid = n.vid WHERE n.nid = :nid ORDER BY f.vid DESC", array(':nid' => $node->nid), 0, 1)->fetchField();
+      $old_tid = db_query_range("SELECT f.tid FROM {forum} f INNER JOIN {node} n ON f.vid = n.vid WHERE n.nid = :nid ORDER BY f.vid DESC", 0, 1, array(':nid' => $node->nid))->fetchField();
       if ($old_tid && isset($node->tid) && ($node->tid != $old_tid) && !empty($node->shadow)) {
         // A shadow copy needs to be created. Retain new term and add old term.
         $node->taxonomy[] = $old_tid;
@@ -538,14 +538,13 @@ function forum_block_view($delta = '') {
       break;
   }
 
-   $cache_keys[] = 'forum';
-   $cache_keys[] = $delta;
-   // Cache based on the altered query. Enables us to cache with node access enabled.
-   $query->preExecute();
-   $cache_keys[] = md5(serialize(array((string) $query, $query->getArguments())));
+  $cache_keys = array_merge(array('forum', $delta), drupal_render_cid_parts());
+  // Cache based on the altered query. Enables us to cache with node access enabled.
+  $query->preExecute();
+  $cache_keys[] = md5(serialize(array((string) $query, $query->getArguments())));
 
-   $block['subject'] = $title;
-   $block['content'] = array(
+  $block['subject'] = $title;
+  $block['content'] = array(
      '#access' => user_access('access content'),
      '#pre_render' => array('forum_block_view_pre_render'),
      '#cache' => array(
@@ -553,8 +552,8 @@ function forum_block_view($delta = '') {
         'expire' => CACHE_TEMPORARY,
      ),
      '#query' => $query,
-   );
-   return $block;
+  );
+  return $block;
 }
 
 /**
@@ -624,7 +623,7 @@ function forum_get_forums($tid = 0) {
   if (count($_forums)) {
     $query = db_select('node', 'n');
     $query->join('node_comment_statistics', 'ncs', 'n.nid = ncs.nid');
-    $query->join('forum', 'f', 'f.vid = f.vid');
+    $query->join('forum', 'f', 'n.vid = f.vid');
     $query->addExpression('COUNT(n.nid)', 'topic_count');
     $query->addExpression('SUM(ncs.comment_count)', 'comment_count');
     $counts = $query

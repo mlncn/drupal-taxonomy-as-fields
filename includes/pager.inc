@@ -1,5 +1,5 @@
 <?php
-// $Id: pager.inc,v 1.71 2009/08/26 04:58:23 webchick Exp $
+// $Id: pager.inc,v 1.73 2009/09/29 15:31:13 dries Exp $
 
 /**
  * @file
@@ -171,88 +171,18 @@ class PagerDefault extends SelectQueryExtender {
 }
 
 /**
- * Perform a paged database query.
- *
- * Use this function when doing select queries you wish to be able to page. The
- * pager uses LIMIT-based queries to fetch only the records required to render a
- * certain page. However, it has to learn the total number of records returned
- * by the query to compute the number of pages (the number of records / records
- * per page). This is done by inserting "COUNT(*)" in the original query. For
- * example, the query "SELECT nid, type FROM node WHERE status = '1' ORDER BY
- * sticky DESC, created DESC" would be rewritten to read "SELECT COUNT(*) FROM
- * node WHERE status = '1' ORDER BY sticky DESC, created DESC". Rewriting the
- * query is accomplished using a regular expression.
- *
- * Unfortunately, the rewrite rule does not always work as intended for queries
- * that already have a "COUNT(*)" or a "GROUP BY" clause, and possibly for
- * other complex queries. In those cases, you can optionally pass a query that
- * will be used to count the records.
- *
- * For example, if you want to page the query "SELECT COUNT(*), TYPE FROM node
- * GROUP BY TYPE", pager_query() would invoke the incorrect query "SELECT
- * COUNT(*) FROM node GROUP BY TYPE". So instead, you should pass "SELECT
- * COUNT(DISTINCT(TYPE)) FROM node" as the optional $count_query parameter.
- *
- * @param $query
- *   The SQL query that needs paging.
- * @param $limit
- *   The number of query results to display per page.
- * @param $element
- *   An optional integer to distinguish between multiple pagers on one page.
- * @param $count_query
- *   An SQL query used to count matching records.
- * @param ...
- *   A variable number of arguments which are substituted into the query (and
- *   the count query) using printf() syntax. Instead of a variable number of
- *   query arguments, you may also pass a single array containing the query
- *   arguments.
- * @return
- *   A database query result resource, or FALSE if the query was not executed
- *   correctly.
- *
- * @ingroup database
- */
-function pager_query($query, $limit = 10, $element = 0, $count_query = NULL) {
-  global $pager_page_array, $pager_total, $pager_total_items, $pager_limits;
-  $page = isset($_GET['page']) ? $_GET['page'] : '';
-
-  // Substitute in query arguments.
-  $args = func_get_args();
-  $args = array_slice($args, 4);
-  // Alternative syntax for '...'
-  if (isset($args[0]) && is_array($args[0])) {
-    $args = $args[0];
-  }
-
-  // Construct a count query if none was given.
-  if (!isset($count_query)) {
-    $count_query = preg_replace(array('/SELECT.*?FROM /As', '/ORDER BY .*/'), array('SELECT COUNT(*) FROM ', ''), $query);
-  }
-
-  // Convert comma-separated $page to an array, used by other functions.
-  $pager_page_array = explode(',', $page);
-
-  // We calculate the total of pages as ceil(items / limit).
-  $pager_total_items[$element] = db_query($count_query, $args)->fetchField();
-  $pager_total[$element] = ceil($pager_total_items[$element] / $limit);
-  $pager_page_array[$element] = max(0, min((int)$pager_page_array[$element], ((int)$pager_total[$element]) - 1));
-  $pager_limits[$element] = $limit;
-  return db_query_range($query, $args, $pager_page_array[$element] * $limit, $limit);
-}
-
-/**
- * Compose a query string to append to pager requests.
+ * Compose a URL query parameter array for pager links.
  *
  * @return
- *   A query string that consists of all components of the current page request
- *   except for those pertaining to paging.
+ *   A URL query parameter array that consists of all components of the current
+ *   page request except for those pertaining to paging.
  */
-function pager_get_querystring() {
-  static $string = NULL;
-  if (!isset($string)) {
-    $string = drupal_query_string_encode($_REQUEST, array_merge(array('q', 'page'), array_keys($_COOKIE)));
+function pager_get_query_parameters() {
+  $query = &drupal_static(__FUNCTION__);
+  if (!isset($query)) {
+    $query = drupal_get_query_parameters($_REQUEST, array_merge(array('q', 'page'), array_keys($_COOKIE)));
   }
-  return $string;
+  return $query;
 }
 
 /**
@@ -535,11 +465,10 @@ function theme_pager_link($text, $page_new, $element, $parameters = array(), $at
 
   $query = array();
   if (count($parameters)) {
-    $query[] = drupal_query_string_encode($parameters, array());
+    $query = drupal_get_query_parameters($parameters, array());
   }
-  $querystring = pager_get_querystring();
-  if ($querystring != '') {
-    $query[] = $querystring;
+  if ($query_pager = pager_get_query_parameters()) {
+    $query = array_merge($query, $query_pager);
   }
 
   // Set each pager link title
@@ -561,7 +490,7 @@ function theme_pager_link($text, $page_new, $element, $parameters = array(), $at
     }
   }
 
-  return l($text, $_GET['q'], array('attributes' => $attributes, 'query' => count($query) ? implode('&', $query) : NULL));
+  return l($text, $_GET['q'], array('attributes' => $attributes, 'query' => $query));
 }
 
 /**

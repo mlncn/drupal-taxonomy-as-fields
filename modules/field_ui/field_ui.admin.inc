@@ -1,5 +1,5 @@
 <?php
-// $Id: field_ui.admin.inc,v 1.11 2009/09/05 12:34:00 webchick Exp $
+// $Id: field_ui.admin.inc,v 1.21 2009/10/02 14:39:43 dries Exp $
 
 /**
  * @file
@@ -65,15 +65,15 @@ function field_ui_inactive_message($bundle) {
  *
  * Allows fields and pseudo-fields to be re-ordered.
  */
-function field_ui_field_overview_form(&$form_state, $obj_type, $bundle) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_field_overview_form($form, &$form_state, $obj_type, $bundle) {
+  $bundle = field_extract_bundle($obj_type, $bundle);
 
   field_ui_inactive_message($bundle);
   $admin_path = _field_ui_bundle_admin_path($bundle);
 
   // When displaying the form, make sure the list of fields is up-to-date.
   if (empty($form_state['post'])) {
-    field_cache_clear();
+    field_info_cache_clear();
   }
 
   // Gather bundle information.
@@ -86,7 +86,7 @@ function field_ui_field_overview_form(&$form_state, $obj_type, $bundle) {
   // Store each default weight so that we can add the 'add new' rows after them.
   $weights = array();
 
-  $form = array(
+  $form += array(
     '#tree' => TRUE,
     '#bundle' => $bundle,
     '#fields' => array_keys($instances),
@@ -480,6 +480,7 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
     $field = array(
       'field_name' => $values['field_name'],
       'type' => $values['type'],
+      'translatable' => TRUE,
     );
     $instance = array(
       'field_name' => $field['field_name'],
@@ -538,12 +539,11 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
   }
 
   if ($destinations) {
-    $destinations[] = urldecode(substr(drupal_get_destination(), 12));
-    unset($_REQUEST['destination']);
+    $destination = drupal_get_destination();
+    $destinations[] = $destination['destination'];
+    unset($_GET['destination']);
     $form_state['redirect'] = field_ui_get_destinations($destinations);
   }
-
-  field_cache_clear();
 }
 
 /**
@@ -552,8 +552,8 @@ function field_ui_field_overview_form_submit($form, &$form_state) {
  * This form includes form widgets to select which fields appear in teaser and
  * full build modes, and how the field labels should be rendered.
  */
-function field_ui_display_overview_form(&$form_state, $obj_type, $bundle, $build_modes_selector = 'basic') {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_display_overview_form($form, &$form_state, $obj_type, $bundle, $build_modes_selector = 'basic') {
+  $bundle = field_extract_bundle($obj_type, $bundle);
 
   field_ui_inactive_message($bundle);
   $admin_path = _field_ui_bundle_admin_path($bundle);
@@ -564,7 +564,7 @@ function field_ui_display_overview_form(&$form_state, $obj_type, $bundle, $build
   $field_types = field_info_field_types();
   $build_modes = field_ui_build_modes_tabs($entity, $build_modes_selector);
 
-  $form = array(
+  $form += array(
     '#tree' => TRUE,
     '#bundle' => $bundle,
     '#fields' => array_keys($instances),
@@ -782,18 +782,10 @@ function field_ui_existing_field_options($bundle) {
 }
 
 /**
- * Helper function to determine if a field has data in the database.
- */
-function field_ui_field_has_data($field) {
-  $results = field_attach_query($field['id'], array(), 1);
-  return !empty($results);
-}
-
-/**
  * Menu callback; presents the field settings edit page.
  */
-function field_ui_field_settings_form(&$form_state, $obj_type, $bundle, $instance) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_field_settings_form($form, &$form_state, $obj_type, $bundle, $instance) {
+  $bundle = field_extract_bundle($obj_type, $bundle);
   $field = field_info_field($instance['field_name']);
 
   // When a field is first created, we have to get data from the db.
@@ -822,7 +814,7 @@ function field_ui_field_settings_form(&$form_state, $obj_type, $bundle, $instanc
 
   // See if data already exists for this field.
   // If so, prevent changes to the field settings.
-  $has_data = field_ui_field_has_data($field);
+  $has_data = field_has_data($field);
   if ($has_data) {
     $form['field']['#description'] = '<div class=error>' . t('There is data for this field in the database. The field settings can no longer be changed.' . '</div>') . $form['field']['#description'];
   }
@@ -833,26 +825,27 @@ function field_ui_field_settings_form(&$form_state, $obj_type, $bundle, $instanc
   $form['field']['module'] = array('#type' => 'value', '#value' => $field['module']);
   $form['field']['active'] = array('#type' => 'value', '#value' => $field['active']);
 
-  // Add settings provided by the field module.
+  // Set translatability.
+  $form['field']['translatable'] = array(
+    '#type' => 'radios',
+    '#title' => t('Multilingual settings'),
+    '#options' => array(TRUE => t('Translatable field'), FALSE => t('Language neutral field')),
+    '#default_value' => $field['translatable'],
+    '#description' => t("Translatable fields can have a different value for each available language. An example of a translatable field is an article's <em>body</em>. Language neutral fields will retain the same value across all translations. An example of a language neutral field is a user profile's <em>first name</em>."),
+  ); 
+
+  // Add settings provided by the field module. The field module is
+  // responsible for not returning settings that cannot be changed if
+  // the field already has data.
   $form['field']['settings'] = array();
-  $additions = module_invoke($field_type['module'], 'field_settings_form', $field, $instance);
+  $additions = module_invoke($field_type['module'], 'field_settings_form', $field, $instance, $has_data);
   if (is_array($additions)) {
     $form['field']['settings'] = $additions;
-    // @todo Filter this so only the settings that cannot be changed are shown
-    //   in this form. For now, treating all settings as changeable, which means
-    //   they show up here and in edit form.
   }
   if (empty($form['field']['settings'])) {
     $form['field']['settings'] = array(
       '#markup' => t('%field has no field settings.', array('%field' => $instance['label'])),
     );
-  }
-  else {
-    foreach ($form['field']['settings'] as $key => $setting) {
-      if (substr($key, 0, 1) != '#') {
-        $form['field']['settings'][$key]['#disabled'] = $has_data;
-      }
-    }
   }
   $form['#bundle'] = $bundle;
 
@@ -870,27 +863,29 @@ function field_ui_field_settings_form_submit($form, &$form_state) {
   // Merge incoming form values into the existing field.
   $field = field_info_field($field_values['field_name']);
 
-  // Do not allow changes to fields with data.
-  if (field_ui_field_has_data($field)) {
-    return;
-  }
-
   $bundle = $form['#bundle'];
   $instance = field_info_instance($field['field_name'], $bundle);
 
   // Update the field.
   $field = array_merge($field, $field_values);
-  field_ui_update_field($field);
 
-  drupal_set_message(t('Updated field %label field settings.', array('%label' => $instance['label'])));
-  $form_state['redirect'] = field_ui_next_destination($bundle);
+  try {
+    field_update_field($field);
+    drupal_set_message(t('Updated field %label field settings.', array('%label' => $instance['label'])));
+    $form_state['redirect'] = field_ui_next_destination($bundle);
+  }
+  catch (FieldException $e) {
+    drupal_set_message(t('Attempt to update field %label failed: %message.', array('%label' => $instance['label'], '%message' => $e->getMessage())), 'error');
+    // TODO: Where do we go from here?
+    $form_state['redirect'] = field_ui_next_destination($bundle);
+  }
 }
 
 /**
  * Menu callback; select a widget for the field.
  */
-function field_ui_widget_type_form(&$form_state, $obj_type, $bundle, $instance) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_widget_type_form($form, &$form_state, $obj_type, $bundle, $instance) {
+  $bundle = field_extract_bundle($obj_type, $bundle);
   $field = field_read_field($instance['field_name']);
 
   $field_type = field_info_field_types($field['type']);
@@ -948,8 +943,8 @@ function field_ui_widget_type_form_submit($form, &$form_state) {
 /**
  * Menu callback; present a form for removing a field from a content type.
  */
-function field_ui_field_delete_form(&$form_state, $obj_type, $bundle, $instance) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_field_delete_form($form, &$form_state, $obj_type, $bundle, $instance) {
+  $bundle = field_extract_bundle($obj_type, $bundle);
   $field = field_info_field($instance['field_name']);
   $admin_path = _field_ui_bundle_admin_path($bundle);
 
@@ -984,7 +979,7 @@ function field_ui_field_delete_form_submit($form, &$form_state) {
   $bundle_label = $bundles[$bundle]['label'];
 
   if (!empty($bundle) && $field && !$field['locked'] && $form_values['confirm']) {
-    field_delete_instance($field['field_name'], $bundle);
+    field_delete_instance($instance);
     // Delete the field if that was the last instance.
     if (count($field['bundles'] == 1)) {
       field_delete_field($field['field_name']);
@@ -1002,8 +997,8 @@ function field_ui_field_delete_form_submit($form, &$form_state) {
 /**
  * Menu callback; presents the field instance edit page.
  */
-function field_ui_field_edit_form(&$form_state, $obj_type, $bundle, $instance) {
-  $bundle = field_attach_extract_bundle($obj_type, $bundle);
+function field_ui_field_edit_form($form, &$form_state, $obj_type, $bundle, $instance) {
+  $bundle = field_extract_bundle($obj_type, $bundle);
 
   $field = field_info_field($instance['field_name']);
   $form['#field'] = $field;
@@ -1120,7 +1115,13 @@ function field_ui_field_edit_form(&$form_state, $obj_type, $bundle, $instance) {
   $description .= $info['description'] . '</p>';
   $form['#prefix'] = '<div class="description">' . $description . '</div>';
 
-  $description = '<p>' . t('These settings apply to the %field field everywhere it is used.', array('%field' => $instance['label'])) . '</p>';
+  $has_data = field_has_data($field);
+  if ($has_data) {
+    $description = '<p>' . t('These settings apply to the %field field everywhere it is used. Because the field already has data, some settings can no longer be changed.', array('%field' => $instance['label'])) . '</p>';
+  }
+  else {
+    $description = '<p>' . t('These settings apply to the %field field everywhere it is used.', array('%field' => $instance['label'])) . '</p>';
+  }
 
   // Create a form structure for the field values.
   $form['field'] = array(
@@ -1143,10 +1144,11 @@ function field_ui_field_edit_form(&$form_state, $obj_type, $bundle, $instance) {
     '#description' => $description,
   );
 
-  // Add additional field settings from the field module.
-  $additions = module_invoke($field['module'], 'field_settings_form', $field, $instance);
+  // Add additional field type settings. The field type module is
+  // responsible for not returning settings that cannot be changed if
+  // the field already has data.
+  $additions = module_invoke($field['module'], 'field_settings_form', $field, $instance, $has_data);
   if (is_array($additions)) {
-    // @todo Filter additional settings by whether they can be changed.
     $form['field']['settings'] = $additions;
   }
 
@@ -1281,7 +1283,7 @@ function field_ui_field_edit_form_submit($form, &$form_state) {
   // Update any field settings that have changed.
   $field = field_info_field($instance_values['field_name']);
   $field = array_merge($field, $field_values);
-  field_ui_update_field($field);
+  field_update_field($field);
 
   // Move the default value from the sample widget to the default value field.
   if (isset($instance_values['default_value_widget'])) {

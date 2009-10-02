@@ -1,5 +1,5 @@
 <?php
-// $Id: tablesort.inc,v 1.53 2009/08/26 04:58:23 webchick Exp $
+// $Id: tablesort.inc,v 1.55 2009/09/29 15:31:13 dries Exp $
 
 /**
  * @file
@@ -59,7 +59,7 @@ class TableSort extends SelectQueryExtender {
   protected function init() {
     $ts = $this->order();
     $ts['sort'] = $this->getSort();
-    $ts['query_string'] = $this->getQueryString();
+    $ts['query'] = $this->getQueryParameters();
     return $ts;
   }
 
@@ -87,14 +87,16 @@ class TableSort extends SelectQueryExtender {
   }
 
   /**
-   * Compose a query string to append to table sorting requests.
+   * Compose a URL query parameter array to append to table sorting requests.
    *
    * @return
-   *   A query string that consists of all components of the current page request
-   *   except for those pertaining to table sorting.
+   *   A URL query parameter array that consists of all components of the current
+   *   page request except for those pertaining to table sorting.
+   *
+   * @see tablesort_get_query_parameters()
    */
-  protected function getQueryString() {
-    return drupal_query_string_encode($_REQUEST, array_merge(array('q', 'sort', 'order'), array_keys($_COOKIE)));
+  protected function getQueryParameters() {
+    return tablesort_get_query_parameters();
   }
 
   /**
@@ -141,39 +143,8 @@ class TableSort extends SelectQueryExtender {
 function tablesort_init($header) {
   $ts = tablesort_get_order($header);
   $ts['sort'] = tablesort_get_sort($header);
-  $ts['query_string'] = tablesort_get_querystring();
+  $ts['query'] = tablesort_get_query_parameters();
   return $ts;
-}
-
-/**
- * Create an SQL sort clause.
- *
- * This function produces the ORDER BY clause to insert in your SQL queries,
- * assuring that the returned database table rows match the sort order chosen
- * by the user.
- *
- * @param $header
- *   An array of column headers in the format described in theme_table().
- * @param $before
- *   An SQL string to insert after ORDER BY and before the table sorting code.
- *   Useful for sorting by important attributes like "sticky" first.
- * @return
- *   An SQL string to append to the end of a query.
- *
- * @ingroup database
- */
-function tablesort_sql($header, $before = '') {
-  $ts = tablesort_init($header);
-  if ($ts['sql']) {
-    // Based on code from db_escape_table(), but this can also contain a dot.
-    $field = preg_replace('/[^A-Za-z0-9_.]+/', '', $ts['sql']);
-
-    // Sort order can only be ASC or DESC.
-    $sort = drupal_strtoupper($ts['sort']);
-    $sort = in_array($sort, array('ASC', 'DESC')) ? $sort : '';
-
-    return " ORDER BY $before $field $sort";
-  }
 }
 
 /**
@@ -205,11 +176,7 @@ function tablesort_header($cell, $header, $ts) {
       $ts['sort'] = 'asc';
       $image = '';
     }
-
-    if (!empty($ts['query_string'])) {
-      $ts['query_string'] = '&' . $ts['query_string'];
-    }
-    $cell['data'] = l($cell['data'] . $image, $_GET['q'], array('attributes' => array('title' => $title), 'query' => 'sort=' . $ts['sort'] . '&order=' . urlencode($cell['data']) . $ts['query_string'], 'html' => TRUE));
+    $cell['data'] = l($cell['data'] . $image, $_GET['q'], array('attributes' => array('title' => $title), 'query' => array_merge($ts['query'], array('sort' => $ts['sort'], 'order' => $cell['data'])), 'html' => TRUE));
 
     unset($cell['field'], $cell['sort']);
   }
@@ -245,14 +212,14 @@ function tablesort_cell($cell, $header, $ts, $i) {
 }
 
 /**
- * Compose a query string to append to table sorting requests.
+ * Compose a URL query parameter array for table sorting links.
  *
  * @return
- *   A query string that consists of all components of the current page request
- *   except for those pertaining to table sorting.
+ *   A URL query parameter array that consists of all components of the current
+ *   page request except for those pertaining to table sorting.
  */
-function tablesort_get_querystring() {
-  return drupal_query_string_encode($_REQUEST, array_merge(array('q', 'sort', 'order'), array_keys($_COOKIE)));
+function tablesort_get_query_parameters() {
+  return drupal_get_query_parameters($_REQUEST, array_merge(array('q', 'sort', 'order'), array_keys($_COOKIE)));
 }
 
 /**

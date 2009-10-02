@@ -1,5 +1,5 @@
 <?php
-// $Id: browser_test.module,v 1.1 2009/08/17 06:08:47 dries Exp $
+// $Id: browser_test.module,v 1.4 2009/09/30 18:36:02 dries Exp $
 
 /**
  * @file
@@ -10,8 +10,6 @@
  * Implement hook_menu().
  */
 function browser_test_menu() {
-  $items = array();
-
   $items['browser_test/print/get'] = array(
     'page callback' => 'browser_test_print_get',
     'access arguments' => array('access content'),
@@ -39,9 +37,7 @@ function browser_test_print_get() {
   exit;
 }
 
-function browser_test_print_post_form(&$form_state) {
-  $form = array();
-
+function browser_test_print_post_form($form, &$form_state) {
   $form['foo'] = array(
     '#type' => 'textfield',
   );
@@ -60,7 +56,7 @@ function browser_test_print_post_form_submit($form, &$form_state) {
 
 function browser_test_refresh_meta() {
   if (!isset($_GET['refresh'])) {
-    $url = url('browser_test/refresh/meta', array('absolute' => TRUE, 'query' => 'refresh=true'));
+    $url = url('browser_test/refresh/meta', array('absolute' => TRUE, 'query' => array('refresh' => 'true')));
     drupal_add_html_head('<meta http-equiv="Refresh" content="0; URL=' . $url . '">');
     return '';
   }
@@ -70,8 +66,8 @@ function browser_test_refresh_meta() {
 
 function browser_test_refresh_header() {
   if (!isset($_GET['refresh'])) {
-    $url = url('browser_test/refresh/header', array('absolute' => TRUE, 'query' => 'refresh=true'));
-    drupal_set_header('Location', $url);
+    $url = url('browser_test/refresh/header', array('absolute' => TRUE, 'query' => array('refresh' => 'true')));
+    drupal_add_http_header('Location', $url);
     return '';
   }
   echo 'Refresh successful';

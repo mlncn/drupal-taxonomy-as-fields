@@ -1,4 +1,4 @@
-// $Id: CHANGELOG.txt,v 1.340 2009/09/05 06:03:29 dries Exp $
+// $Id: CHANGELOG.txt,v 1.344 2009/09/25 23:48:23 dries Exp $
 
 Drupal 7.0, xxxx-xx-xx (development version)
 ----------------------
@@ -43,6 +43,7 @@ Drupal 7.0, xxxx-xx-xx (development version)
     * Redesigned the add content type screen.
     * Highlight duplicate URL aliases.
     * Renamed "input formats" to "text formats".
+    * Moved text format permissions to the main permissions page.
     * Added configurable ability for users to cancel their own accounts.
     * Added "vertical tabs", a reusable interface component that features automatic
       summaries and increases usability.
@@ -74,15 +75,14 @@ Drupal 7.0, xxxx-xx-xx (development version)
       to time zone names, e.g. Africa/Abidjan.
     * In some cases the upgrade and install scripts do not choose the preferred
       site default time zone. The automatically-selected time zone can be
-      corrected at admin/settings/date-time.
+      corrected at admin/config/regional/settings.
     * If your site is being upgraded from Drupal 6 and you do not have the
       contributed date or event modules installed, user time zone settings will
       fallback to the system time zone and will have to be reconfigured by each user.
 - Filter system:
     * Revamped the filter API and text format storage.
+    * Added support for default text formats to be assigned on a per-role basis.
     * Refactored the HTML corrector to take advantage of PHP 5 features.
-- Removed ping module:
-    * Contributed modules with similar functionality are available.
 - User system:
     * Added clean API functions for creating, loading, updating, and deleting
       user roles and permissions.
@@ -94,9 +94,6 @@ Drupal 7.0, xxxx-xx-xx (development version)
       at the operating system level.
     * Removed per-user themes: Contributed modules with similar functionality
       are available.
-- Removed throttle module:
-    * Alternative methods for improving performance are available in other core and
-      contributed modules.
 - Added code registry:
     * Using the registry, modules declare their includable files via their .info file,
       allowing Drupal to lazy-load classes and interfaces as needed.
@@ -171,10 +168,14 @@ Drupal 7.0, xxxx-xx-xx (development version)
     * Upgraded the jQuery Forms library to 2.21.
     * Added jQuery UI 1.7.2, which allows improvements to Drupal's user
       experience.
-- Better module version support.
+- Better module version support
     * Modules now can specify which version of another module they depend on.
-- Blog API
-    * This module has been removed from core.
+- Removed modules from core
+    * The following modules have been removed from core, because contributed
+      modules with similar functionality are available:
+      * Blog API module
+      * Ping module
+      * Throttle module
 - Improved node access control system.
     * All modules may now influence the access to a node at runtime, not just
       the module that defined a node.
@@ -182,6 +183,15 @@ Drupal 7.0, xxxx-xx-xx (development version)
       them complete access to the site.
     * Access control affects both published and unpublished nodes.
     * Numerous other improvements to the node access system.
+- Actions system
+    * Simplified definitions of actions and triggers.
+    * Removed dependency on the combination of hooks and operations. Triggers
+      now directly map to module hooks.
+- Task handling
+    * Added a queue API to process many or long-running tasks.
+    * Added queue API support to cron API.
+    * Added a locking framework to coordinate long-running operations across
+      requests.
 
 Drupal 6.0, 2008-02-13
 ----------------------

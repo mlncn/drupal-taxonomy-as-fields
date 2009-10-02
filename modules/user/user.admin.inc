@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.77 2009/09/05 15:05:05 dries Exp $
+// $Id: user.admin.inc,v 1.81 2009/10/02 14:49:10 dries Exp $
 
 /**
  * @file
@@ -206,7 +206,7 @@ function user_admin_account() {
  * Submit the user administration update form.
  */
 function user_admin_account_submit($form, &$form_state) {
-  $operations = module_invoke_all('user_operations', $form_state);
+  $operations = module_invoke_all('user_operations', $form, $form_state);
   $operation = $operations[$form_state['values']['operation']];
   // Filter out unchecked accounts.
   $accounts = array_filter($form_state['values']['accounts']);
@@ -291,7 +291,7 @@ function user_admin_settings() {
     '#type' => 'checkbox',
     '#title' => t('Require e-mail verification when a visitor creates an account.'),
     '#default_value' => variable_get('user_email_verification', TRUE),
-    '#description' => t('New users will be required to validate their e-mail address prior to logging into the site, and will be assigned a system-generated password. If disabled, users will be logged in immediately upon registering, and may select their own passwords during registration.')
+    '#description' => t('New users will be required to validate their e-mail address prior to logging into the site, and will be assigned a system-generated password. With this setting disabled, users will be logged in immediately upon registering, and may select their own passwords during registration.')
   );
   module_load_include('inc', 'user', 'user.pages');
   $form['registration_cancellation']['user_cancel_method'] = array(
@@ -406,7 +406,7 @@ function user_admin_settings() {
   );
   // These email tokens are shared for all settings, so just define
   // the list once to help ensure they stay in sync.
-  $email_token_help = t('Available variables are:') . ' !username, !site, !password, !uri, !uri_brief, !mailto, !date, !login_uri, !edit_uri, !login_url, !cancel_url.';
+  $email_token_help = t('Available variables are:') . ' [site:name], [site:url], [user:name], [user:mail], [site:login-url], [user:edit-url], [user:password], [user:one-time-login-url], [user:cancel-url].';
 
   $form['email_admin_created'] = array(
     '#type' => 'fieldset',
@@ -602,7 +602,7 @@ function user_admin_settings() {
  * @see user_admin_permissions_submit()
  * @see theme_user_admin_permissions()
  */
-function user_admin_permissions($form_state, $rid = NULL) {
+function user_admin_permissions($form, $form_state, $rid = NULL) {
 
   // Retrieve role names for columns.
   $role_names = user_roles();
@@ -626,7 +626,7 @@ function user_admin_permissions($form_state, $rid = NULL) {
       $form['permission'][] = array(
         '#markup' => $info['name'],
         '#id' => $module,
-        );
+      );
       foreach ($permissions as $perm => $perm_item) {
         $options[$perm] = '';
         $form['permission'][$perm] = array(
@@ -663,8 +663,7 @@ function user_admin_permissions($form_state, $rid = NULL) {
  */
 function user_admin_permissions_submit($form, &$form_state) {
   foreach ($form_state['values']['role_names'] as $rid => $name) {
-    $permissions = array_filter($form_state['values'][$rid]);
-    user_role_set_permissions($rid, $permissions);
+    user_role_change_permissions($rid, $form_state['values'][$rid]);
   }
 
   drupal_set_message(t('The changes have been saved.'));

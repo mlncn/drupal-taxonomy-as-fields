@@ -1,5 +1,5 @@
 <?php
-// $Id: default.install,v 1.2 2009/08/27 20:25:29 dries Exp $
+// $Id: default.install,v 1.8 2009/10/01 13:22:43 dries Exp $
 
 /**
  * Implement hook_install().
@@ -17,6 +17,16 @@ function default_install() {
       'status' => 1,
       'weight' => 0,
       'region' => 'content',
+      'pages' => '',
+      'cache' => -1,
+    ),
+    array(
+      'module' => 'search',
+      'delta' => 'form',
+      'theme' => 'garland',
+      'status' => 1,
+      'weight' => -1,
+      'region' => 'sidebar_first',
       'pages' => '',
       'cache' => -1,
     ),
@@ -105,7 +115,7 @@ function default_install() {
   foreach ($values as $record) {
     $query->values($record);
   }
-  $query->execute();  
+  $query->execute();
 
   // Insert default user-defined node types into the database. For a complete
   // list of available node type attributes, refer to the node type API
@@ -165,43 +175,35 @@ function default_install() {
   variable_set('theme_settings', $theme_settings);
 
   // Create a default vocabulary named "Tags", enabled for the 'article' content type.
-  $description = st('Use tags to group articles on similar topics into categories.');
-  $help = st('Enter a comma-separated list of words to describe your content.');
-
-  $vid = db_insert('taxonomy_vocabulary')->fields(array(
-    'name' => 'Tags',
-    'description' => $description,
-    'machine_name' => 'tags',
-    'help' => $help,
-    'relations' => 0,
-    'hierarchy' => 0,
-    'multiple' => 0,
-    'required' => 0,
-    'tags' => 1,
-    'module' => 'taxonomy',
-    'weight' => 0,
-  ))->execute();
-  db_insert('taxonomy_vocabulary_node_type')->fields(array('vid' => $vid, 'type' => 'article'))->execute();
+  $vocabulary = new stdClass;
+  $vocabulary->name = 'Tags';
+  $vocabulary->description = st('Use tags to group articles on similar topics into categories.');
+  $vocabulary->machine_name = 'tags';
+  $vocabulary->help = st('Enter a comma-separated list of words to describe your content.');
+  $vocabulary->relations = 0;
+  $vocabulary->hierarchy = 0;
+  $vocabulary->multiple = 0;
+  $vocabulary->required = 0;
+  $vocabulary->tags = 1;
+  $vocabulary->module = 'taxonomy';
+  $vocabulary->weight = 0;
+  $vocabulary->nodes = array('article' => 'article');
+  taxonomy_vocabulary_save($vocabulary);
 
   // Enable default permissions for system roles.
-  user_role_set_permissions(DRUPAL_ANONYMOUS_RID, array('access content'));
-  user_role_set_permissions(DRUPAL_AUTHENTICATED_RID, array('access content', 'access comments', 'post comments', 'post comments without approval'));
-
+  user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, array('access content', 'use text format 1'));
+  user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, array('access content', 'access comments', 'post comments', 'post comments without approval', 'use text format 1'));
 
   // Create a default role for site administrators, with all available permissions assigned.
   $admin_role = new stdClass();
   $admin_role->name = 'administrator';
   user_role_save($admin_role);
-  user_role_set_permissions($admin_role->name, array_keys(module_invoke_all('permission')));
+  user_role_grant_permissions($admin_role->rid, array_keys(module_invoke_all('permission')));
   // Set this as the administrator role.
   variable_set('user_admin_role', $admin_role->rid);
 
   // Update the menu router information.
   menu_rebuild();
-
-  // Save some default links.
-  $link = array('link_path' => 'admin/structure/menu-customize/main-menu/add', 'link_title' => 'Add a main menu link', 'menu_name' => 'main-menu');
-  menu_link_save($link);
 
   // Enable the admin theme.
   db_update('system')

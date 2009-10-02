@@ -1,5 +1,5 @@
 <?php
-// $Id: template.php,v 1.29 2009/09/01 20:39:55 webchick Exp $
+// $Id: template.php,v 1.31 2009/09/15 17:10:39 webchick Exp $
 
 /**
  * Return a themed breadcrumb trail.
@@ -10,8 +10,24 @@
  */
 function garland_breadcrumb($breadcrumb) {
   if (!empty($breadcrumb)) {
-    return '<div class="breadcrumb">' . implode(' › ', $breadcrumb) . '</div>';
+    // Provide a navigational heading to give context for breadcrumb links to
+    // screen-reader users. Make the heading invisible with .element-invisible.
+    $output = '<h2 class="element-invisible">' . t('You are here') . '</h2>';
+
+    $output .= '<div class="breadcrumb">' . implode(' › ', $breadcrumb) . '</div>';
+    return $output;
   }
+}
+
+/**
+ * Override or insert variables into the html template.
+ */
+function garland_process_html(&$vars) {
+  // Hook into color.module
+  if (module_exists('color')) {
+    _color_html_alter($vars);
+  }
+  $vars['styles'] .= "\n<!--[if lt IE 7]>\n" . garland_get_ie_styles() . "<![endif]-->\n";
 }
 
 /**
@@ -49,7 +65,6 @@ function garland_preprocess_page(&$vars) {
   else {
     $vars['secondary_nav'] = FALSE;
   }
-  $vars['ie_styles'] = garland_get_ie_styles();
 
   // Prepare header
   $site_fields = array();
@@ -68,7 +83,7 @@ function garland_preprocess_page(&$vars) {
 }
 
 /**
- * Override process function used to alter variables as late as possible.
+ * Override or insert variables into the page template.
  */
 function garland_process_page(&$vars) {
   // Hook into color.module

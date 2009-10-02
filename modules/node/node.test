@@ -1,5 +1,5 @@
 <?php
-// $Id: node.test,v 1.43 2009/08/29 04:16:15 webchick Exp $
+// $Id: node.test,v 1.46 2009/10/02 14:39:43 dries Exp $
 
 /**
  * Test the node_load_multiple() function.
@@ -424,7 +424,7 @@ class SummaryLengthTestCase extends DrupalWebTestCase {
     $edit = array (
       'teaser_length' => 200,
     );
-    $this->drupalPost('admin/structure/node-type/page', $edit, t('Save content type'));
+    $this->drupalPost('admin/structure/types/manage/page', $edit, t('Save content type'));
     // Attempt to access the front page again and check if the summary is now only 200 characters in length.
     $this->drupalGet("node");
     $this->assertNoRaw($expected, t('Check that the summary is not longer than 200 characters'), 'Node');
@@ -522,7 +522,7 @@ class NodePostSettingsTestCase extends DrupalWebTestCase {
     // Set page content type to display post information.
     $edit = array();
     $edit['node_submitted'] = TRUE;
-    $this->drupalPost('admin/structure/node-type/page', $edit, t('Save content type'));
+    $this->drupalPost('admin/structure/types/manage/page', $edit, t('Save content type'));
 
     // Create a node.
     $edit = array();
@@ -544,7 +544,7 @@ class NodePostSettingsTestCase extends DrupalWebTestCase {
     // Set page content type to display post information.
     $edit = array();
     $edit['node_submitted'] = FALSE;
-    $this->drupalPost('admin/structure/node-type/page', $edit, t('Save content type'));
+    $this->drupalPost('admin/structure/types/manage/page', $edit, t('Save content type'));
 
     // Create a node.
     $edit = array();
@@ -839,6 +839,73 @@ class NodeTypeTestCase extends DrupalWebTestCase {
     $this->assertEqual($node_types['article'], node_type_get_type('article'), t('Correct node type has been returned.'));
     $this->assertEqual($node_types['article']->name, node_type_get_name('article'), t('Correct node type name has been returned.'));
     $this->assertEqual($node_types['page']->base, node_type_get_base('page'), t('Correct node type base has been returned.'));
+  }
+
+  /**
+   * Test creating a content type.
+   */
+  function testNodeTypeCreation() {
+    $type = $this->drupalCreateContentType();
+
+    $type_exists = db_query('SELECT 1 FROM {node_type} WHERE type = :type', array(':type' => $type->type))->fetchField();
+    $this->assertTrue($type_exists, 'The new content type has been created in the database.');
+
+    // Login a test user.
+    $web_user = $this->drupalCreateUser(array('create ' . $type->name . ' content'));
+    $this->drupalLogin($web_user);
+
+    $this->drupalGet('node/add/' . str_replace('_', '-', $type->name));
+    $this->assertResponse(200, 'The new content type can be accessed at node/add.');
+  }
+
+  /**
+   * Test editing a node type using the UI.
+   */
+  function testNodeTypeEditing() {
+    $web_user = $this->drupalCreateUser(array('bypass node access', 'administer content types'));
+    $this->drupalLogin($web_user);
+
+    $instance = field_info_instance('body', 'page');
+    $this->assertEqual($instance['label'], 'Body', t('Body field was found.'));
+
+    // Verify that title and body fields are displayed.
+    $this->drupalGet('node/add/page');
+    $this->assertRaw('Title', t('Title field was found.'));
+    $this->assertRaw('Full text', t('Body field was found.'));
+
+    // Rename the title field and remove the body field.
+    $edit = array(
+      'title_label' => 'Foo',
+      'body_label' => '',
+    );
+    $this->drupalPost('admin/structure/types/manage/page', $edit, t('Save content type'));
+    field_info_cache_clear();
+
+    $this->assertFalse(field_info_instance('body', 'page'), t('Body field was removed.'));
+    $this->drupalGet('node/add/page');
+    $this->assertRaw('Foo', t('New title label was displayed.'));
+    $this->assertNoRaw('Title', t('Old title label was not displayed.'));
+    $this->assertNoRaw('Full text', t('Body field was not found.'));
+
+    // Add the body field again and change the name, machine name and description.
+    $edit = array(
+      'name' => 'Bar',
+      'type' => 'bar',
+      'description' => 'Lorem ipsum.',
+      'body_label' => 'Baz',
+    );
+    $this->drupalPost('admin/structure/types/manage/page', $edit, t('Save content type'));
+    field_info_cache_clear();
+
+    $instance = field_info_instance('body', 'bar');
+    $this->assertEqual($instance['label'], 'Baz', t('Body field was added.'));
+    $this->drupalGet('node/add');
+    $this->assertRaw('Bar', t('New name was displayed.'));
+    $this->assertRaw('Lorem ipsum', t('New description was displayed.'));
+    $this->clickLink('Bar');
+    $this->assertEqual(url('node/add/bar', array('absolute' => TRUE)), $this->getUrl(), t('New machine name was used in URL.'));
+    $this->assertRaw('Foo', t('Title field was found.'));
+    $this->assertRaw('Full text', t('Body field was found.'));
   }
 }
 

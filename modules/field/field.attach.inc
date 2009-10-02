@@ -1,5 +1,5 @@
 <?php
-// $Id: field.attach.inc,v 1.45 2009/09/05 15:05:02 dries Exp $
+// $Id: field.attach.inc,v 1.51 2009/10/02 14:39:43 dries Exp $
 
 /**
  * @file
@@ -44,17 +44,16 @@ class FieldQueryException extends FieldException {}
  * @{
  * Implement a storage engine for Field API data.
  *
- * The Field Attach API uses the Field Storage API to perform all
- * "database access". Each Field Storage API hook function defines a
- * primitive database operation such as read, write, or delete. The
- * default field storage module, field_sql_storage.module, uses the
- * local SQL database to implement these operations, but alternative
- * field storage engines can choose to represent the data in SQL
- * differently or use a completely different storage mechanism such as
- * a cloud-based database.
+ * The Field Attach API uses the Field Storage API to perform all "database
+ * access". Each Field Storage API hook function defines a primitive database
+ * operation such as read, write, or delete. The default field storage module,
+ * field_sql_storage.module, uses the local SQL database to implement these
+ * operations, but alternative field storage backends can choose to represent
+ * the data in SQL differently or use a completely different storage mechanism
+ * such as a cloud-based database.
  *
- * The Drupal system variable field_storage_module identifies the
- * field storage module to use.
+ * Each field defines which storage backend it uses. The Drupal system variable
+ * 'field_default_storage' identifies the storage backend used by default.
  */
 
 /**
@@ -153,7 +152,7 @@ define('FIELD_STORAGE_INSERT', 'insert');
  *   An associative array of additional options, with the following keys:
  *  - 'field_name': The name of the field whose operation should be
  *    invoked. By default, the operation is invoked on all the fields
- *    in the object's bundle.  NOTE: This option is not compatible with
+ *    in the object's bundle. NOTE: This option is not compatible with
  *    the 'deleted' option; the 'field_id' option should be used
  *    instead.
  *  - 'field_id': The id of the field whose operation should be
@@ -182,7 +181,7 @@ function _field_invoke($op, $obj_type, $object, &$a = NULL, &$b = NULL, $options
 
   // Iterate through the object's field instances.
   $return = array();
-  list(, , $bundle) = field_attach_extract_ids($obj_type, $object);
+  list(, , $bundle) = field_extract_ids($obj_type, $object);
 
   if ($options['deleted']) {
     $instances = field_read_instances(array('bundle' => $bundle), array('include_deleted' => $options['deleted']));
@@ -299,7 +298,7 @@ function _field_invoke_multiple($op, $obj_type, $objects, &$a = NULL, &$b = NULL
   // is deleted, so we reference field data via the
   // $object->$field_name property.
   foreach ($objects as $object) {
-    list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+    list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
 
     if ($options['deleted']) {
       $instances = field_read_field(array('bundle' => $bundle, array('include_deleted' => $options['deleted'])));
@@ -453,7 +452,7 @@ function _field_invoke_multiple_default($op, $obj_type, $objects, &$a = NULL, &$
  *
  *         // Only for 'single' widgets:
  *         '#theme' => 'field_multiple_value_form',
- *         '#multiple' => the field cardinality,
+ *         '#cardinality' => the field cardinality,
  *         // One sub-array per copy of the widget, keyed by delta.
  *         0 => array(
  *           '#title' => the title to be displayed by the widget,
@@ -489,7 +488,7 @@ function field_attach_form($obj_type, $object, &$form, &$form_state, $langcode =
   $form += (array) _field_invoke_default('form', $obj_type, $object, $form, $form_state, $options);
 
   // Add custom weight handling.
-  list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
   $form['#attached']['css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
   $form['#pre_render'][] = '_field_extra_weights_pre_render';
   $form['#extra_fields'] = field_extra_fields($bundle);
@@ -525,9 +524,8 @@ function field_attach_form($obj_type, $object, &$form, &$form_state, $langcode =
  *  - 'deleted': If TRUE, the function will operate on deleted fields
  *    as well as non-deleted fields. If unset or FALSE, only
  *    non-deleted fields are operated on.
- * @returns
- *   Loaded field values are added to $objects. Fields with no values should be
- *   set as an empty array.
+ * @return
+ *   Loaded field values are added to $objects.
  */
 function field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT, $options = array()) {
   $load_current = $age == FIELD_LOAD_CURRENT;
@@ -578,7 +576,7 @@ function field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT, $opti
   if ($queried_objects) {
     // The invoke order is:
     // - hook_field_attach_pre_load()
-    // - storage engine's hook_field_storage_load()
+    // - storage backend's hook_field_storage_load()
     // - field-type module's hook_field_load()
     // - hook_field_attach_load()
 
@@ -590,9 +588,39 @@ function field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT, $opti
       $function($obj_type, $queried_objects, $age, $skip_fields, $options);
     }
 
-    // Invoke the storage engine's hook_field_storage_load(): the field storage
-    // engine loads the rest.
-    module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_load', $obj_type, $queried_objects, $age, $skip_fields, $options);
+    // Collect the storage backends used by the remaining fields in the objects.
+    $storages = array();
+    foreach ($queried_objects as $obj) {
+      list($id, $vid, $bundle) = field_extract_ids($obj_type, $obj);
+      if ($options['deleted']) {
+        $instances = field_read_instances(array('bundle' => $bundle), array('include_deleted' => $options['deleted']));
+      }
+      else {
+        $instances = field_info_instances($bundle);
+      }
+
+      foreach ($instances as $instance) {
+        if (!isset($options['field_id']) || $options['field_id'] == $instance['field_id']) {
+          $field_name = $instance['field_name'];
+          $field_id = $instance['field_id'];
+          // Make sure all fields are present at least as empty arrays.
+          if (!isset($queried_objects[$id]->{$field_name})) {
+            $queried_objects[$id]->{$field_name} = array();
+          }
+          // Collect the storage backend if the field has not been loaded yet.
+          if (!isset($skip_fields[$field_id])) {
+            $field = field_info_field_by_id($field_id);
+            $storages[$field['storage']['type']][$field_id][] = $load_current ? $id : $vid;
+          }
+        }
+      }
+    }
+
+    // Invoke hook_field_storage_load() on the relevant storage backends.
+    foreach ($storages as $storage => $fields) {
+      $storage_info = field_info_storage_types($storage);
+      module_invoke($storage_info['module'], 'field_storage_load', $obj_type, $queried_objects, $age, $fields, $options);
+    }
 
     // Invoke field-type module's hook_field_load().
     _field_invoke_multiple('load', $obj_type, $queried_objects, $age, $options);
@@ -608,7 +636,7 @@ function field_attach_load($obj_type, $objects, $age = FIELD_LOAD_CURRENT, $opti
     if ($cache_write) {
       foreach ($queried_objects as $id => $object) {
         $data = array();
-        list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+        list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
         $instances = field_info_instances($bundle);
         foreach ($instances as $instance) {
           $data[$instance['field_name']] = $queried_objects[$id]->{$instance['field_name']};
@@ -791,6 +819,8 @@ function field_attach_insert($obj_type, $object) {
   _field_invoke_default('insert', $obj_type, $object);
   _field_invoke('insert', $obj_type, $object);
 
+  list($id, $vid, $bundle, $cacheable) = field_extract_ids($obj_type, $object);
+
   // Let other modules act on inserting the object, accumulating saved
   // fields along the way.
   $skip_fields = array();
@@ -799,10 +829,26 @@ function field_attach_insert($obj_type, $object) {
     $function($obj_type, $object, $skip_fields);
   }
 
-  // Field storage module saves any remaining unsaved fields.
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_INSERT, $skip_fields);
+  // Collect the storage backends used by the remaining fields in the objects.
+  $storages = array();
+  foreach (field_info_instances($bundle) as $instance) {
+    $field = field_info_field_by_id($instance['field_id']);
+    $field_id = $field['id'];
+    $field_name = $field['field_name'];
+    if (!empty($object->$field_name)) {
+      // Collect the storage backend if the field has not been written yet.
+      if (!isset($skip_fields[$field_id])) {
+        $storages[$field['storage']['type']][$field_id] = $field_id;
+      }
+    }
+  }
 
-  list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
+  // Field storage backends save any remaining unsaved fields.
+  foreach ($storages as $storage => $fields) {
+    $storage_info = field_info_storage_types($storage);
+    module_invoke($storage_info['module'], 'field_storage_write', $obj_type, $object, FIELD_STORAGE_INSERT, $fields);
+  }
+
   if ($cacheable) {
     cache_clear_all("field:$obj_type:$id", 'cache_field');
   }
@@ -819,6 +865,8 @@ function field_attach_insert($obj_type, $object) {
 function field_attach_update($obj_type, $object) {
   _field_invoke('update', $obj_type, $object);
 
+  list($id, $vid, $bundle, $cacheable) = field_extract_ids($obj_type, $object);
+
   // Let other modules act on updating the object, accumulating saved
   // fields along the way.
   $skip_fields = array();
@@ -827,10 +875,30 @@ function field_attach_update($obj_type, $object) {
     $function($obj_type, $object, $skip_fields);
   }
 
-  // Field storage module saves any remaining unsaved fields.
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_write', $obj_type, $object, FIELD_STORAGE_UPDATE, $skip_fields);
+  // Collect the storage backends used by the remaining fields in the objects.
+  $storages = array();
+  foreach (field_info_instances($bundle) as $instance) {
+    $field = field_info_field_by_id($instance['field_id']);
+    $field_id = $field['id'];
+    $field_name = $field['field_name'];
+    // Leave the field untouched if $object comes with no $field_name property,
+    // but empty the field if it comes as a NULL value or an empty array.
+    // Function property_exists() is slower, so we catch the more frequent
+    // cases where it's an empty array with the faster isset().
+    if (isset($object->$field_name) || property_exists($object, $field_name)) {
+      // Collect the storage backend if the field has not been written yet.
+      if (!isset($skip_fields[$field_id])) {
+        $storages[$field['storage']['type']][$field_id] = $field_id;
+      }
+    }
+  }
 
-  list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
+  // Field storage backends save any remaining unsaved fields.
+  foreach ($storages as $storage => $fields) {
+    $storage_info = field_info_storage_types($storage);
+    module_invoke($storage_info['module'], 'field_storage_write', $obj_type, $object, FIELD_STORAGE_UPDATE, $fields);
+  }
+
   if ($cacheable) {
     cache_clear_all("field:$obj_type:$id", 'cache_field');
   }
@@ -847,7 +915,22 @@ function field_attach_update($obj_type, $object) {
  */
 function field_attach_delete($obj_type, $object) {
   _field_invoke('delete', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_delete', $obj_type, $object);
+
+  list($id, $vid, $bundle, $cacheable) = field_extract_ids($obj_type, $object);
+
+  // Collect the storage backends used by the fields in the objects.
+  $storages = array();
+  foreach (field_info_instances($bundle) as $instance) {
+    $field = field_info_field_by_id($instance['field_id']);
+    $field_id = $field['id'];
+    $storages[$field['storage']['type']][$field_id] = $field_id;
+  }
+
+  // Field storage backends delete their data.
+  foreach ($storages as $storage => $fields) {
+    $storage_info = field_info_storage_types($storage);
+    module_invoke($storage_info['module'], 'field_storage_delete', $obj_type, $object, $fields);
+  }
 
   // Let other modules act on deleting the object.
   foreach (module_implements('field_attach_delete') as $module) {
@@ -855,7 +938,6 @@ function field_attach_delete($obj_type, $object) {
     $function($obj_type, $object);
   }
 
-  list($id, $vid, $bundle, $cacheable) = field_attach_extract_ids($obj_type, $object);
   if ($cacheable) {
     cache_clear_all("field:$obj_type:$id", 'cache_field');
   }
@@ -872,7 +954,22 @@ function field_attach_delete($obj_type, $object) {
  */
 function field_attach_delete_revision($obj_type, $object) {
   _field_invoke('delete_revision', $obj_type, $object);
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_delete_revision', $obj_type, $object);
+
+  list($id, $vid, $bundle, $cacheable) = field_extract_ids($obj_type, $object);
+
+  // Collect the storage backends used by the fields in the objects.
+  $storages = array();
+  foreach (field_info_instances($bundle) as $instance) {
+    $field = field_info_field_by_id($instance['field_id']);
+    $field_id = $field['id'];
+    $storages[$field['storage']['type']][$field_id] = $field_id;
+  }
+
+  // Field storage backends delete their data.
+  foreach ($storages as $storage => $fields) {
+    $storage_info = field_info_storage_types($storage);
+    module_invoke($storage_info['module'], 'field_storage_delete_revision', $obj_type, $object, $fields);
+  }
 
   // Let other modules act on deleting the revision.
   foreach (module_implements('field_attach_delete_revision') as $module) {
@@ -977,7 +1074,8 @@ function field_attach_query($field_id, $conditions, $count, &$cursor = NULL, $ag
   }
   // If the request hasn't been handled, let the storage engine handle it.
   if (!$skip_field) {
-    $function = variable_get('field_storage_module', 'field_sql_storage') . '_field_storage_query';
+    $field = field_info_field_by_id($field_id);
+    $function = $field['storage']['module'] . '_field_storage_query';
     $results = $function($field_id, $conditions, $count, $cursor, $age);
   }
 
@@ -1089,7 +1187,7 @@ function field_attach_view($obj_type, $object, $build_mode = 'full', $langcode =
   $output = _field_invoke_default('view', $obj_type, $object, $build_mode, $null, $options);
 
   // Add custom weight handling.
-  list($id, $vid, $bundle) = field_attach_extract_ids($obj_type, $object);
+  list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
   $output['#attached']['css'][] = drupal_get_path('module', 'field') . '/theme/field.css';
   $output['#pre_render'][] = '_field_extra_weights_pre_render';
   $output['#extra_fields'] = field_extra_fields($bundle);
@@ -1119,7 +1217,7 @@ function field_attach_view($obj_type, $object, $build_mode = 'full', $langcode =
  *   values.
  */
 function field_attach_preprocess($obj_type, $object, $element, &$variables) {
-  list(, , $bundle) = field_attach_extract_ids($obj_type, $object);
+  list(, , $bundle) = field_extract_ids($obj_type, $object);
 
   foreach (field_info_instances($bundle) as $instance) {
     $field_name = $instance['field_name'];
@@ -1181,8 +1279,6 @@ function field_attach_prepare_translation($node) {
  *   The name of the newly created bundle.
  */
 function field_attach_create_bundle($bundle) {
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_create_bundle', $bundle);
-
   // Clear the cache.
   field_cache_clear();
 
@@ -1201,7 +1297,6 @@ function field_attach_create_bundle($bundle) {
  *   The new name of the bundle.
  */
 function field_attach_rename_bundle($bundle_old, $bundle_new) {
-  module_invoke(variable_get('field_storage_module', 'field_sql_storage'), 'field_storage_rename_bundle', $bundle_old, $bundle_new);
   db_update('field_config_instance')
     ->fields(array('bundle' => $bundle_new))
     ->condition('bundle', $bundle_old)
@@ -1230,11 +1325,14 @@ function field_attach_rename_bundle($bundle_old, $bundle_new) {
  *   The bundle to delete.
  */
 function field_attach_delete_bundle($bundle) {
-  // Delete the instances themseves
+  // First, delete the instances themseves.
   $instances = field_info_instances($bundle);
   foreach ($instances as $instance) {
-    field_delete_instance($instance['field_name'], $bundle);
+    field_delete_instance($instance);
   }
+
+  // Clear the cache.
+  field_cache_clear();
 
   // Let other modules act on deleting the bundle.
   foreach (module_implements('field_attach_delete_bundle') as $module) {
@@ -1243,85 +1341,6 @@ function field_attach_delete_bundle($bundle) {
   }
 }
 
-/**
- * Helper function to extract id, vid, and bundle name from an object.
- *
- * @param $obj_type
- *   The type of $object; e.g. 'node' or 'user'.
- * @param $object
- *   The object from which to extract values.
- * @return
- *   A numerically indexed array (not a hash table) containing these
- *   elements:
- *
- *   0: primary id of the object
- *   1: revision id of the object, or NULL if $obj_type is not versioned
- *   2: bundle name of the object
- *   3: whether $obj_type's fields should be cached (TRUE/FALSE)
- */
-function field_attach_extract_ids($obj_type, $object) {
-  // TODO D7 : prevent against broken 3rd party $node without 'type'.
-  $info = field_info_fieldable_types($obj_type);
-  // Objects being created might not have id/vid yet.
-  $id = isset($object->{$info['object keys']['id']}) ? $object->{$info['object keys']['id']} : NULL;
-  $vid = ($info['object keys']['revision'] && isset($object->{$info['object keys']['revision']})) ? $object->{$info['object keys']['revision']} : NULL;
-  // If no bundle key provided, then we assume a single bundle, named after the
-  // type of the object.
-  $bundle = $info['object keys']['bundle'] ? $object->{$info['object keys']['bundle']} : $obj_type;
-  $cacheable = $info['cacheable'];
-  return array($id, $vid, $bundle, $cacheable);
-}
-
-/**
- * Helper function to extract id, vid, and bundle name from an object.
- *
- * @param $obj_type
- *   The type of $object; e.g. 'node' or 'user'.
- * @param $bundle
- *   The bundle object (or string if bundles for this object type do not exist
- *   as standalone objects).
- * @return
- *   The bundle name.
- */
-function field_attach_extract_bundle($obj_type, $bundle) {
-  if (is_string($bundle)) {
-    return $bundle;
-  }
-
-  $info = field_info_fieldable_types($obj_type);
-  if (is_object($bundle) && isset($info['bundle keys']['bundle']) && isset($bundle->{$info['bundle keys']['bundle']})) {
-    return $bundle->{$info['bundle keys']['bundle']};
-  }
-}
-
-/**
- * Helper function to assemble an object structure with initial ids.
- *
- * This function can be seen as reciprocal to field_attach_extract_ids().
- *
- * @param $obj_type
- *   The type of $object; e.g. 'node' or 'user'.
- * @param $ids
- *   A numerically indexed array, as returned by field_attach_extract_ids(),
- *   containing these elements:
- *   0: primary id of the object
- *   1: revision id of the object, or NULL if $obj_type is not versioned
- *   2: bundle name of the object
- * @return
- *   An $object structure, initialized with the ids provided.
- */
-function field_attach_create_stub_object($obj_type, $ids) {
-  $object = new stdClass();
-  $info = field_info_fieldable_types($obj_type);
-  $object->{$info['object keys']['id']} = $ids[0];
-  if (isset($info['object keys']['revision']) && !is_null($ids[1])) {
-    $object->{$info['object keys']['revision']} = $ids[1];
-  }
-  if ($info['object keys']['bundle']) {
-    $object->{$info['object keys']['bundle']} = $ids[2];
-  }
-  return $object;
-}
 
 /**
  * @} End of "defgroup field_attach"

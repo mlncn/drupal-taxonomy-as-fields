@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.admin.inc,v 1.14 2009/08/19 12:56:47 dries Exp $
+// $Id: contact.admin.inc,v 1.16 2009/09/26 00:13:18 dries Exp $
 
 /**
  * @file
@@ -39,7 +39,7 @@ function contact_admin_categories() {
 /**
  * Category edit page.
  */
-function contact_admin_edit($form_state = array(), $op, $contact = NULL) {
+function contact_admin_edit($form, $form_state = array(), $op, $contact = NULL) {
 
   if (empty($contact) || $op == 'add') {
     $contact = array(
@@ -138,7 +138,7 @@ function contact_admin_edit_submit($form, &$form_state) {
 /**
  * Category delete page.
  */
-function contact_admin_delete(&$form_state, $contact) {
+function contact_admin_delete($form, &$form_state, $contact) {
 
   $form['contact'] = array(
     '#type' => 'value',
@@ -161,19 +161,4 @@ function contact_admin_delete_submit($form, &$form_state) {
 
   $form_state['redirect'] = 'admin/structure/contact';
   return;
-}
-
-function contact_admin_settings() {
-  $form['contact_hourly_threshold'] = array('#type' => 'select',
-    '#title' => t('Hourly threshold'),
-    '#options' => drupal_map_assoc(array(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50)),
-    '#default_value' => 3,
-    '#description' => t('The maximum number of contact form submissions a user can perform per hour.'),
-  );
-  $form['contact_default_status'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Enable the personal contact form by default for new users'),
-    '#default_value' => 1,
-  );
-  return system_settings_form($form, TRUE);
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: database_test.test,v 1.64 2009/08/22 19:43:12 webchick Exp $
+// $Id: database_test.test,v 1.68 2009/09/29 15:13:56 dries Exp $
 
 /**
  * Dummy class for fetching into a class.
@@ -40,12 +40,11 @@ class DatabaseTestCase extends DrupalWebTestCase {
    */
   function installTables($schema) {
     // This ends up being a test for table drop and create, too, which is nice.
-    $ret = array();
     foreach ($schema as $name => $data) {
       if (db_table_exists($name)) {
-        db_drop_table($ret, $name);
+        db_drop_table($name);
       }
-      db_create_table($ret, $name, $data);
+      db_create_table($name, $data);
     }
 
     foreach ($schema as $name => $data) {
@@ -1352,6 +1351,103 @@ class DatabaseSelectTestCase extends DatabaseTestCase {
     $this->assertEqual($names[0], 'Gonzo', t('Correct record returned for NOT NULL age.'));
     $this->assertEqual($names[1], 'Kermit', t('Correct record returned for NOT NULL age.'));
   }
+
+  /**
+   * Test that we can UNION multiple Select queries together. This is
+   * semantically equal to UNION DISTINCT, so we don't explicity test that.
+   */
+  function testUnion() {
+    $query_1 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', array(27, 28), 'IN');
+
+    $query_2 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', 28);
+
+    $query_1->union($query_2);
+
+    $names = $query_1->execute()->fetchCol();
+
+    // Ensure we only get 2 records.
+    $this->assertEqual(count($names), 2, t('UNION correctly discarded duplicates.'));
+
+    $this->assertEqual($names[0], 'George', t('First query returned correct name.'));
+    $this->assertEqual($names[1], 'Ringo', t('Second query returned correct name.'));
+  }
+
+  /**
+   * Test that we can UNION ALL multiple Select queries together.
+   */
+  function testUnionAll() {
+    $query_1 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', array(27, 28), 'IN');
+
+    $query_2 = db_select('test', 't')
+      ->fields('t', array('name'))
+      ->condition('age', 28);
+
+    $query_1->union($query_2, 'ALL');
+
+    $names = $query_1->execute()->fetchCol();
+
+    // Ensure we get all 3 records.
+    $this->assertEqual(count($names), 3, t('UNION ALL correctly preserved duplicates.'));
+
+    $this->assertEqual($names[0], 'George', t('First query returned correct first name.'));
+    $this->assertEqual($names[1], 'Ringo', t('Second query returned correct second name.'));
+    $this->assertEqual($names[2], 'Ringo', t('Third query returned correct name.'));
+  }
+
+  /**
+   * Test that random ordering of queries works.
+   *
+   * This is a non-deterministic query. That is, it is not guaranteed to pass
+   * 100% of the time.  Random numbers are like that. Instead, we take two sets
+   * of random selects.  By the laws of probability, the average of each set
+   * should be roughly the average of the data set being selected from and
+   * roughly the same each time through, provided that the original data set
+   * is evenly distributed. Because we know that ours is, this test should pass
+   * correctly 99% of the time. It is not possible to unit test for that other
+   * 1% successfully, so that will have to do.
+   */
+  function testRandomOrder() {
+    $sets = 2;
+    $runs = 50;
+
+    $ids = array();
+    $ids = array();
+
+    $max = db_query("SELECT MAX(id) FROM {test}")->fetchField();
+    $min = db_query("SELECT MIN(id) FROM {test}")->fetchField();
+
+    $ideal_average = ($min + $max) / 2;
+    $allowed_deviation = ($max - $min) / 4;
+
+    for ($i = 0; $i < $sets; ++$i) {
+      for ($j = 0; $j < $runs; ++$j) {
+        $ids[$i][] = db_select('test', 't')
+          ->fields('t', array('id'))
+          ->range(0, 1)
+          ->orderRandom()
+          ->orderBy('id')
+          ->execute()
+          ->fetchField();
+      }
+    }
+
+    for ($i = 0; $i < $sets; ++$i) {
+      $found_average[$i] = array_sum($ids[$i]) / count($ids[$i]);
+      $deviation = abs($found_average[$i] - $ideal_average);
+      $this->assertTrue($deviation <= $allowed_deviation, t('Random ids are within allowed deviation.'));
+    }
+
+    for ($i = 1; $i < $sets; ++$i) {
+      $deviation = abs($found_average[$i] - $found_average[$i-1]);
+      $this->assertTrue($deviation <= $allowed_deviation, t('Random ids are within allowed deviation from each other.'));
+    }
+  }
 }
 
 /**
@@ -2351,7 +2447,7 @@ class DatabaseRangeQueryTestCase extends DrupalWebTestCase {
    */
   function testRangeQuery() {
     // Test if return correct number of rows.
-    $range_rows = db_query_range("SELECT name FROM {system} ORDER BY name", array(), 2, 3)->fetchAll();
+    $range_rows = db_query_range("SELECT name FROM {system} ORDER BY name", 2, 3)->fetchAll();
     $this->assertEqual(count($range_rows), 3, t('Range query work and return correct number of rows.'));
 
     // Test if return target data.
@@ -2807,9 +2903,8 @@ class DatabaseExtraTypesTestCase extends DrupalWebTestCase {
            ),
          ),
        );
-       $ret = array();
-       db_create_table($ret, 'date_table', $date_table);
-       $this->assertEqual($ret[0]['success'], 1, t('Created table with date field'));
+       db_create_table('date_table', $date_table);
+       $this->assertTrue(db_table_exists('date_table'), t('Created table with date field'));
 
        db_insert('date_table')->fields(array('date_field'))
          ->values(array('date_field' => '2001-01-01'))
@@ -2829,8 +2924,8 @@ class DatabaseExtraTypesTestCase extends DrupalWebTestCase {
        $this->assertEqual($date, '2100-06-30', t('Date retrieved in order @date', array('@date' => $date)));
 
 
-       db_drop_table($ret, 'date_table');
-       $this->assertEqual($ret[1]['success'], 1, t('Dropped table with date field'));
+       db_drop_table('date_table');
+       $this->assertFalse(db_table_exists('date_table'), t('Dropped table with date field'));
 
      } catch (Exception $e) {
        $this->fail($e->getMessage());
@@ -2849,12 +2944,11 @@ class DatabaseExtraTypesTestCase extends DrupalWebTestCase {
              'description' => t('Test Time field'),
              'type' => 'time',
              'not null' => FALSE,
-	       ),
+           ),
          ),
        );
-       $ret = array();
-       db_create_table($ret, 'time_table', $time_table);
-       $this->assertEqual($ret[0]['success'], 1, t('Created table with time field'));
+       db_create_table('time_table', $time_table);
+       $this->assertTrue(db_table_exists('time_table'), t('Created table with time field'));
 
        db_insert('time_table')->fields(array('time_field'))
          ->values(array('time_field' => '12:59:00'))
@@ -2873,8 +2967,8 @@ class DatabaseExtraTypesTestCase extends DrupalWebTestCase {
        $time = $res->fetch()->time_field;
        $this->assertEqual($time, '23:17:00', t('Time retrieved in order @time', array('@time' => $time)));
 
-       db_drop_table($ret, 'time_table');
-       $this->assertEqual($ret[1]['success'], 1, t('Dropped table with time field'));
+       db_drop_table('time_table');
+       $this->assertFalse(db_table_exists('time_table'), t('Dropped table with time field'));
      } catch (Exception $e) {
        $this->fail($e->getMessage());
      }

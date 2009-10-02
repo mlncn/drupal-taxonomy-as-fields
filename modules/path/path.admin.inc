@@ -1,5 +1,5 @@
 <?php
-// $Id: path.admin.inc,v 1.29 2009/08/28 14:40:12 webchick Exp $
+// $Id: path.admin.inc,v 1.31 2009/09/18 00:12:47 webchick Exp $
 
 /**
  * @file
@@ -15,7 +15,7 @@ function path_admin_overview($keys = NULL) {
   // Add the filter form above the overview table.
   $build['path_admin_filter_form'] = drupal_get_form('path_admin_filter_form', $keys);
   // Enable language column if locale is enabled or if we have any alias with language
-  $alias_exists = (bool) db_query_range('SELECT 1 FROM {url_alias} WHERE language <> :language', array(':language' => ''), 0, 1)->fetchField();
+  $alias_exists = (bool) db_query_range('SELECT 1 FROM {url_alias} WHERE language <> :language', 0, 1, array(':language' => ''))->fetchField();
   $multilanguage = (module_exists('locale') || $alias_exists);
 
   $header = array(
@@ -98,7 +98,7 @@ function path_admin_edit($pid = 0) {
  * @see path_admin_form_validate()
  * @see path_admin_form_submit()
  */
-function path_admin_form(&$form_state, $edit = array('src' => '', 'dst' => '', 'language' => '', 'pid' => NULL)) {
+function path_admin_form($form, &$form_state, $edit = array('src' => '', 'dst' => '', 'language' => '', 'pid' => NULL)) {
 
   $form['#alias'] = $edit;
 
@@ -180,7 +180,7 @@ function path_admin_form_submit($form, &$form_state) {
 /**
  * Menu callback; confirms deleting an URL alias
  */
-function path_admin_delete_confirm($form_state, $pid) {
+function path_admin_delete_confirm($form, $form_state, $pid) {
   $path = path_load($pid);
   if (user_access('administer url aliases')) {
     $form['pid'] = array('#type' => 'value', '#value' => $pid);
@@ -209,7 +209,7 @@ function path_admin_delete_confirm_submit($form, &$form_state) {
  * @ingroup forms
  * @see path_admin_filter_form_submit()
  */
-function path_admin_filter_form(&$form_state, $keys = '') {
+function path_admin_filter_form($form, &$form_state, $keys = '') {
   $form['#attributes'] = array('class' => array('search-form'));
   $form['basic'] = array('#type' => 'fieldset',
     '#title' => t('Filter aliases')

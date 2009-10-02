@@ -1,5 +1,5 @@
 <?php
-// $Id: profile.admin.inc,v 1.29 2009/08/22 14:34:21 webchick Exp $
+// $Id: profile.admin.inc,v 1.32 2009/09/21 07:56:08 dries Exp $
 
 /**
  * @file
@@ -12,10 +12,9 @@
  * @ingroup forms
  * @see profile_admin_overview_submit()
  */
-function profile_admin_overview() {
+function profile_admin_overview($form) {
   $result = db_query('SELECT title, name, type, category, fid, weight FROM {profile_field} ORDER BY category, weight');
 
-  $form = array();
   $categories = array();
   foreach ($result as $field) {
     // Collect all category information
@@ -170,7 +169,7 @@ function theme_profile_admin_overview($form) {
  * @see profile_field_form_validate()
  * @see profile_field_form_submit()
  */
-function profile_field_form(&$form_state, $arg = NULL) {
+function profile_field_form($form, &$form_state, $arg = NULL) {
   if (arg(4) == 'edit') {
     if (is_numeric($arg)) {
       $fid = $arg;
@@ -380,7 +379,7 @@ function profile_field_form_submit($form, &$form_state) {
 /**
  * Menu callback; deletes a field from all user profiles.
  */
-function profile_field_delete(&$form_state, $fid) {
+function profile_field_delete($form, &$form_state, $fid) {
   $field = db_query("SELECT title FROM {profile_field} WHERE fid = :fid", array(':fid' => $fid))->fetchObject();
   if (!$field) {
     drupal_not_found();
@@ -420,9 +419,9 @@ function profile_field_delete_submit($form, &$form_state) {
  */
 function profile_admin_settings_autocomplete($string) {
   $matches = array();
-  $result = db_query_range("SELECT category FROM {profile_field} WHERE LOWER(category) LIKE LOWER(:category)", array(':category' => $string . '%'), 0, 10);
+  $result = db_query_range("SELECT category FROM {profile_field} WHERE LOWER(category) LIKE LOWER(:category)", 0, 10, array(':category' => $string . '%'));
   foreach ($result as $data) {
     $matches[$data->category] = check_plain($data->category);
   }
-  drupal_json($matches);
+  drupal_json_output($matches);
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.module,v 1.125 2009/08/31 18:40:00 webchick Exp $
+// $Id: contact.module,v 1.128 2009/09/26 00:13:19 dries Exp $
 
 /**
  * @file
@@ -22,7 +22,7 @@ function contact_help($path, $arg) {
     case 'admin/structure/contact':
       $output = '<p>' . t('This page lets you set up <a href="@form">your site-wide contact form</a>. To do so, add one or more categories. You can associate different recipients with each category to route e-mails to different people. For example, you can route website feedback to the webmaster and direct product information requests to the sales department. On the <a href="@settings">settings page</a>, you can customize the information shown above the contact form. This can be useful to provide additional contact information such as your postal address and telephone number.', array('@settings' => url('admin/structure/contact/settings'), '@form' => url('contact'))) . '</p>';
       if (!module_exists('menu')) {
-        $menu_note = t('The menu item can be customized and configured only once the menu module has been <a href="@modules-page">enabled</a>.', array('@modules-page' => url('admin/settings/modules')));
+        $menu_note = t('The menu item can be customized and configured only once the menu module has been <a href="@modules-page">enabled</a>.', array('@modules-page' => url('admin/config/modules')));
       }
       else {
         $menu_note = '';
@@ -59,12 +59,6 @@ function contact_menu() {
     'access arguments' => array('administer site-wide contact form'),
     'file' => 'contact.admin.inc',
   );
-  $items['admin/structure/contact/list'] = array(
-    'title' => 'List',
-    'page callback' => 'contact_admin_categories',
-    'type' => MENU_DEFAULT_LOCAL_TASK,
-    'file' => 'contact.admin.inc',
-  );
   $items['admin/structure/contact/add'] = array(
     'title' => 'Add category',
     'page callback' => 'drupal_get_form',
@@ -89,15 +83,6 @@ function contact_menu() {
     'access arguments' => array('administer site-wide contact form'),
     'type' => MENU_CALLBACK,
     'file' => 'contact.admin.inc',
-  );
-  $items['admin/structure/contact/settings'] = array(
-    'title' => 'Settings',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('contact_admin_settings'),
-    'access arguments' => array('administer site-wide contact form'),
-    'file' => 'contact.admin.inc',
-    'type' => MENU_LOCAL_TASK,
-    'weight' => 1,
   );
   $items['contact'] = array(
     'title' => 'Contact',
@@ -145,10 +130,11 @@ function contact_load($cid) {
 }
 
 /**
- * Implement hook_user_form().
+ * Implement hook_form_FORM_ID_alter().
  */
-function contact_user_form(&$edit, $account, $category) {
-  if ($category == 'account') {
+function contact_form_user_profile_form_alter(&$form, &$form_state) {
+  if ($form['#user_category'] == 'account') {
+    $account = $form['#user'];
     $form['contact'] = array('#type' => 'fieldset',
       '#title' => t('Contact settings'),
       '#weight' => 5,
@@ -156,10 +142,9 @@ function contact_user_form(&$edit, $account, $category) {
     );
     $form['contact']['contact'] = array('#type' => 'checkbox',
       '#title' => t('Personal contact form'),
-      '#default_value' => !empty($edit['contact']) ? $edit['contact'] : FALSE,
+      '#default_value' => !empty($account->contact) ? $account->contact : FALSE,
       '#description' => t('Allow other users to contact you via a <a href="@url">personal contact form</a> which keeps your e-mail address hidden. Note that some privileged users such as site administrators are still able to contact you even if you choose to disable this feature.', array('@url' => url("user/$account->uid/contact"))),
     );
-    return $form;
   }
 }
 
@@ -200,4 +185,20 @@ function contact_mail($key, &$message, $params) {
       $message['body'][] = $params['message'];
       break;
   }
+}
+
+/**
+ * Implement of hook_form_FORM_ID_alter().
+ */
+function contact_form_user_admin_settings_alter(&$form, $form_state) {
+  $form['contact'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Contact forms'),
+    '#weight' => 0,
+  );
+  $form['contact']['contact_default_status'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable the personal contact form by default for new users.'),
+    '#default_value' => 1,
+  );
 }

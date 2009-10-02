@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.admin.inc,v 1.57 2009/09/05 15:05:03 dries Exp $
+// $Id: menu.admin.inc,v 1.60 2009/09/28 22:14:30 dries Exp $
 
 /**
  * @file
@@ -15,9 +15,9 @@ function menu_overview_page() {
   $rows = array();
   foreach ($result as $menu) {
     $row = array(theme('menu_admin_overview', $menu['title'], $menu['menu_name'], $menu['description']));
-    $row[] = array('data' => l(t('list links'), 'admin/structure/menu-customize/' . $menu['menu_name']));
-    $row[] = array('data' => l(t('edit menu'), 'admin/structure/menu-customize/' . $menu['menu_name'] . '/edit'));
-    $row[] = array('data' => l(t('add link'), 'admin/structure/menu-customize/' . $menu['menu_name'] . '/add'));
+    $row[] = array('data' => l(t('list links'), 'admin/structure/menu/manage/' . $menu['menu_name']));
+    $row[] = array('data' => l(t('edit menu'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/edit'));
+    $row[] = array('data' => l(t('add link'), 'admin/structure/menu/manage/' . $menu['menu_name'] . '/add'));
     $rows[] = $row;
   }
 
@@ -40,7 +40,7 @@ function theme_menu_admin_overview($title, $name, $description) {
  * Shows for one menu the menu links accessible to the current user and
  * relevant operations.
  */
-function menu_overview_form(&$form_state, $menu) {
+function menu_overview_form($form, &$form_state, $menu) {
   global $menu_admin;
   $sql = "
     SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.type, m.description, ml.*
@@ -60,7 +60,7 @@ function menu_overview_form(&$form_state, $menu) {
   menu_tree_check_access($tree, $node_links);
   $menu_admin = FALSE;
 
-  $form = _menu_overview_tree_form($tree);
+  $form = array_merge($form, _menu_overview_tree_form($tree));
   $form['#menu'] =  $menu;
   if (element_children($form)) {
     $form['submit'] = array(
@@ -69,7 +69,7 @@ function menu_overview_form(&$form_state, $menu) {
     );
   }
   else {
-    $form['#empty_text'] = t('There are no menu links yet. <a href="@link">Add link</a>.', array('@link' => url('admin/structure/menu-customize/'. $form['#menu']['menu_name'] .'/add')));
+    $form['#empty_text'] = t('There are no menu links yet. <a href="@link">Add link</a>.', array('@link' => url('admin/structure/menu/manage/'. $form['#menu']['menu_name'] .'/add')));
   }
   return $form;
 }
@@ -243,7 +243,7 @@ function theme_menu_overview_form($form) {
 /**
  * Menu callback; Build the menu link editing form.
  */
-function menu_edit_item(&$form_state, $type, $item, $menu) {
+function menu_edit_item($form, &$form_state, $type, $item, $menu) {
 
   $form['menu'] = array(
     '#type' => 'fieldset',
@@ -398,13 +398,13 @@ function menu_edit_item_submit($form, &$form_state) {
   if (!menu_link_save($item)) {
     drupal_set_message(t('There was an error saving the menu link.'), 'error');
   }
-  $form_state['redirect'] = 'admin/structure/menu-customize/' . $item['menu_name'];
+  $form_state['redirect'] = 'admin/structure/menu/manage/' . $item['menu_name'];
 }
 
 /**
  * Menu callback; Build the form that handles the adding/editing of a custom menu.
  */
-function menu_edit_menu(&$form_state, $type, $menu = array()) {
+function menu_edit_menu($form, &$form_state, $type, $menu = array()) {
   $system_menus = menu_list_system_menus();
   $menu += array('menu_name' => '', 'title' => '', 'description' => '');
 
@@ -478,7 +478,7 @@ function menu_edit_menu(&$form_state, $type, $menu = array()) {
  * Submit function for the 'Delete' button on the menu editing form.
  */
 function menu_custom_delete_submit($form, &$form_state) {
-  $form_state['redirect'] = 'admin/structure/menu-customize/' . $form_state['values']['menu_name'] . '/delete';
+  $form_state['redirect'] = 'admin/structure/menu/manage/' . $form_state['values']['menu_name'] . '/delete';
 }
 
 /**
@@ -497,7 +497,7 @@ function menu_delete_menu_page($menu) {
 /**
  * Build a confirm form for deletion of a custom menu.
  */
-function menu_delete_menu_confirm(&$form_state, $menu) {
+function menu_delete_menu_confirm($form, &$form_state, $menu) {
   $form['#menu'] = $menu;
   $caption = '';
   $num_links = db_query("SELECT COUNT(*) FROM {menu_links} WHERE menu_name = :menu", array(':menu' => $menu['menu_name']))->fetchField();
@@ -505,7 +505,7 @@ function menu_delete_menu_confirm(&$form_state, $menu) {
     $caption .= '<p>' . format_plural($num_links, '<strong>Warning:</strong> There is currently 1 menu link in %title. It will be deleted (system-defined items will be reset).', '<strong>Warning:</strong> There are currently @count menu links in %title. They will be deleted (system-defined links will be reset).', array('%title' => $menu['title'])) . '</p>';
   }
   $caption .= '<p>' . t('This action cannot be undone.') . '</p>';
-  return confirm_form($form, t('Are you sure you want to delete the custom menu %title?', array('%title' => $menu['title'])), 'admin/structure/menu-customize/' . $menu['menu_name'], $caption, t('Delete'));
+  return confirm_form($form, t('Are you sure you want to delete the custom menu %title?', array('%title' => $menu['title'])), 'admin/structure/menu/manage/' . $menu['menu_name'], $caption, t('Delete'));
 }
 
 /**
@@ -525,7 +525,7 @@ function menu_delete_menu_confirm_submit($form, &$form_state) {
     menu_reset_item($item);
   }
   // Delete all links to the overview page for this menu.
-  $result = db_query("SELECT mlid FROM {menu_links} ml WHERE ml.link_path = :link", array(':link' => 'admin/structure/menu-customize/' . $menu['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
+  $result = db_query("SELECT mlid FROM {menu_links} ml WHERE ml.link_path = :link", array(':link' => 'admin/structure/menu/manage/' . $menu['menu_name']), array('fetch' => PDO::FETCH_ASSOC));
   foreach ($result as $m) {
     menu_link_delete($m['mlid']);
   }
@@ -570,7 +570,7 @@ function menu_edit_menu_validate($form, &$form_state) {
     // We will add 'menu-' to the menu name to help avoid name-space conflicts.
     $item['menu_name'] = 'menu-' . $item['menu_name'];
     $custom_exists = db_query('SELECT menu_name FROM {menu_custom} WHERE menu_name = :menu', array(':menu' => $item['menu_name']))->fetchField();
-    $link_exists = db_query_range("SELECT menu_name FROM {menu_links} WHERE menu_name = :menu", array(':menu' => $item['menu_name']), 0, 1)->fetchField();
+    $link_exists = db_query_range("SELECT menu_name FROM {menu_links} WHERE menu_name = :menu", 0, 1, array(':menu' => $item['menu_name']))->fetchField();
     if ($custom_exists || $link_exists) {
       form_set_error('menu_name', t('The menu already exists.'));
     }
@@ -582,7 +582,7 @@ function menu_edit_menu_validate($form, &$form_state) {
  */
 function menu_edit_menu_submit($form, &$form_state) {
   $menu = $form_state['values'];
-  $path = 'admin/structure/menu-customize/';
+  $path = 'admin/structure/menu/manage/';
   if ($form['#insert']) {
     // Add 'menu-' to the menu name to help avoid name-space conflicts.
     $menu['menu_name'] = 'menu-' . $menu['menu_name'];
@@ -639,9 +639,9 @@ function menu_item_delete_page($item) {
 /**
  * Build a confirm form for deletion of a single menu link.
  */
-function menu_item_delete_form(&$form_state, $item) {
+function menu_item_delete_form($form, &$form_state, $item) {
   $form['#item'] = $item;
-  return confirm_form($form, t('Are you sure you want to delete the custom menu link %item?', array('%item' => $item['link_title'])), 'admin/structure/menu-customize/' . $item['menu_name']);
+  return confirm_form($form, t('Are you sure you want to delete the custom menu link %item?', array('%item' => $item['link_title'])), 'admin/structure/menu/manage/' . $item['menu_name']);
 }
 
 /**
@@ -653,15 +653,15 @@ function menu_item_delete_form_submit($form, &$form_state) {
   $t_args = array('%title' => $item['link_title']);
   drupal_set_message(t('The menu link %title has been deleted.', $t_args));
   watchdog('menu', 'Deleted menu link %title.', $t_args, WATCHDOG_NOTICE);
-  $form_state['redirect'] = 'admin/structure/menu-customize/' . $item['menu_name'];
+  $form_state['redirect'] = 'admin/structure/menu/manage/' . $item['menu_name'];
 }
 
 /**
  * Menu callback; reset a single modified menu link.
  */
-function menu_reset_item_confirm(&$form_state, $item) {
+function menu_reset_item_confirm($form, &$form_state, $item) {
   $form['item'] = array('#type' => 'value', '#value' => $item);
-  return confirm_form($form, t('Are you sure you want to reset the link %item to its default values?', array('%item' => $item['link_title'])), 'admin/structure/menu-customize/' . $item['menu_name'], t('Any customizations will be lost. This action cannot be undone.'), t('Reset'));
+  return confirm_form($form, t('Are you sure you want to reset the link %item to its default values?', array('%item' => $item['link_title'])), 'admin/structure/menu/manage/' . $item['menu_name'], t('Any customizations will be lost. This action cannot be undone.'), t('Reset'));
 }
 
 /**
@@ -671,7 +671,7 @@ function menu_reset_item_confirm_submit($form, &$form_state) {
   $item = $form_state['values']['item'];
   $new_item = menu_reset_item($item);
   drupal_set_message(t('The menu link was reset to its default settings.'));
-  $form_state['redirect'] = 'admin/structure/menu-customize/' . $new_item['menu_name'];
+  $form_state['redirect'] = 'admin/structure/menu/manage/' . $new_item['menu_name'];
 }
 
 /**

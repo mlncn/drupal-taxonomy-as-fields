@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.api.php,v 1.13 2009/08/27 21:18:19 dries Exp $
+// $Id: filter.api.php,v 1.15 2009/09/20 07:32:17 dries Exp $
 
 /**
  * @file
@@ -91,7 +91,7 @@
  *   format.
  *
  * @code
- *   function mymodule_filter_settings(&$form_state, $filter, $defaults) {
+ *   function mymodule_filter_settings($form, &$form_state, $filter, $defaults) {
  *     $form['mymodule_url_length'] = array(
  *       '#type' => 'textfield',
  *       '#title' => t('Maximum link text length'),
@@ -236,20 +236,21 @@ function hook_filter_format_update($format) {
  *
  * It is recommended for modules to implement this hook, when they store
  * references to text formats to replace existing references to the deleted
- * text format with the default format.
+ * text format with the fallback format.
  *
  * @param $format
  *   The format object of the format being deleted.
- * @param $default
- *   The format object of the site's default format.
+ * @param $fallback
+ *   The format object of the site's fallback format, which is always available
+ *   to all users.
  *
  * @see hook_filter_format_update().
  * @see hook_filter_format_delete().
  */
-function hook_filter_format_delete($format, $default) {
-  // Replace the deleted format with the default format.
+function hook_filter_format_delete($format, $fallback) {
+  // Replace the deleted format with the fallback format.
   db_update('my_module_table')
-    ->fields(array('format' => $default->format))
+    ->fields(array('format' => $fallback->format))
     ->condition('format', $format->format)
     ->execute();
 }

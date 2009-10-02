@@ -1,5 +1,5 @@
 <?php
-// $Id: color.module,v 1.70 2009/09/05 15:05:02 dries Exp $
+// $Id: color.module,v 1.72 2009/09/18 00:12:45 webchick Exp $
 
 /**
  * Implement hook_help().
@@ -31,7 +31,7 @@ function color_theme() {
  * Implement hook_form_FORM_ID_alter().
  */
 function color_form_system_theme_settings_alter(&$form, &$form_state) {
-  if (color_get_info(arg(3)) && function_exists('gd_info')) {
+  if (isset($form_state['args'][0]) && ($theme = $form_state['args'][0]) && color_get_info($theme) && function_exists('gd_info')) {
     $form['color'] = array(
       '#type' => 'fieldset',
       '#title' => t('Color scheme'),
@@ -39,7 +39,7 @@ function color_form_system_theme_settings_alter(&$form, &$form_state) {
       '#attributes' => array('id' => 'color_scheme_form'),
       '#theme' => 'color_scheme_form',
     );
-    $form['color'] += color_scheme_form($form_state, arg(3));
+    $form['color'] += color_scheme_form($form, $form_state, $theme);
     $form['#submit'][] = 'color_scheme_form_submit';
   }
 }
@@ -69,7 +69,7 @@ function _color_theme_select_form_alter(&$form, &$form_state) {
 /**
  * Callback for the theme to alter the resources used.
  */
-function _color_page_alter(&$vars) {
+function _color_html_alter(&$vars) {
   global $language, $theme_key;
   $themes = list_themes();
 
@@ -93,6 +93,13 @@ function _color_page_alter(&$vars) {
 
     $vars['styles'] = drupal_get_css($vars['css']);
   }
+}
+
+/**
+ * Callback for the theme to alter the resources used.
+ */
+function _color_page_alter(&$vars) {
+  global $language, $theme_key;
 
   // Override logo.
   $logo = variable_get('color_' . $theme_key . '_logo');
@@ -132,7 +139,8 @@ function color_get_palette($theme, $default = FALSE) {
 /**
  * Form callback. Returns the configuration form.
  */
-function color_scheme_form(&$form_state, $theme) {
+function color_scheme_form($form, &$form_state, $theme) {
+  $form = array();
   $base = drupal_get_path('module', 'color');
   $info = color_get_info($theme);
 
@@ -188,7 +196,7 @@ function color_scheme_form(&$form_state, $theme) {
       '#size' => 8,
     );
   }
-  $form['theme'] = array('#type' => 'value', '#value' => arg(3));
+  $form['theme'] = array('#type' => 'value', '#value' => $theme);
   $form['info'] = array('#type' => 'value', '#value' => $info);
 
   return $form;

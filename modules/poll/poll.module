@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.module,v 1.311 2009/08/29 05:46:03 dries Exp $
+// $Id: poll.module,v 1.315 2009/10/02 00:04:20 dries Exp $
 
 /**
  * @file
@@ -289,7 +289,17 @@ function poll_form($node, $form_state) {
   );
 
   // Poll attributes
-  $duration = array(0 => t('Unlimited')) + drupal_map_assoc(array(86400, 172800, 345600, 604800, 1209600, 2419200, 4838400, 9676800, 31536000), "format_interval");
+  $duration = array(
+    // 1-6 days.
+    86400, 2 * 86400, 3 * 86400, 4 * 86400, 5 * 86400, 6 * 86400,
+    // 1-3 weeks (7 days).
+    604800, 2 * 604800, 3 * 604800,
+    // 1-3,6,9 months (30 days).
+    2592000, 2 * 2592000, 3 * 2592000, 6 * 2592000, 9 * 2592000,
+    // 1 year (365 days).
+    31536000,
+  );
+  $duration = array(0 => t('Unlimited')) + drupal_map_assoc($duration, 'format_interval');
   $active = array(0 => t('Closed'), 1 => t('Active'));
 
   $form['settings'] = array(
@@ -382,7 +392,7 @@ function _poll_choice_form($key, $chid = NULL, $value = '', $votes = 0, $weight 
 function poll_choice_js($form, $form_state) {
   $choice_form = $form['choice_wrapper']['choice'];
 
-  return theme('status_messages') . drupal_render($choice_form);
+  return drupal_render($choice_form);
 }
 
 /**
@@ -569,7 +579,7 @@ function poll_block_latest_poll_view($node) {
   $node->readmore = FALSE;
   $node->teaser = '';
 
-  $links = module_invoke_all('link', 'node', $node, 1);
+  $links = array();
   $links[] = array('title' => t('Older polls'), 'href' => 'poll', 'attributes' => array('title' => t('View the list of polls on this site.')));
   if ($node->allowvotes) {
     $links[] = array('title' => t('Results'), 'href' => 'node/' . $node->nid . '/results', 'attributes' => array('title' => t('View the current poll results.')));
@@ -628,7 +638,7 @@ function poll_teaser($node) {
  * @see poll_vote()
  * @see phptemplate_preprocess_poll_vote()
  */
-function poll_view_voting(&$form_state, $node, $block = FALSE) {
+function poll_view_voting($form, &$form_state, $node, $block = FALSE) {
   if ($node->choice) {
     $list = array();
     foreach ($node->choice as $i => $choice) {
@@ -837,7 +847,7 @@ function template_preprocess_poll_bar(&$variables) {
  * @ingroup forms
  * @see poll_cancel()
  */
-function poll_cancel_form(&$form_state, $nid) {
+function poll_cancel_form($form, &$form_state, $nid) {
   // Store the nid so we can get to it in submit functions.
   $form['#nid'] = $nid;
 
