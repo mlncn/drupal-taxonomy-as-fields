@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.527 2009/09/30 13:09:29 dries Exp $
+// $Id: theme.inc,v 1.529 2009/10/03 19:27:44 dries Exp $
 
 /**
  * @file
@@ -251,13 +251,18 @@ function _theme_load_registry($theme, $base_theme = NULL, $theme_engine = NULL) 
   $cache = cache_get("theme_registry:$theme->name", 'cache');
   if (isset($cache->data)) {
     $registry = $cache->data;
+    _theme_set_registry($registry);
   }
   else {
     // If not, build one and cache it.
     $registry = _theme_build_registry($theme, $base_theme, $theme_engine);
-    _theme_save_registry($theme, $registry);
+   // Only persist this registry if all modules are loaded. This assures a 
+   // complete set of theme hooks.
+    if (drupal_get_bootstrap_phase() == DRUPAL_BOOTSTRAP_FULL) {
+      _theme_save_registry($theme, $registry);
+      _theme_set_registry($registry);
+    }
   }
-  _theme_set_registry($registry);
 }
 
 /**
@@ -2128,18 +2133,17 @@ function template_preprocess_html(&$variables) {
   if ($suggestions = template_page_suggestions(arg(), 'page')) {
     foreach ($suggestions as $suggestion) {
       if ($suggestion != 'page-front') {
-        // Add current suggestion to page classes to make it possible to theme the page
-        // depending on the current page type (e.g. node, admin, user, etc.) as well as
-        // more specific data like node-12 or node-edit. To avoid illegal characters in
-        // the class, we're removing everything disallowed. We are not using 'a-z' as
-        //  that might leave in certain international characters (e.g. German umlauts).
-        $variables['classes_array'][] = preg_replace('![^abcdefghijklmnopqrstuvwxyz0-9-_]+!s', '', form_clean_id(drupal_strtolower($suggestion)));
+        // Add current suggestion to page classes to make it possible to theme
+        // the page depending on the current page type (e.g. node, admin, user,
+        // etc.) as well as more specific data like node-12 or node-edit.
+        $variables['classes_array'][] = drupal_css_class($suggestion);
       }
     }
   }
   
+  // If on an individual node page, add the node type to body classes.
   if ($node = menu_get_object()) {
-    $variables['classes_array'][] = 'node-type-' . form_clean_id($node->type);
+    $variables['classes_array'][] = drupal_css_class('node-type-' . $node->type);
   }
 
   // RDFa allows annotation of XHTML pages with RDF data, while GRDDL provides
@@ -2149,7 +2153,6 @@ function template_preprocess_html(&$variables) {
   $variables['grddl_profile']     = 'http://ns.inria.fr/grddl/rdfa/';
   $variables['language']          = $GLOBALS['language'];
   $variables['language']->dir     = $GLOBALS['language']->direction ? 'rtl' : 'ltr';
-
 
   // Add favicon.
   if (theme_get_setting('toggle_favicon')) {

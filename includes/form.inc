@@ -1,5 +1,5 @@
 <?php
-// $Id: form.inc,v 1.376 2009/09/29 15:31:13 dries Exp $
+// $Id: form.inc,v 1.378 2009/10/03 20:17:46 dries Exp $
 
 /**
  * @defgroup forms Form builder functions
@@ -547,12 +547,12 @@ function drupal_process_form($form_id, &$form, &$form_state) {
   if ($form_state['process_input']) {
     drupal_validate_form($form_id, $form, $form_state);
 
-    // form_clean_id() maintains a cache of element IDs it has seen,
+    // drupal_css_id() maintains a cache of element IDs it has seen,
     // so it can prevent duplicates. We want to be sure we reset that
     // cache when a form is processed, so scenarios that result in
     // the form being built behind the scenes and again for the
     // browser don't increment all the element IDs needlessly.
-    drupal_static_reset('form_clean_id');
+    drupal_static_reset('drupal_css_id');
 
     if ($form_state['submitted'] && !form_get_errors() && !$form_state['rebuild']) {
       // Execute form submit handlers.
@@ -636,7 +636,7 @@ function drupal_prepare_form($form_id, &$form, &$form_state) {
   elseif (isset($user->uid) && $user->uid && !$form_state['programmed']) {
     $form['#token'] = $form_id;
     $form['form_token'] = array(
-      '#id' => form_clean_id('edit-' . $form_id . '-form-token'),
+      '#id' => drupal_css_id('edit-' . $form_id . '-form-token'),
       '#type' => 'token',
       '#default_value' => drupal_get_token($form['#token']),
     );
@@ -646,11 +646,11 @@ function drupal_prepare_form($form_id, &$form, &$form_state) {
     $form['form_id'] = array(
       '#type' => 'hidden',
       '#value' => $form_id,
-      '#id' => form_clean_id("edit-$form_id"),
+      '#id' => drupal_css_id("edit-$form_id"),
     );
   }
   if (!isset($form['#id'])) {
-    $form['#id'] = form_clean_id($form_id);
+    $form['#id'] = drupal_css_id($form_id);
   }
 
   $form += element_info('form');
@@ -1046,7 +1046,7 @@ function form_builder($form_id, $element, &$form_state) {
   }
 
   if (!isset($element['#id'])) {
-    $element['#id'] = form_clean_id('edit-' . implode('-', $element['#parents']));
+    $element['#id'] = drupal_css_id('edit-' . implode('-', $element['#parents']));
   }
   // Handle input elements.
   if (!empty($element['#input'])) {
@@ -1919,7 +1919,7 @@ function form_process_radios($element) {
           '#default_value' => isset($element['#default_value']) ? $element['#default_value'] : NULL,
           '#attributes' => $element['#attributes'],
           '#parents' => $element['#parents'],
-          '#id' => form_clean_id('edit-' . implode('-', $parents_for_id)),
+          '#id' => drupal_css_id('edit-' . implode('-', $parents_for_id)),
           '#ajax' => isset($element['#ajax']) ? $element['#ajax'] : NULL,
         );
       }
@@ -2235,7 +2235,7 @@ function form_process_tableselect($element) {
             '#default_value' => ($element['#default_value'] == $key) ? $key : NULL,
             '#attributes' => $element['#attributes'],
             '#parents' => $element['#parents'],
-            '#id' => form_clean_id('edit-' . implode('-', $parents_for_id)),
+            '#id' => drupal_css_id('edit-' . implode('-', $parents_for_id)),
             '#ajax' => isset($element['#ajax']) ? $element['#ajax'] : NULL,
           );
         }
@@ -2684,42 +2684,6 @@ function _form_set_class(&$element, $class = array()) {
 }
 
 /**
- * Prepare an HTML ID attribute string for a form item.
- *
- * Remove invalid characters and guarantee uniqueness.
- *
- * @param $id
- *   The ID to clean.
- * @param $flush
- *   If set to TRUE, the function will flush and reset the static array
- *   which is built to test the uniqueness of element IDs. This is only
- *   used if a form has completed the validation process. This parameter
- *   should never be set to TRUE if this function is being called to
- *   assign an ID to the #ID element.
- * @return
- *   The cleaned ID.
- */
-function form_clean_id($id = NULL) {
-  $seen_ids = &drupal_static(__FUNCTION__, array());
-  $id = str_replace(array('][', '_', ' '), '-', $id);
-
-  // Ensure IDs are unique. The first occurrence is held but left alone.
-  // Subsequent occurrences get a number appended to them. This incrementing
-  // will almost certainly break code that relies on explicit HTML IDs in
-  // forms that appear more than once on the page, but the alternative is
-  // outputting duplicate IDs, which would break JS code and XHTML
-  // validity anyways. For now, it's an acceptable stopgap solution.
-  if (isset($seen_ids[$id])) {
-    $id = $id . '-' . $seen_ids[$id]++;
-  }
-  else {
-    $seen_ids[$id] = 1;
-  }
-
-  return $id;
-}
-
-/**
  * @} End of "defgroup form_api".
  */
 
@@ -2931,24 +2895,33 @@ function batch_set($batch_definition) {
  * @param $url
  *   (optional - should only be used for separate scripts like update.php)
  *   URL of the batch processing page.
+ * @param $redirect_callback
+ *   (optional) Specify a function to be called to redirect to the progressive
+ *   processing page. By default drupal_goto() will be used to redirect to a
+ *   page which will do the progressive page. Specifying another function will
+ *   allow the progressive processing to be processed differently.
  */
-function batch_process($redirect = NULL, $url = NULL) {
+function batch_process($redirect = NULL, $url = 'batch', $redirect_callback = 'drupal_goto') {
   $batch =& batch_get();
 
   drupal_theme_initialize();
   
   if (isset($batch)) {
     // Add process information
-    $url = isset($url) ? $url : 'batch';
     $process_info = array(
       'current_set' => 0,
       'progressive' => TRUE,
-      'url' => isset($url) ? $url : 'batch',
+      'url' => $url,
       'source_page' => $_GET['q'],
       'redirect' => $redirect,
       'theme' => $GLOBALS['theme_key'],
+      'redirect_callback' => $redirect_callback,
     );
     $batch += $process_info;
+
+    // The batch is now completely built. Allow other modules to make changes to the 
+    // batch so that it is easier to reuse batch processes in other enviroments.
+    drupal_alter('batch', $batch);
 
     if ($batch['progressive']) {
       // Clear the way for the drupal_goto() redirection to the batch processing
@@ -2984,7 +2957,10 @@ function batch_process($redirect = NULL, $url = NULL) {
       // Set the batch number in the session to guarantee that it will stay alive.
       $_SESSION['batches'][$batch['id']] = TRUE;
 
-      drupal_goto($batch['url'], array('op' => 'start', 'id' => $batch['id']));
+      $function = $batch['redirect_callback'];
+      if (function_exists($function)) {
+        $function($batch['url'], array('op' => 'start', 'id' => $batch['id']));
+      }
     }
     else {
       // Non-progressive execution: bypass the whole progressbar workflow
