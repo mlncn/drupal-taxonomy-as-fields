@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.529 2009/10/03 19:27:44 dries Exp $
+// $Id: theme.inc,v 1.531 2009/10/05 02:43:01 webchick Exp $
 
 /**
  * @file
@@ -2136,14 +2136,14 @@ function template_preprocess_html(&$variables) {
         // Add current suggestion to page classes to make it possible to theme
         // the page depending on the current page type (e.g. node, admin, user,
         // etc.) as well as more specific data like node-12 or node-edit.
-        $variables['classes_array'][] = drupal_css_class($suggestion);
+        $variables['classes_array'][] = drupal_html_class($suggestion);
       }
     }
   }
   
   // If on an individual node page, add the node type to body classes.
   if ($node = menu_get_object()) {
-    $variables['classes_array'][] = drupal_css_class('node-type-' . $node->type);
+    $variables['classes_array'][] = drupal_html_class('node-type-' . $node->type);
   }
 
   // RDFa allows annotation of XHTML pages with RDF data, while GRDDL provides
@@ -2403,4 +2403,23 @@ function template_preprocess_maintenance_page(&$variables) {
   if (isset($variables['db_is_active']) && !$variables['db_is_active']) {
     $variables['template_file'] = 'maintenance-page-offline';
   }
+}
+
+/**
+ * Preprocess variables for region.tpl.php
+ *
+ * Prepare the values passed to the theme_region function to be passed into a
+ * pluggable template engine. Uses the region name to generate a template file
+ * suggestions. If none are found, the default region.tpl.php is used.
+ *
+ * @see region.tpl.php
+ */
+function template_preprocess_region(&$variables) {
+  // Create the $content variable that templates expect.
+  $variables['content'] = $variables['elements']['#children'];
+  $variables['region'] = $variables['elements']['#region'];
+
+  $region = 'region-' . str_replace('_', '-', $variables['region']);
+  $variables['classes_array'][] = $region;
+  $variables['template_files'][] = $region;
 }
