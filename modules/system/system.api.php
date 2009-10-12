@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.80 2009/10/01 13:16:17 dries Exp $
+// $Id: system.api.php,v 1.82 2009/10/11 03:07:20 webchick Exp $
 
 /**
  * @file
@@ -555,7 +555,7 @@ function hook_form_alter(&$form, &$form_state, $form_id) {
  */
 function hook_form_FORM_ID_alter(&$form, &$form_state) {
   // Modification for the form with the given form ID goes here. For example, if
-  // FORM_ID is "user_register" this code would run only on the user
+  // FORM_ID is "user_register_form" this code would run only on the user
   // registration form.
 
   // Add a checkbox to registration form about agreeing to terms of use.
@@ -1099,7 +1099,7 @@ function hook_mail($key, &$message, $params) {
       '%uid' => $node->uid,
       '%node_url' => url('node/' . $node->nid, array('absolute' => TRUE)),
       '%node_type' => node_type_get_name($node),
-      '%title' => $node->title,
+      '%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'],
       '%teaser' => $node->teaser,
       '%body' => $node->body,
     );

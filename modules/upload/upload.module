@@ -1,5 +1,5 @@
 <?php
-// $Id: upload.module,v 1.260 2009/09/25 14:24:34 dries Exp $
+// $Id: upload.module,v 1.262 2009/10/12 15:27:16 dries Exp $
 
 /**
  * @file
@@ -18,7 +18,7 @@ function upload_help($path, $arg) {
       $output .= '<p>' . t('For more information, see the online handbook entry for <a href="@upload">Upload module</a>.', array('@upload' => 'http://drupal.org/handbook/modules/upload/')) . '</p>';
       return $output;
     case 'admin/config/media/uploads':
-      return '<p>' . t('Users with the <a href="@permissions">upload files permission</a> can upload attachments. Users with the <a href="@permissions">view uploaded files permission</a> can view uploaded attachments. You can choose which post types can take attachments on the <a href="@types">content types settings</a> page.', array('@permissions' => url('admin/config/people/permissions'), '@types' => url('admin/settings/types'))) . '</p>';
+      return '<p>' . t('Users with the <a href="@permissions">upload files permission</a> can upload attachments. Users with the <a href="@permissions">view uploaded files permission</a> can view uploaded attachments. You can choose which post types can take attachments on the <a href="@types">content types settings</a> page.', array('@permissions' => url('admin/config/people/permissions'), '@types' => url('admin/structure/types'))) . '</p>';
   }
 }
 
@@ -436,7 +436,9 @@ function upload_node_search_result($node) {
  *
  * @ingroup themeable
  */
-function theme_upload_attachments($elements) {
+function theme_upload_attachments($variables) {
+  $elements = $variables['elements'];
+
   $header = array(t('Attachment'), t('Size'));
   $rows = array();
   foreach ($elements['#files'] as $file) {
@@ -448,7 +450,7 @@ function theme_upload_attachments($elements) {
     }
   }
   if (count($rows)) {
-    return theme('table', $header, $rows, array('class' => array('attachments')));
+    return theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('class' => array('attachments'))));
   }
 }
 
@@ -600,7 +602,9 @@ function _upload_form($node) {
  *
  * @ingroup themeable
  */
-function theme_upload_form_current($form) {
+function theme_upload_form_current($variables) {
+  $form = $variables['form'];
+
   $header = array('', t('Delete'), t('List'), t('Description'), t('Weight'), t('Size'));
   drupal_add_tabledrag('upload-attachments', 'order', 'sibling', 'upload-weight');
 
@@ -616,7 +620,7 @@ function theme_upload_form_current($form) {
     $row[] = drupal_render($form[$key]['size']);
     $rows[] = array('data' => $row, 'class' => array('draggable'));
   }
-  $output = theme('table', $header, $rows, array('id' => 'upload-attachments'));
+  $output = theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'upload-attachments')));
   $output .= drupal_render_children($form);
   return $output;
 }
@@ -627,9 +631,9 @@ function theme_upload_form_current($form) {
  *
  * @ingroup themeable
  */
-function theme_upload_form_new($form) {
+function theme_upload_form_new($variables) {
   drupal_add_tabledrag('upload-attachments', 'order', 'sibling', 'upload-weight');
-  $output = drupal_render_children($form);
+  $output = drupal_render_children($variables['form']);
   return $output;
 }
 

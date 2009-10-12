@@ -3,7 +3,7 @@ D/pgsql////
 D/sqlite////
 /log.inc/1.6/Thu Aug 27 22:12:13 2009//
 /prefetch.inc/1.6/Thu Aug 27 22:12:14 2009//
-/query.inc/1.31/Tue Sep  1 10:21:20 2009//
 /select.inc/1.24/Fri Oct  2 19:50:13 2009//
-/database.inc/1.79/Thu Oct  8 03:28:40 2009//
 /schema.inc/1.22/Thu Oct  8 03:28:40 2009//
+/database.inc/1.80/Mon Oct 12 23:25:04 2009//
+/query.inc/1.32/Mon Oct 12 23:25:04 2009//

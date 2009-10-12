@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.37 2009/09/30 12:26:36 dries Exp $
+// $Id: field.api.php,v 1.40 2009/10/10 21:39:02 webchick Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -278,9 +278,9 @@ function hook_field_load($obj_type, $objects, $field, $instances, $langcode, &$i
         // handled by hook_field_sanitize().
         $format = $item['format'];
         if (filter_format_allowcache($format)) {
-          $items[$id][$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode, FALSE) : '';
+          $items[$id][$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode) : '';
           if ($field['type'] == 'text_with_summary') {
-            $items[$id][$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode, FALSE) : '';
+            $items[$id][$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode) : '';
           }
         }
       }
@@ -322,9 +322,9 @@ function hook_field_sanitize($obj_type, $object, $field, $instance, $langcode, &
     if (!isset($items[$delta]['safe'])) {
       if (!empty($instance['settings']['text_processing'])) {
         $format = $item['format'];
-        $items[$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode) : '';
+        $items[$delta]['safe'] = isset($item['value']) ? check_markup($item['value'], $format, $langcode, TRUE) : '';
         if ($field['type'] == 'text_with_summary') {
-          $items[$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode) : '';
+          $items[$delta]['safe_summary'] = isset($item['summary']) ? check_markup($item['summary'], $format, $langcode, TRUE) : '';
         }
       }
       else {
@@ -778,21 +778,22 @@ function hook_field_formatter_info_alter(&$info) {
  * value (the hook_field_formatter_info() entry uses
  * 'multiple values' = FIELD_BEHAVIOR_DEFAULT).
  *
- * @param $element
- *   A render structure sub-array, containing the following keys:
- *   - #item: The field value being displayed.
- *   - #delta: The index of the value being displayed within the object(s values
- *     for the field.
- *   - #field_name: The name of the field being displayed.
- *   - #bundle: The bundle of the object being displayed.
- *   - #object: The object being displayed.
- *   - #object_type: The type of the object being displayed.
- *   - #formatter: The name of the formatter being used.
- *   - #settings: The array of formatter settings.
+ * @param $variables
+ *   An associative array containing:
+ *   - element: A render structure sub-array, containing the following keys:
+ *     - #item: The field value being displayed.
+ *     - #delta: The index of the value being displayed within the object's
+ *       values for the field.
+ *     - #field_name: The name of the field being displayed.
+ *     - #bundle: The bundle of the object being displayed.
+ *     - #object: The object being displayed.
+ *     - #object_type: The type of the object being displayed.
+ *     - #formatter: The name of the formatter being used.
+ *     - #settings: The array of formatter settings.
  */
-function theme_field_formatter_FORMATTER_SINGLE($element) {
+function theme_field_formatter_FORMATTER_SINGLE($variables) {
   // This relies on a 'safe' element being prepared in hook_field_sanitize().
-  return $element['#item']['safe'];
+  return $variables['element']['#item']['safe'];
 }
 
 /**
@@ -802,17 +803,20 @@ function theme_field_formatter_FORMATTER_SINGLE($element) {
  * (the hook_field_formatter_info() entry uses
  * 'multiple values' = FIELD_BEHAVIOR_CUSTOM).
  *
- * @param $element
- *   A render structure sub-array, containing the following keys:
- *   - #field_name: The name of the field being displayed.
- *   - #bundle: The bundle of the object being displayed.
- *   - #object: The object being displayed.
- *   - #object_type: The type of the object being displayed.
- *   - #formatter: The name of the formatter being used.
- *   - #settings: The array of formatter settings.
- *   - numeric indexes: the field values being displayed.
+ * @param $variables
+ *   An associative array containing:
+ *   - element: A render structure sub-array, containing the following keys:
+ *     - #field_name: The name of the field being displayed.
+ *     - #bundle: The bundle of the object being displayed.
+ *     - #object: The object being displayed.
+ *     - #object_type: The type of the object being displayed.
+ *     - #formatter: The name of the formatter being used.
+ *     - #settings: The array of formatter settings.
+ *     - numeric indexes: the field values being displayed.
  */
-function theme_field_formatter_FORMATTER_MULTIPLE($element) {
+function theme_field_formatter_FORMATTER_MULTIPLE($variables) {
+  $element = $variables['element'];
+
   $items = array();
   foreach (element_children($element) as $key) {
     $items[$key] = $key .':'. $element[$key]['#item']['value'];
@@ -1429,11 +1433,15 @@ function hook_field_build_modes($obj_type) {
  *   - "view"
  * @param $field
  *   The field on which the operation is to be performed.
+ * @param $obj_type
+ *   The type of $object; e.g. 'node' or 'user'.
+ * @param $object
+ *   (optional) The object for the operation.
  * @param $account
  *   (optional) The account to check, if not given use currently logged in user.
  * @return
  *   TRUE if the operation is allowed;
  *   FALSE if the operation is denied.
  */
-function hook_field_access($op, $field, $account) {
+function hook_field_access($op, $field, $obj_type, $object, $account) {
 }

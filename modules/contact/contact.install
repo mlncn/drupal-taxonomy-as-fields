@@ -1,19 +1,10 @@
 <?php
-// $Id: contact.install,v 1.16 2009/09/29 15:13:55 dries Exp $
+// $Id: contact.install,v 1.20 2009/10/12 15:17:51 dries Exp $
 
 /**
  * @file
  * Install, update and uninstall functions for the contact module.
  */
-
-/**
- * Implement hook_uninstall().
- */
-function contact_uninstall() {
-  variable_del('contact_default_status');
-  variable_del('contact_threshold_limit');
-  variable_del('contact_threshold_window');
-}
 
 /**
  * Implement hook_schema().
@@ -75,6 +66,30 @@ function contact_schema() {
 }
 
 /**
+ * Implement hook_install().
+ */
+function contact_install() {
+  // Insert a default contact category.
+  db_insert('contact')
+    ->fields(array(
+      'category' => 'Website feedback',
+      'recipients' => variable_get('site_mail', ini_get('sendmail_from')),
+      'selected' => 1,
+      'reply' => '',
+    ))
+    ->execute();
+}
+
+/**
+ * Implement hook_uninstall().
+ */
+function contact_uninstall() {
+  variable_del('contact_default_status');
+  variable_del('contact_threshold_limit');
+  variable_del('contact_threshold_window');
+}
+
+/**
  * @defgroup updates-6.x-to-7.x Contact updates from 6.x to 7.x
  * @{
  */
@@ -85,6 +100,23 @@ function contact_schema() {
 function contact_update_7000() {
   variable_set('contact_threshold_limit', variable_get('contact_hourly_threshold', 5));
   variable_del('contact_hourly_threshold');
+}
+
+/**
+ * Rename the administer contact forms permission.
+ */
+function contact_update_7001() {
+  db_update('role_permission')
+    ->fields(array('permission' => 'administer contact forms'))
+    ->condition('permission', 'administer site-wide contact form')
+    ->execute();
+}
+
+/**
+ * Enable the 'access user contact forms' for registered users by default.
+ */
+function contact_update_7002() {
+  user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, array('access user contact forms'));
 }
 
 /**

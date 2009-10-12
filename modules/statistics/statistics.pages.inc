@@ -1,5 +1,5 @@
 <?php
-// $Id: statistics.pages.inc,v 1.16 2009/08/25 10:27:15 dries Exp $
+// $Id: statistics.pages.inc,v 1.18 2009/10/11 03:07:20 webchick Exp $
 
 /**
  * @file
@@ -33,7 +33,7 @@ function statistics_node_tracker() {
       $rows[] = array(
         array('data' => format_date($log->timestamp, 'short'), 'class' => array('nowrap')),
         _statistics_link($log->url),
-        theme('username', $log),
+        theme('username', array('account' => $log)),
         l(t('details'), "admin/reports/access/$log->aid"),
       );
     }
@@ -42,7 +42,7 @@ function statistics_node_tracker() {
       $rows[] = array(array('data' => t('No statistics available.'), 'colspan' => 4));
     }
 
-    drupal_set_title($node->title);
+    drupal_set_title($node->title[FIELD_LANGUAGE_NONE][0]['value']);
     $build['statistics_table'] = array(
       '#theme' => 'table', 
       '#header' => $header, 

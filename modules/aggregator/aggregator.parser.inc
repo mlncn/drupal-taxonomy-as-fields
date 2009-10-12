@@ -1,5 +1,5 @@
 <?php
-// $Id: aggregator.parser.inc,v 1.4 2009/07/15 21:32:43 dries Exp $
+// $Id: aggregator.parser.inc,v 1.6 2009/10/12 15:54:59 dries Exp $
 
 /**
  * @file
@@ -37,39 +37,28 @@ function aggregator_aggregator_parse($feed) {
     }
 
     if (!empty($image['link']) && !empty($image['url']) && !empty($image['title'])) {
-      $image = l(theme('image', $image['url'], $image['title']), $image['link'], array('html' => TRUE));
+      $image = l(theme('image', array('path' => $image['url'], 'alt' => $image['title'])), $image['link'], array('html' => TRUE));
     }
     else {
       $image = '';
     }
 
     $etag = empty($feed->http_headers['ETag']) ? '' : $feed->http_headers['ETag'];
-    // Update the feed data.
-    db_merge('aggregator_feed')
-      ->key(array('fid' => $feed->fid))
-      ->fields(array(
-        'url' => $feed->url,
-        'checked' => REQUEST_TIME,
-        'link' => !empty($channel['link']) ? $channel['link'] : '',
-        'description' => !empty($channel['description']) ? $channel['description'] : '',
-        'image' => $image,
-        'hash' => md5($feed->source_string),
-        'etag' => $etag,
-        'modified' => $modified,
-      ))
-      ->execute();
+
+    // Add parsed data to the feed object.
+    $feed->link = !empty($channel['LINK']) ? $channel['LINK'] : '';
+    $feed->description = !empty($channel['DESCRIPTION']) ? $channel['DESCRIPTION'] : '';
+    $feed->image = $image;
+    $feed->etag = $etag;
+    $feed->modified = $modified;
 
     // Clear the cache.
     cache_clear_all();
 
-    if (isset($feed->redirected)) {
-      watchdog('aggregator', 'Updated URL for feed %title to %url.', array('%title' => $feed->title, '%url' => $feed->url));
-    }
-
-    watchdog('aggregator', 'There is new syndicated content from %site.', array('%site' => $feed->title));
-    drupal_set_message(t('There is new syndicated content from %site.', array('%site' => $feed->title)));
-
+    return TRUE;
   }
+
+  return FALSE;
 }
 
 /**

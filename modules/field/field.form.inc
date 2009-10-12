@@ -1,5 +1,5 @@
 <?php
-// $Id: field.form.inc,v 1.26 2009/09/29 01:08:35 dries Exp $
+// $Id: field.form.inc,v 1.28 2009/10/09 19:22:56 dries Exp $
 
 /**
  * @file
@@ -22,7 +22,7 @@ function field_default_form($obj_type, $object, $field, $instance, $langcode, $i
   // If the field is not accessible, don't add anything. The field value will
   // be left unchanged on update, or considered empty on insert (default value
   // will be inserted if applicable).
-  if (!field_access('edit', $field)) {
+  if (!field_access('edit', $field, $obj_type, $object)) {
     return $addition;
   }
 
@@ -221,7 +221,8 @@ function field_multiple_value_form($field, $instance, $langcode, $items, &$form,
  * Combine multiple values into a table with drag-n-drop reordering.
  * TODO : convert to a template.
  */
-function theme_field_multiple_value_form($element) {
+function theme_field_multiple_value_form($variables) {
+  $element = $variables['element'];
   $output = '';
 
   if ($element['#cardinality'] > 1 || $element['#cardinality'] == FIELD_CARDINALITY_UNLIMITED) {
@@ -268,7 +269,7 @@ function theme_field_multiple_value_form($element) {
     }
 
     $output = '<div class="form-item">';
-    $output .= theme('table', $header, $rows, array('id' => $table_id, 'class' => array('field-multiple-table')));
+    $output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => $table_id, 'class' => array('field-multiple-table'))));
     $output .= $element['#description'] ? '<div class="description">' . $element['#description'] . '</div>' : '';
     $output .= '<div class="clearfix">' . drupal_render($add_more_button) . '</div>';
     $output .= '</div>';

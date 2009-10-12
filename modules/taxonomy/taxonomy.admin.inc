@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.admin.inc,v 1.70 2009/09/21 06:44:14 dries Exp $
+// $Id: taxonomy.admin.inc,v 1.72 2009/10/09 01:00:05 dries Exp $
 
 /**
  * @file
@@ -17,14 +17,8 @@ function taxonomy_overview_vocabularies($form) {
   $vocabularies = taxonomy_get_vocabularies();
   $form['#tree'] = TRUE;
   foreach ($vocabularies as $vocabulary) {
-    $types = array();
-    foreach ($vocabulary->nodes as $type) {
-      $node_type = node_type_get_name($type);
-      $types[] = $node_type ? check_plain($node_type) : check_plain($type);
-    }
     $form[$vocabulary->vid]['#vocabulary'] = $vocabulary;
     $form[$vocabulary->vid]['name'] = array('#markup' => check_plain($vocabulary->name));
-    $form[$vocabulary->vid]['types'] = array('#markup' => implode(', ', $types));
     $form[$vocabulary->vid]['weight'] = array('#type' => 'weight', '#delta' => 10, '#default_value' => $vocabulary->weight);
     $form[$vocabulary->vid]['edit'] = array('#markup' => l(t('edit vocabulary'), "admin/structure/taxonomy/$vocabulary->vid"));
     $form[$vocabulary->vid]['list'] = array('#markup' => l(t('list terms'), "admin/structure/taxonomy/$vocabulary->vid/list"));
@@ -62,7 +56,9 @@ function taxonomy_overview_vocabularies_submit($form, &$form_state) {
  * @ingroup themeable
  * @see taxonomy_overview_vocabularies()
  */
-function theme_taxonomy_overview_vocabularies($form) {
+function theme_taxonomy_overview_vocabularies($variables) {
+  $form = $variables['form'];
+
   $rows = array();
 
   foreach (element_children($form) as $key) {
@@ -71,7 +67,6 @@ function theme_taxonomy_overview_vocabularies($form) {
 
       $row = array();
       $row[] = drupal_render($vocabulary['name']);
-      $row[] = drupal_render($vocabulary['types']);
       if (isset($vocabulary['weight'])) {
         $vocabulary['weight']['#attributes']['class'] = array('vocabulary-weight');
         $row[] = drupal_render($vocabulary['weight']);
@@ -87,13 +82,13 @@ function theme_taxonomy_overview_vocabularies($form) {
     $rows[] = array(array('data' => t('No vocabularies available. <a href="@link">Add vocabulary</a>.', array('@link' => url('admin/structure/taxonomy/add'))), 'colspan' => '5'));
   }
 
-  $header = array(t('Vocabulary name'), t('Content types'));
+  $header = array(t('Vocabulary name'));
   if (isset($form['submit'])) {
     $header[] = t('Weight');
     drupal_add_tabledrag('taxonomy', 'order', 'sibling', 'vocabulary-weight');
   }
   $header[] = array('data' => t('Operations'), 'colspan' => '3');
-  return theme('table', $header, $rows, array('id' => 'taxonomy')) . drupal_render_children($form);
+  return theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'taxonomy'))) . drupal_render_children($form);
 }
 
 /**
@@ -110,12 +105,7 @@ function taxonomy_form_vocabulary($form, &$form_state, $edit = array()) {
     'name' => '',
     'machine_name' => '',
     'description' => '',
-    'help' => '',
-    'nodes' => array(),
     'hierarchy' => 0,
-    'tags' => 0,
-    'multiple' => 0,
-    'required' => 0,
     'weight' => 0,
   );
   $form['#vocabulary'] = (object) $edit;
@@ -155,46 +145,10 @@ function taxonomy_form_vocabulary($form, &$form_state, $edit = array()) {
       'js' => array(drupal_get_path('module', 'system') . '/system.js', $js_settings),
     ),
   );
-  $form['help'] = array(
-    '#type' => 'textfield',
-    '#title' => t('Help text'),
-    '#maxlength' => 255,
-    '#default_value' => $edit['help'],
-    '#description' => t('Instructions to present to the user when selecting terms, e.g., <em>"Enter a comma separated list of words"</em>.'),
-  );
   $form['description'] = array(
     '#type' => 'textfield',
     '#title' => t('Description'),
     '#default_value' => $edit['description'],
-  );
-  $form['nodes'] = array(
-    '#type' => 'checkboxes',
-    '#title' => t('Apply to content types'),
-    '#default_value' => $edit['nodes'],
-    '#options' => array_map('check_plain', node_type_get_names()),
-  );
-  $form['settings'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Settings'),
-    '#collapsible' => TRUE,
-  );
-  $form['settings']['tags'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Tags'),
-    '#default_value' => $edit['tags'],
-    '#description' => t('Terms are created by users when submitting posts by typing a comma separated list.'),
-  );
-  $form['settings']['multiple'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Multiple select'),
-    '#default_value' => $edit['multiple'],
-    '#description' => t('Allows posts to have more than one term from this vocabulary (always true for tags).'),
-  );
-  $form['settings']['required'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Required'),
-    '#default_value' => $edit['required'],
-    '#description' => t('At least one term in this vocabulary must be selected when submitting a post.'),
   );
   // Set the hierarchy to "multiple parents" by default. This simplifies the
   // vocabulary form and standardizes the term form.
@@ -225,6 +179,11 @@ function taxonomy_form_vocabulary_validate($form, &$form_state) {
     if (!preg_match('!^[a-z0-9_]+$!', $form_state['values']['machine_name'])) {
       form_set_error('machine_name', t('The machine-readable name must contain only lowercase letters, numbers, and underscores.'));
     }
+    // Restrict machine names to 21 characters to avoid exceeding the limit
+    // for field names.
+    if (drupal_strlen($machine_name) > 21) {
+      form_set_error('machine_name', t('The machine-readable name must not exceed 21 characters.'));
+    }
 
     // Do not allow duplicate machine names.
     $vocabularies = taxonomy_get_vocabularies();
@@ -246,8 +205,6 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
     $form_state['confirm_delete'] = TRUE;
     return;
   }
-  // Fix up the nodes array to remove unchecked nodes.
-  $form_state['values']['nodes'] = array_filter($form_state['values']['nodes']);
   $vocabulary = (object) $form_state['values'];
   if ($vocabulary->machine_name != $old_vocabulary->machine_name) {
     field_attach_rename_bundle($old_vocabulary->machine_name, $vocabulary->machine_name);
@@ -306,106 +263,71 @@ function taxonomy_overview_terms($form, &$form_state, $vocabulary) {
   // An array of the terms to be displayed on this page.
   $current_page = array();
 
-  // Case for free tagging.
-  if ($vocabulary->tags) {
-    // We are not calling taxonomy_get_tree because that might fail with a big
-    // number of tags in the freetagging vocabulary.
-    $query = db_select('taxonomy_term_data', 't')->extend('PagerDefault');
-    $query->join('taxonomy_term_hierarchy', 'h', 't.tid = h.tid');
-    $query->addTag('term_access');
-    $query->condition('t.vid', $vocabulary->vid);
-
-    // Store count in total entries and use this as count query.
-    $count_query = db_select('taxonomy_term_data', 't');
-    $count_query->join('taxonomy_term_hierarchy', 'h', 't.tid = h.tid');
-    $count_query->addTag('term_access');
-    $count_query->condition('t.vid', $vocabulary->vid);
-    $count_query->addExpression('COUNT(t.tid)');
-    $total_entries = $count_query->execute();
-    $query->setCountQuery($count_query);
-
-    $result = $query
-      ->fields('t')
-      ->fields('h', array('parent'))
-      ->orderBy('weight')
-      ->orderBy('name')
-      ->limit($page_increment)
-      ->execute();
-
-    foreach ($result as $term) {
-      $key = 'tid:' . $term->tid . ':0';
-      $current_page[$key] = $term;
-      $page_entries++;
+  $term_deltas = array();
+  $tree = taxonomy_get_tree($vocabulary->vid);
+  $term = current($tree);
+  do {
+    // In case this tree is completely empty.
+    if (empty($term)) {
+      break;
     }
-  }
-  // Case for restricted vocabulary.
-  else {
-    $term_deltas = array();
-    $tree = taxonomy_get_tree($vocabulary->vid);
-    $term = current($tree);
-    do {
-      // In case this tree is completely empty.
-      if (empty($term)) {
-        break;
-      }
-      // Count entries before the current page.
-      if ($page && ($page * $page_increment) > $before_entries && !isset($back_peddle)) {
-        $before_entries++;
-        continue;
-      }
-      // Count entries after the current page.
-      elseif ($page_entries > $page_increment && isset($complete_tree)) {
-        $after_entries++;
-        continue;
-      }
+    // Count entries before the current page.
+    if ($page && ($page * $page_increment) > $before_entries && !isset($back_peddle)) {
+      $before_entries++;
+      continue;
+    }
+    // Count entries after the current page.
+    elseif ($page_entries > $page_increment && isset($complete_tree)) {
+      $after_entries++;
+      continue;
+    }
 
-      // Do not let a term start the page that is not at the root.
-      if (isset($term->depth) && ($term->depth > 0) && !isset($back_peddle)) {
-        $back_peddle = 0;
-        while ($pterm = prev($tree)) {
-          $before_entries--;
-          $back_peddle++;
-          if ($pterm->depth == 0) {
-            prev($tree);
-            continue 2; // Jump back to the start of the root level parent.
-          }
-        }
+    // Do not let a term start the page that is not at the root.
+    if (isset($term->depth) && ($term->depth > 0) && !isset($back_peddle)) {
+      $back_peddle = 0;
+      while ($pterm = prev($tree)) {
+        $before_entries--;
+        $back_peddle++;
+        if ($pterm->depth == 0) {
+          prev($tree);
+          continue 2; // Jump back to the start of the root level parent.
+       }
       }
-      $back_peddle = isset($back_peddle) ? $back_peddle : 0;
+    }
+    $back_peddle = isset($back_peddle) ? $back_peddle : 0;
 
-      // Continue rendering the tree until we reach the a new root item.
-      if ($page_entries >= $page_increment + $back_peddle + 1 && $term->depth == 0 && $root_entries > 1) {
-        $complete_tree = TRUE;
-        // This new item at the root level is the first item on the next page.
-        $after_entries++;
-        continue;
-      }
-      if ($page_entries >= $page_increment + $back_peddle) {
-        $forward_peddle++;
-      }
+    // Continue rendering the tree until we reach the a new root item.
+    if ($page_entries >= $page_increment + $back_peddle + 1 && $term->depth == 0 && $root_entries > 1) {
+      $complete_tree = TRUE;
+      // This new item at the root level is the first item on the next page.
+      $after_entries++;
+      continue;
+    }
+    if ($page_entries >= $page_increment + $back_peddle) {
+      $forward_peddle++;
+    }
 
-      // Finally, if we've gotten down this far, we're rendering a term on this page.
-      $page_entries++;
-      $term_deltas[$term->tid] = isset($term_deltas[$term->tid]) ? $term_deltas[$term->tid] + 1 : 0;
-      $key = 'tid:' . $term->tid . ':' . $term_deltas[$term->tid];
+    // Finally, if we've gotten down this far, we're rendering a term on this page.
+    $page_entries++;
+    $term_deltas[$term->tid] = isset($term_deltas[$term->tid]) ? $term_deltas[$term->tid] + 1 : 0;
+    $key = 'tid:' . $term->tid . ':' . $term_deltas[$term->tid];
 
-      // Keep track of the first term displayed on this page.
-      if ($page_entries == 1) {
-        $form['#first_tid'] = $term->tid;
-      }
-      // Keep a variable to make sure at least 2 root elements are displayed.
-      if ($term->parents[0] == 0) {
-        $root_entries++;
-      }
-      $current_page[$key] = $term;
-    } while ($term = next($tree));
+    // Keep track of the first term displayed on this page.
+    if ($page_entries == 1) {
+      $form['#first_tid'] = $term->tid;
+    }
+    // Keep a variable to make sure at least 2 root elements are displayed.
+    if ($term->parents[0] == 0) {
+      $root_entries++;
+    }
+    $current_page[$key] = $term;
+  } while ($term = next($tree));
 
-    // Because we didn't use a pager query, set the necessary pager variables.
-    $total_entries = $before_entries + $page_entries + $after_entries;
-    $pager_total_items[0] = $total_entries;
-    $pager_page_array[0] = $page;
-    $pager_total[0] = ceil($total_entries / $page_increment);
-  }
+  // Because we didn't use a pager query, set the necessary pager variables.
+  $total_entries = $before_entries + $page_entries + $after_entries;
+  $pager_total_items[0] = $total_entries;
+  $pager_page_array[0] = $page;
+  $pager_total[0] = ceil($total_entries / $page_increment);
 
   // If this form was already submitted once, it's probably hit a validation
   // error. Ensure the form is rebuilt in the same order as the user submitted.
@@ -433,7 +355,7 @@ function taxonomy_overview_terms($form, &$form_state, $vocabulary) {
     }
 
     $form[$key]['view'] = array('#markup' => l($term->name, "taxonomy/term/$term->tid"));
-    if (!$vocabulary->tags && $vocabulary->hierarchy < 2 && count($tree) > 1) {
+    if ($vocabulary->hierarchy < 2 && count($tree) > 1) {
       $form['#parent_fields'] = TRUE;
       $form[$key]['tid'] = array(
         '#type' => 'hidden',
@@ -460,7 +382,7 @@ function taxonomy_overview_terms($form, &$form_state, $vocabulary) {
   $form['#forward_peddle'] = $forward_peddle;
   $form['#empty_text'] = t('No terms available. <a href="@link">Add term</a>.', array('@link' => url('admin/structure/taxonomy/' . $vocabulary->vid . '/list/add')));
 
-  if (!$vocabulary->tags && $vocabulary->hierarchy < 2 && count($tree) > 1) {
+  if ($vocabulary->hierarchy < 2 && count($tree) > 1) {
     $form['submit'] = array(
       '#type' => 'submit',
       '#value' => t('Save')
@@ -587,7 +509,9 @@ function taxonomy_overview_terms_submit($form, &$form_state) {
  * @ingroup themeable
  * @see taxonomy_overview_terms()
  */
-function theme_taxonomy_overview_terms($form) {
+function theme_taxonomy_overview_terms($variables) {
+  $form = $variables['form'];
+
   $page_increment  = $form['#page_increment'];
   $page_entries    = $form['#page_entries'];
   $back_peddle     = $form['#back_peddle'];
@@ -609,7 +533,7 @@ function theme_taxonomy_overview_terms($form) {
       $term = &$form[$key];
 
       $row = array();
-      $row[] = (isset($term['#term']['depth']) && $term['#term']['depth'] > 0 ? theme('indentation', $term['#term']['depth']) : '') . drupal_render($term['view']);
+      $row[] = (isset($term['#term']['depth']) && $term['#term']['depth'] > 0 ? theme('indentation', array('size' => $term['#term']['depth'])) : ''). drupal_render($term['view']);
       if ($form['#parent_fields']) {
         $term['tid']['#attributes']['class'] = array('term-id');
         $term['parent']['#attributes']['class'] = array('term-parent');
@@ -659,9 +583,9 @@ function theme_taxonomy_overview_terms($form) {
   }
 
   $header = array(t('Name'), t('Operations'));
-  $output = theme('table', $header, $rows, array('id' => 'taxonomy'));
+  $output = theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'taxonomy')));
   $output .= drupal_render_children($form);
-  $output .= theme('pager', NULL);
+  $output .= theme('pager', array('tags' => NULL));
 
   return $output;
 }
@@ -690,7 +614,6 @@ function taxonomy_form_term($form, &$form_state, $vocabulary, $edit = array()) {
   $form['#term'] = $edit;
   $form['#term']['parent'] = $parent;
   $form['#vocabulary'] = $vocabulary;
-  $form['#vocabulary']->nodes = drupal_map_assoc($vocabulary->nodes);
   $form['#builder_function'] = 'taxonomy_form_term_submit_builder';
 
   // Check for confirmation forms.
@@ -747,7 +670,7 @@ function taxonomy_form_term($form, &$form_state, $vocabulary, $edit = array()) {
     }
     $exclude[] = $edit['tid'];
 
-    $form['advanced']['parent'] = _taxonomy_term_select(t('Parents'), $parent, $vocabulary->vid, t('Parent terms') . '.', 1, '<' . t('root') . '>', $exclude);
+    $form['advanced']['parent'] = _taxonomy_term_select(t('Parents'), $parent, $vocabulary->vid, t('Parent terms') . '.', '<' . t('root') . '>', $exclude);
   }
   $form['advanced']['synonyms'] = array(
     '#type' => 'textarea',
@@ -814,7 +737,7 @@ function taxonomy_form_term_submit($form, &$form_state) {
     return;
   }
   // Rebuild the form to confirm enabling multiple parents.
-  elseif ($form_state['clicked_button']['#value'] == t('Save') && !$form['#vocabulary']->tags && count($form_state['values']['parent']) > 1 && $form['#vocabulary']->hierarchy < 2) {
+  elseif ($form_state['clicked_button']['#value'] == t('Save') && count($form_state['values']['parent']) > 1 && $form['#vocabulary']->hierarchy < 2) {
     $form_state['rebuild'] = TRUE;
     $form_state['confirm_parents'] = TRUE;
     return;
@@ -834,26 +757,24 @@ function taxonomy_form_term_submit($form, &$form_state) {
       break;
   }
 
-  if (!$form['#vocabulary']->tags) {
-    $current_parent_count = count($form_state['values']['parent']);
-    $previous_parent_count = count($form['#term']['parent']);
-    // Root doesn't count if it's the only parent.
-    if ($current_parent_count == 1 && isset($form_state['values']['parent'][0])) {
-      $current_parent_count = 0;
-      $form_state['values']['parent'] = array();
-    }
+  $current_parent_count = count($form_state['values']['parent']);
+  $previous_parent_count = count($form['#term']['parent']);
+  // Root doesn't count if it's the only parent.
+  if ($current_parent_count == 1 && isset($form_state['values']['parent'][0])) {
+    $current_parent_count = 0;
+    $form_state['values']['parent'] = array();
+  }
 
-    // If the number of parents has been reduced to one or none, do a check on the
-    // parents of every term in the vocabulary value.
-    if ($current_parent_count < $previous_parent_count && $current_parent_count < 2) {
-      taxonomy_check_vocabulary_hierarchy($form['#vocabulary'], $form_state['values']);
-    }
-    // If we've increased the number of parents and this is a single or flat
-    // hierarchy, update the vocabulary immediately.
-    elseif ($current_parent_count > $previous_parent_count && $form['#vocabulary']->hierarchy < 2) {
-      $form['#vocabulary']->hierarchy = $current_parent_count == 1 ? 1 : 2;
-      taxonomy_vocabulary_save($form['#vocabulary']);
-    }
+  // If the number of parents has been reduced to one or none, do a check on the
+  // parents of every term in the vocabulary value.
+  if ($current_parent_count < $previous_parent_count && $current_parent_count < 2) {
+    taxonomy_check_vocabulary_hierarchy($form['#vocabulary'], $form_state['values']);
+  }
+  // If we've increased the number of parents and this is a single or flat
+  // hierarchy, update the vocabulary immediately.
+  elseif ($current_parent_count > $previous_parent_count && $form['#vocabulary']->hierarchy < 2) {
+    $form['#vocabulary']->hierarchy = $current_parent_count == 1 ? 1 : 2;
+    taxonomy_vocabulary_save($form['#vocabulary']);
   }
 
   $form_state['tid'] = $term->tid;

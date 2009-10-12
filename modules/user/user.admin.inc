@@ -1,5 +1,5 @@
 <?php
-// $Id: user.admin.inc,v 1.81 2009/10/02 14:49:10 dries Exp $
+// $Id: user.admin.inc,v 1.84 2009/10/10 16:48:39 webchick Exp $
 
 /**
  * @file
@@ -12,7 +12,7 @@ function user_admin($callback_arg = '') {
   switch ($op) {
     case t('Create new account'):
     case 'create':
-      $build['user_register'] = drupal_get_form('user_register');
+      $build['user_register'] = drupal_get_form('user_register_form');
       break;
     default:
       if (!empty($_POST['accounts']) && isset($_POST['operation']) && ($_POST['operation'] == 'cancel')) {
@@ -128,13 +128,12 @@ function user_filter_form_submit($form, &$form_state) {
 function user_admin_account() {
 
   $header = array(
-    array(),
-    array('data' => t('Username'), 'field' => 'u.name'),
-    array('data' => t('Status'), 'field' => 'u.status'),
-    t('Roles'),
-    array('data' => t('Member for'), 'field' => 'u.created', 'sort' => 'desc'),
-    array('data' => t('Last access'), 'field' => 'u.access'),
-    t('Operations')
+    'username' => array('data' => t('Username'), 'field' => 'u.name'),
+    'status' => array('data' => t('Status'), 'field' => 'u.status'),
+    'roles' => array('data' => t('Roles')),
+    'member_for' => array('data' => t('Member for'), 'field' => 'u.created', 'sort' => 'desc'),
+    'access' => array('data' => t('Last access'), 'field' => 'u.access'),
+    'operations' => array('data' => t('Operations')),
   );
 
   $query = db_select('users', 'u');
@@ -168,6 +167,7 @@ function user_admin_account() {
     '#options' => $options,
     '#default_value' => 'unblock',
   );
+  $options = array();
   $form['options']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Update'),
@@ -179,25 +179,30 @@ function user_admin_account() {
   $roles = user_roles(TRUE);
   $accounts = array();
   foreach ($result as $account) {
-    $accounts[$account->uid] = '';
-    $form['name'][$account->uid] = array('#markup' => theme('username', $account));
-    $form['status'][$account->uid] =  array('#markup' => $status[$account->status]);
     $users_roles = array();
     $roles_result = db_query('SELECT rid FROM {users_roles} WHERE uid = :uid', array(':uid' => $account->uid));
     foreach ($roles_result as $user_role) {
       $users_roles[] = $roles[$user_role->rid];
     }
     asort($users_roles);
-    $form['roles'][$account->uid][0] = array('#markup' => theme('item_list', $users_roles));
-    $form['member_for'][$account->uid] = array('#markup' => format_interval(REQUEST_TIME - $account->created));
-    $form['last_access'][$account->uid] =  array('#markup' => $account->access ? t('@time ago', array('@time' => format_interval(REQUEST_TIME - $account->access))) : t('never'));
-    $form['operations'][$account->uid] = array('#markup' => l(t('edit'), "user/$account->uid/edit", array('query' => $destination)));
+    
+    $options[$account->uid] = array(
+      'username' => theme('username', array('account' => $account)),
+      'status' =>  $status[$account->status],
+      'roles' => theme('item_list', array('items' => $users_roles)),
+      'member_for' => format_interval(REQUEST_TIME - $account->created),
+      'access' =>  $account->access ? t('@time ago', array('@time' => format_interval(REQUEST_TIME - $account->access))) : t('never'),
+      'operations' => l(t('edit'), "user/$account->uid/edit", array('query' => $destination)),
+    );
   }
+  
   $form['accounts'] = array(
-    '#type' => 'checkboxes',
-    '#options' => $accounts
+    '#type' => 'tableselect',
+    '#header' => $header,
+    '#options' => $options,
+    '#empty' => t('No people available.'),
   );
-  $form['pager'] = array('#markup' => theme('pager', NULL));
+  $form['pager'] = array('#markup' => theme('pager', array('tags' => NULL)));
 
   return $form;
 }
@@ -677,7 +682,9 @@ function user_admin_permissions_submit($form, &$form_state) {
  *
  * @ingroup themeable
  */
-function theme_user_admin_permissions($form) {
+function theme_user_admin_permissions($variables) {
+  $form = $variables['form'];
+
   $roles = user_roles();
   foreach (element_children($form['permission']) as $key) {
     $row = array();
@@ -702,7 +709,7 @@ function theme_user_admin_permissions($form) {
     $header[] = array('data' => drupal_render($form['role_names'][$rid]), 'class' => array('checkbox'));
   }
   $output = theme('system_compact_link');
-  $output .= theme('table', $header, $rows, array('id' => 'permissions'));
+  $output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'permissions')));
   $output .= drupal_render_children($form);
   return $output;
 }
@@ -765,7 +772,7 @@ function user_admin_role_validate($form, &$form_state) {
   if ($form_state['values']['name']) {
     if ($form_state['values']['op'] == t('Save role')) {
       $role = user_role_load($form_state['values']['name']);
-      if ($role && $role->rid != $form_state['values']['rid']) {    
+      if ($role && $role->rid != $form_state['values']['rid']) {
         form_set_error('name', t('The role name %name already exists. Please choose another role name.', array('%name' => $form_state['values']['name'])));
       }
     }
@@ -799,56 +806,13 @@ function user_admin_role_submit($form, &$form_state) {
 }
 
 /**
- * Theme user administration overview.
- *
- * @ingroup themeable
- */
-function theme_user_admin_account($form) {
-  // Overview table:
-  $header = array(
-    theme('table_select_header_cell'),
-    array('data' => t('Username'), 'field' => 'u.name'),
-    array('data' => t('Status'), 'field' => 'u.status'),
-    t('Roles'),
-    array('data' => t('Member for'), 'field' => 'u.created', 'sort' => 'desc'),
-    array('data' => t('Last access'), 'field' => 'u.access'),
-    t('Operations')
-  );
-
-  $output = drupal_render($form['options']);
-  if (!empty($form['name'])) {
-    foreach (element_children($form['name']) as $key) {
-      $rows[] = array(
-        drupal_render($form['accounts'][$key]),
-        drupal_render($form['name'][$key]),
-        drupal_render($form['status'][$key]),
-        drupal_render($form['roles'][$key]),
-        drupal_render($form['member_for'][$key]),
-        drupal_render($form['last_access'][$key]),
-        drupal_render($form['operations'][$key]),
-      );
-    }
-  }
-  else {
-    $rows[] = array(array('data' => t('No users available.'), 'colspan' => '7'));
-  }
-
-  $output .= theme('table', $header, $rows);
-  if ($form['pager']['#markup']) {
-    $output .= drupal_render($form['pager']);
-  }
-
-  $output .= drupal_render_children($form);
-
-  return $output;
-}
-
-/**
  * Theme the new-role form.
  *
  * @ingroup themeable
  */
-function theme_user_admin_new_role($form) {
+function theme_user_admin_new_role($variables) {
+  $form = $variables['form'];
+
   $header = array(t('Name'), array('data' => t('Operations'), 'colspan' => 2));
   foreach (user_roles() as $rid => $name) {
     $edit_permissions = l(t('edit permissions'), 'admin/config/people/permissions/' . $rid);
@@ -862,7 +826,7 @@ function theme_user_admin_new_role($form) {
   $rows[] = array(drupal_render($form['name']), array('data' => drupal_render($form['submit']), 'colspan' => 2));
 
   $output = drupal_render_children($form);
-  $output .= theme('table', $header, $rows);
+  $output .= theme('table', array('header' => $header, 'rows' => $rows));
 
   return $output;
 }
@@ -872,7 +836,9 @@ function theme_user_admin_new_role($form) {
  *
  * @ingroup themeable
  */
-function theme_user_filter_form($form) {
+function theme_user_filter_form($variables) {
+  $form = $variables['form'];
+
   $output = '<div id="user-admin-filter">';
   $output .= drupal_render($form['filters']);
   $output .= '</div>';
@@ -885,7 +851,9 @@ function theme_user_filter_form($form) {
  *
  * @ingroup themeable
  */
-function theme_user_filters($form) {
+function theme_user_filters($variables) {
+  $form = $variables['form'];
+
   $output = '<ul class="clearfix">';
   if (!empty($form['current'])) {
     foreach (element_children($form['current']) as $key) {

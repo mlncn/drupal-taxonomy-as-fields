@@ -1,5 +1,5 @@
 <?php
-// $Id: block.module,v 1.383 2009/10/05 01:18:25 webchick Exp $
+// $Id: block.module,v 1.387 2009/10/12 18:37:30 dries Exp $
 
 /**
  * @file
@@ -195,7 +195,7 @@ function block_block_save($delta = 0, $edit = array()) {
  */
 function block_block_view($delta = 0, $edit = array()) {
   $block = db_query('SELECT body, format FROM {block_custom} WHERE bid = :bid', array(':bid' => $delta))->fetchObject();
-  $data['content'] = check_markup($block->body, $block->format);
+  $data['content'] = check_markup($block->body, $block->format, '', TRUE);
   return $data;
 }
 
@@ -425,40 +425,31 @@ function block_form_user_profile_form_alter(&$form, &$form_state) {
     $account = $form['#user'];
     $rids = array_keys($account->roles);
     $result = db_query("SELECT DISTINCT b.* FROM {block} b LEFT JOIN {block_role} r ON b.module = r.module AND b.delta = r.delta WHERE b.status = 1 AND b.custom <> 0 AND (r.rid IN (:rids) OR r.rid IS NULL) ORDER BY b.weight, b.module", array(':rids' => $rids));
-    $form['block'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Personalize blocks'),
-      '#description' => t('Blocks consist of content or information that complements the main content of the page. Enable or disable optional blocks using the checkboxes below.'),
-      '#weight' => 3,
-      '#collapsible' => TRUE,
-      '#tree' => TRUE
-    );
+
+    $blocks = array();
     foreach ($result as $block) {
       $data = module_invoke($block->module, 'block_info');
       if ($data[$block->delta]['info']) {
-        $return = TRUE;
-        $form['block'][$block->module][$block->delta] = array(
+        $blocks[$block->module][$block->delta] = array(
           '#type' => 'checkbox',
           '#title' => check_plain($data[$block->delta]['info']),
           '#default_value' => isset($account->block[$block->module][$block->delta]) ? $account->block[$block->module][$block->delta] : ($block->custom == 1),
         );
       }
     }
-
-    if (!isset($return)) {
-      $form['block']['#access'] = FALSE;
+    // Only display the fieldset if there are any personalizable blocks.
+    if ($blocks) {
+      $form['block'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Personalize blocks'),
+        '#description' => t('Blocks consist of content or information that complements the main content of the page. Enable or disable optional blocks using the checkboxes below.'),
+        '#weight' => 3,
+        '#collapsible' => TRUE,
+        '#tree' => TRUE,
+      );
+      $form['block'] += $blocks;
     }
   }
-}
-
-/**
- * Implement hook_user_validate().
- */
-function block_user_validate(&$edit, $account, $category) {
-  if (empty($edit['block'])) {
-    $edit['block'] = array();
-  }
-  return $edit;
 }
 
 /**
@@ -852,6 +843,20 @@ function block_filter_format_delete($format, $fallback) {
 }
 
 /**
+ * Implement hook_menu_delete().
+ */
+function block_menu_delete($menu) {
+  db_delete('block')
+    ->condition('module', 'menu')
+    ->condition('delta', $menu['menu_name'])
+    ->execute();
+  db_delete('block_role')
+    ->condition('module', 'menu')
+    ->condition('delta', $menu['menu_name'])
+    ->execute();
+}
+
+/**
  * Implement hook_form_FORM_ID_alter().
  */
 function block_form_system_performance_settings_alter(&$form, &$form_state) {
@@ -864,13 +869,4 @@ function block_form_system_performance_settings_alter(&$form, &$form_state) {
     '#description' => $disabled ? t('Block caching is inactive because you have enabled modules defining content access restrictions.') : NULL,
     '#weight' => -1,
   );
-
-  // Check if the "Who's online" block is enabled.
-  $online_block_enabled = db_query_range("SELECT 1 FROM {block} b WHERE module = 'user' AND delta = 'online' AND status = 1", 0, 1)->fetchField();
-
-  // If the "Who's online" block is enabled, append some descriptive text to
-  // the end of the form description.
-  if ($online_block_enabled) {
-    $form['page_cache']['cache']['#description'] .=  '<p>' . t('When caching is enabled, anonymous user sessions are only saved to the database when needed, so the "Who\'s online" block does not display the number of anonymous users.') . '</p>';
-  }
 }

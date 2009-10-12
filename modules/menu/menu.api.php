@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.api.php,v 1.14 2009/10/05 04:36:39 webchick Exp $
+// $Id: menu.api.php,v 1.16 2009/10/11 06:05:53 webchick Exp $
 
 /**
  * @file
@@ -291,7 +291,7 @@ function hook_translated_menu_link_alter(&$item, $map) {
   }
 }
 
- /**
+/**
  * Inform modules that a menu link has been created.
  *
  * This hook is used to notify modules that menu items have been
@@ -355,6 +355,141 @@ function hook_menu_link_delete($link) {
   db_delete('menu_example')
     ->condition('mlid', $link['mlid'])
     ->execute();
+}
+
+/**
+ * Informs modules that a custom menu was created.
+ *
+ * This hook is used to notify modules that a custom menu has been created.
+ * Contributed modules may use the information to perform actions based on the
+ * information entered into the menu system.
+ *
+ * @param $menu
+ *   An array representing a custom menu:
+ *   - menu_name: The unique name of the custom menu.
+ *   - title: The human readable menu title.
+ *   - description: The custom menu description.
+ *
+ * @see hook_menu_update()
+ * @see hook_menu_delete()
+ */
+function hook_menu_insert($menu) {
+  // For example, we track available menus in a variable.
+  $my_menus = variable_get('my_module_menus', array());
+  $my_menus[$menu['menu_name']] = $menu['menu_name'];
+  variable_set('my_module_menus', $my_menus);
+}
+
+/**
+ * Informs modules that a custom menu was updated.
+ *
+ * This hook is used to notify modules that a custom menu has been updated.
+ * Contributed modules may use the information to perform actions based on the
+ * information entered into the menu system.
+ *
+ * @param $menu
+ *   An array representing a custom menu:
+ *   - menu_name: The unique name of the custom menu.
+ *   - title: The human readable menu title.
+ *   - description: The custom menu description.
+ *   - old_name: The current 'menu_name'. Note that internal menu names cannot
+ *     be changed after initial creation.
+ *
+ * @see hook_menu_insert()
+ * @see hook_menu_delete()
+ */
+function hook_menu_update($menu) {
+  // For example, we track available menus in a variable.
+  $my_menus = variable_get('my_module_menus', array());
+  $my_menus[$menu['menu_name']] = $menu['menu_name'];
+  variable_set('my_module_menus', $my_menus);
+}
+
+/**
+ * Informs modules that a custom menu was deleted.
+ *
+ * This hook is used to notify modules that a custom menu along with all links
+ * contained in it (if any) has been deleted. Contributed modules may use the
+ * information to perform actions based on the information entered into the menu
+ * system.
+ *
+ * @param $link
+ *   An array representing a custom menu:
+ *   - menu_name: The unique name of the custom menu.
+ *   - title: The human readable menu title.
+ *   - description: The custom menu description.
+ *
+ * @see hook_menu_insert()
+ * @see hook_menu_update()
+ */
+function hook_menu_delete($menu) {
+  // Delete the record from our variable.
+  $my_menus = variable_get('my_module_menus', array());
+  unset($my_menus[$menu['menu_name']]);
+  variable_set('my_module_menus', $my_menus);
+}
+
+/**
+ * Alter tabs and actions displayed on the page before they are rendered.
+ *
+ * This hook is invoked by menu_local_tasks(). The system-determined tabs and
+ * actions are passed in by reference. Additional tabs or actions may be added,
+ * or existing items altered.
+ *
+ * Each tab or action is an associative array containing:
+ * - #theme: The theme function to use to render.
+ * - #link: An associative array containing:
+ *   - title: The localized title of the link.
+ *   - href: The system path to link to.
+ *   - localized_options: An array of options to pass to url().
+ * - #active: Whether the link should be marked as 'active'.
+ *
+ * @param $data
+ *   An associative array containing:
+ *   - actions: An associative array containing:
+ *     - count: The amount of actions determined by the menu system, which can
+ *       be ignored.
+ *     - output: A list of of actions, each one being an associative array
+ *       as described above.
+ *   - tabs: An indexed array (list) of tab levels (up to 2 levels), each
+ *     containing an associative array:
+ *     - count: The amount of tabs determined by the menu system. This value
+ *       does not need to be altered if there is more than one tab.
+ *     - output: A list of of tabs, each one being an associative array as
+ *       described above.
+ */
+function hook_menu_local_tasks_alter(&$data, $router_item, $root_path) {
+  // Add an action linking to node/add to all pages.
+  $data['actions']['output'][] = array(
+    '#theme' => 'menu_local_task',
+    '#link' => array(
+      'title' => t('Add new content'),
+      'href' => 'node/add',
+      'localized_options' => array(
+        'attributes' => array(
+          'title' => t('Add new content'),
+        ),
+      ),
+    ),
+  );
+
+  // Add a tab linking to node/add to all pages.
+  $data['tabs'][0]['output'][] = array(
+    '#theme' => 'menu_local_task',
+    '#link' => array(
+      'title' => t('Example tab'),
+      'href' => 'node/add',
+      'localized_options' => array(
+        'attributes' => array(
+          'title' => t('Add new content'),
+        ),
+      ),
+    ),
+    // Define whether this link is active. This can be omitted for
+    // implementations that add links to pages outside of the current page
+    // context.
+    '#active' => ($router_item['path'] == $root_path),
+  );
 }
 
 /**

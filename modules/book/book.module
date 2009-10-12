@@ -1,5 +1,5 @@
 <?php
-// $Id: book.module,v 1.516 2009/09/29 15:31:14 dries Exp $
+// $Id: book.module,v 1.518 2009/10/11 03:07:17 webchick Exp $
 
 /**
  * @file
@@ -264,7 +264,7 @@ function book_block_view($delta = '') {
       $tree = menu_tree_all_data($node->book['menu_name'], $node->book);
       // There should only be one element at the top level.
       $data = array_shift($tree);
-      $block['subject'] = theme('book_title_link', $data['link']);
+      $block['subject'] = theme('book_title_link', array('link' => $data['link']));
       $block['content'] = ($data['below']) ? menu_tree_output($data['below']) : '';
     }
   }
@@ -305,7 +305,9 @@ function book_block_save($delta = '', $edit = array()) {
  *
  * @ingroup themeable
  */
-function theme_book_title_link($link) {
+function theme_book_title_link($variables) {
+  $link = $variables['link'];
+
   $link['options']['attributes']['class'] = array('book-title');
 
   return l($link['title'], $link['href'], $link['options']);
@@ -475,7 +477,7 @@ function _book_add_form_elements(&$form, $node) {
 
   if (isset($node->nid) && ($nid == $node->book['original_bid']) && ($node->book['parent_depth_limit'] == 0)) {
     // This is the top level node in a maximum depth book and thus cannot be moved.
-    $options[$node->nid] = $node->title;
+    $options[$node->nid] = $node->title[FIELD_LANGUAGE_NONE][0]['value'];
   }
   else {
     foreach (book_get_books() as $book) {
@@ -524,7 +526,7 @@ function _book_update_outline($node) {
   $new = empty($node->book['mlid']);
 
   $node->book['link_path'] = 'node/' . $node->nid;
-  $node->book['link_title'] = $node->title;
+  $node->book['link_title'] = $node->title[FIELD_LANGUAGE_NONE][0]['value'];
   $node->book['parent_mismatch'] = FALSE; // The normal case.
 
   if ($node->book['bid'] == $node->nid) {
@@ -737,7 +739,7 @@ function book_node_view($node, $build_mode) {
   if ($build_mode == 'full') {
     if (!empty($node->book['bid']) && empty($node->in_preview)) {
       $node->content['book_navigation'] = array(
-        '#markup' => theme('book_navigation', $node->book),
+        '#markup' => theme('book_navigation', array('book_link' => $node->book)),
         '#weight' => 100,
       );
     }
@@ -880,7 +882,7 @@ function book_form_node_delete_confirm_alter(&$form, $form_state) {
 
   if (isset($node->book) && $node->book['has_children']) {
     $form['book_warning'] = array(
-      '#markup' => '<p>' . t('%title is part of a book outline, and has associated child pages. If you proceed with deletion, the child pages will be relocated automatically.', array('%title' => $node->title)) . '</p>',
+      '#markup' => '<p>' . t('%title is part of a book outline, and has associated child pages. If you proceed with deletion, the child pages will be relocated automatically.', array('%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'])) . '</p>',
       '#weight' => -10,
     );
   }
@@ -1087,7 +1089,7 @@ function book_node_export($node, $children = '') {
   node_build_content($node, 'print');
   $node->rendered = drupal_render($node->content);
 
-  return theme('book_node_export_html', $node, $children);
+  return theme('book_node_export_html', array('node' => $node, 'children' => $children));
 }
 
 /**
@@ -1101,7 +1103,7 @@ function book_node_export($node, $children = '') {
  */
 function template_preprocess_book_node_export_html(&$variables) {
   $variables['depth'] = $variables['node']->book['depth'];
-  $variables['title'] = check_plain($variables['node']->title);
+  $variables['title'] = check_plain($variables['node']->title[FIELD_LANGUAGE_NONE][0]['value']);
   $variables['content'] = $variables['node']->rendered;
 }
 

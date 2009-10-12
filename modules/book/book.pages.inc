@@ -1,5 +1,5 @@
 <?php
-// $Id: book.pages.inc,v 1.16 2009/09/18 00:12:45 webchick Exp $
+// $Id: book.pages.inc,v 1.18 2009/10/11 03:07:17 webchick Exp $
 
 /**
  * @file
@@ -15,7 +15,7 @@ function book_render() {
     $book_list[] = l($book['title'], $book['href'], $book['options']);
   }
 
-  return theme('item_list', $book_list);
+  return theme('item_list', array('items' => $book_list));
 }
 
 /**
@@ -79,7 +79,7 @@ function book_export_html($nid) {
       $contents = book_export_traverse($tree, 'book_node_export');
     }
 
-    return theme('book_export_html', $node->title, $contents, $node->book['depth']);
+    return theme('book_export_html', array('title' => $node->title[FIELD_LANGUAGE_NONE][0]['value'], 'contents' => $contents, 'depth' => $node->book['depth']));
   }
   else {
     drupal_access_denied();
@@ -90,7 +90,7 @@ function book_export_html($nid) {
  * Menu callback; show the outline form for a single node.
  */
 function book_outline($node) {
-  drupal_set_title($node->title);
+  drupal_set_title($node->title[FIELD_LANGUAGE_NONE][0]['value']);
   return drupal_get_form('book_outline_form', $node);
 }
 
@@ -188,7 +188,7 @@ function book_outline_form_submit($form, &$form_state) {
  */
 function book_remove_form($form, &$form_state, $node) {
   $form['#node'] = $node;
-  $title = array('%title' => $node->title);
+  $title = array('%title' => $node->title[FIELD_LANGUAGE_NONE][0]['value']);
 
   if ($node->book['has_children']) {
     $description = t('%title has associated child pages, which will be relocated automatically to maintain their connection to the book. To recreate the hierarchy (as it was before removing this page), %title may be added again using the Outline tab, and each of its former child pages will need to be relocated manually.', $title);

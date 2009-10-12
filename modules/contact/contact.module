@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.module,v 1.128 2009/09/26 00:13:19 dries Exp $
+// $Id: contact.module,v 1.134 2009/10/11 18:34:10 dries Exp $
 
 /**
  * @file
@@ -37,13 +37,17 @@ function contact_help($path, $arg) {
  */
 function contact_permission() {
   return array(
-    'administer site-wide contact form' => array(
-      'title' => t('Administer site-wide contact form'),
-      'description' => t('Configure site-wide contact form administration settings.'),
+    'administer contact forms' => array(
+      'title' => t('Administer contact forms'),
+      'description' => t('Manage contact forms and configure contact form administrative settings.'),
     ),
     'access site-wide contact form' => array(
       'title' => t('Access site-wide contact form'),
-      'description' => t('Send feedback to administrators via e-mail using the site-wide contact form.'),
+      'description' => t('Send e-mails to administrator-defined recipients using the site-wide contact form.'),
+    ),
+    'access user contact forms' => array(
+      'title' => t('Access user contact forms'),
+      'description' => t('Send e-mails to users using their contact forms.'),
     ),
   );
 }
@@ -55,15 +59,15 @@ function contact_menu() {
   $items['admin/structure/contact'] = array(
     'title' => 'Contact form',
     'description' => 'Create a system contact form and set up categories for the form to use.',
-    'page callback' => 'contact_admin_categories',
-    'access arguments' => array('administer site-wide contact form'),
+    'page callback' => 'contact_category_list',
+    'access arguments' => array('administer contact forms'),
     'file' => 'contact.admin.inc',
   );
   $items['admin/structure/contact/add'] = array(
     'title' => 'Add category',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('contact_admin_edit', 3),
-    'access arguments' => array('administer site-wide contact form'),
+    'page arguments' => array('contact_category_edit_form'),
+    'access arguments' => array('administer contact forms'),
     'type' => MENU_LOCAL_ACTION,
     'weight' => 1,
     'file' => 'contact.admin.inc',
@@ -71,30 +75,31 @@ function contact_menu() {
   $items['admin/structure/contact/edit/%contact'] = array(
     'title' => 'Edit contact category',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('contact_admin_edit', 3, 4),
-    'access arguments' => array('administer site-wide contact form'),
+    'page arguments' => array('contact_category_edit_form', 4),
+    'access arguments' => array('administer contact forms'),
     'type' => MENU_CALLBACK,
     'file' => 'contact.admin.inc',
   );
   $items['admin/structure/contact/delete/%contact'] = array(
     'title' => 'Delete contact',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('contact_admin_delete', 4),
-    'access arguments' => array('administer site-wide contact form'),
+    'page arguments' => array('contact_category_delete_form', 4),
+    'access arguments' => array('administer contact forms'),
     'type' => MENU_CALLBACK,
     'file' => 'contact.admin.inc',
   );
   $items['contact'] = array(
     'title' => 'Contact',
-    'page callback' => 'contact_site_page',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contact_site_form'),
     'access arguments' => array('access site-wide contact form'),
     'type' => MENU_SUGGESTED_ITEM,
     'file' => 'contact.pages.inc',
   );
   $items['user/%user/contact'] = array(
     'title' => 'Contact',
-    'page callback' => 'contact_personal_page',
-    'page arguments' => array(1),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contact_personal_form', 1),
     'type' => MENU_LOCAL_TASK,
     'access callback' => '_contact_personal_tab_access',
     'access arguments' => array(1),
@@ -105,47 +110,51 @@ function contact_menu() {
 }
 
 /**
- * Determine permission to a user's personal contact form.
+ * Menu access callback for a user's personal contact form.
+ *
+ * @param $account
+ *   A user account object.
+ * @return
+ *   TRUE if the current user has access to the requested user's contact form,
+ *   or FALSE otherwise.
  */
-function _contact_personal_tab_access($account) {
+function _contact_personal_tab_access(stdClass $account) {
   global $user;
-  if (!isset($account->contact)) {
-    $account->contact = FALSE;
+
+  // Anonymous users cannot have contact forms.
+  if (!$account->uid) {
+    return FALSE;
   }
-  return
-    $account && $user->uid &&
-    (
-      ($user->uid != $account->uid && $account->contact) ||
-      user_access('administer users')
-    );
+
+  // User administrators should always have access to personal contact forms.
+  if (user_access('administer users')) {
+    return TRUE;
+  }
+
+  // Users may not contact themselves.
+  if ($user->uid == $account->uid) {
+    return FALSE;
+  }
+
+  // If the requested user has disabled their contact form, or this preference
+  // has not yet been saved, do not allow users to contact them.
+  if (empty($account->contact)) {
+    return FALSE;
+  }
+
+  return user_access('access user contact forms');
 }
 
 /**
- * Load the data for a single contact category.
+ * Load a contact category.
+ *
+ * @param $cid
+ *   The contact category ID.
+ * @return
+ *   An array with the contact category's data.
  */
 function contact_load($cid) {
-  $contact = db_query("SELECT cid, category, recipients, reply, weight, selected FROM {contact} WHERE cid = :cid", array(':cid' => $cid))
-    ->fetchAssoc();
-  return empty($contact) ? FALSE : $contact;
-}
-
-/**
- * Implement hook_form_FORM_ID_alter().
- */
-function contact_form_user_profile_form_alter(&$form, &$form_state) {
-  if ($form['#user_category'] == 'account') {
-    $account = $form['#user'];
-    $form['contact'] = array('#type' => 'fieldset',
-      '#title' => t('Contact settings'),
-      '#weight' => 5,
-      '#collapsible' => TRUE,
-    );
-    $form['contact']['contact'] = array('#type' => 'checkbox',
-      '#title' => t('Personal contact form'),
-      '#default_value' => !empty($account->contact) ? $account->contact : FALSE,
-      '#description' => t('Allow other users to contact you via a <a href="@url">personal contact form</a> which keeps your e-mail address hidden. Note that some privileged users such as site administrators are still able to contact you even if you choose to disable this feature.', array('@url' => url("user/$account->uid/contact"))),
-    );
-  }
+  return db_query("SELECT * FROM {contact} WHERE cid = :cid", array(':cid' => $cid))->fetchAssoc();
 }
 
 /**
@@ -160,27 +169,38 @@ function contact_user_insert(&$edit, $account, $category) {
  */
 function contact_mail($key, &$message, $params) {
   $language = $message['language'];
+  $variables = array(
+    '!site-name' => variable_get('site_name', 'Drupal'),
+    '!subject' => $params['subject'],
+    '!category' => isset($params['category']['category']) ? $params['category']['category'] : '',
+    '!form-url' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language)),
+    '!sender-name' => $params['sender']->name,
+    '!sender-url' => $params['sender']->uid ? url('user/' . $params['sender']->uid, array('absolute' => TRUE, 'language' => $language)) : $params['sender']->mail,
+  );
+
   switch ($key) {
     case 'page_mail':
     case 'page_copy':
-      $contact = $params['contact'];
-      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), array('langcode' => $language->language));
-      $message['body'][] = t("!name sent a message using the contact form at !form.", array('!name' => $params['name'], '!form' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language))), array('langcode' => $language->language));
+      $message['subject'] .= t('[!category] !subject', $variables, array('langcode' => $language->language));
+      $message['body'][] = t("!sender-name (!sender-url) sent a message using the contact form at !form-url.", $variables, array('langcode' => $language->language));
       $message['body'][] = $params['message'];
       break;
+
     case 'page_autoreply':
-      $contact = $params['contact'];
-      $message['subject'] .= t('[!category] !subject', array('!category' => $contact['category'], '!subject' => $params['subject']), array('langcode' => $language->language));
-      $message['body'][] = $contact['reply'];
+      $message['subject'] .= t('[!category] !subject', $variables, array('langcode' => $language->language));
+      $message['body'][] = $params['category']['reply'];
       break;
+
     case 'user_mail':
     case 'user_copy':
-      $user = $params['user'];
-      $account = $params['account'];
-      $message['subject'] .= '[' . variable_get('site_name', 'Drupal') . '] ' . $params['subject'];
-      $message['body'][] = "$account->name,";
-      $message['body'][] = t("!name (!name-url) has sent you a message via your contact form (!form-url) at !site.", array('!name' => $user->name, '!name-url' => url("user/$user->uid", array('absolute' => TRUE, 'language' => $language)), '!form-url' => url($_GET['q'], array('absolute' => TRUE, 'language' => $language)), '!site' => variable_get('site_name', 'Drupal')), array('langcode' => $language->language));
-      $message['body'][] = t("If you don't want to receive such e-mails, you can change your settings at !url.", array('!url' => url("user/$account->uid", array('absolute' => TRUE, 'language' => $language))), array('langcode' => $language->language));
+      $variables += array(
+        '!recipient-name' => $params['recipient']->name,
+        '!recipient-edit-url' => url('user/' . $params['recipient']->uid . '/edit', array('absolute' => TRUE, 'language' => $language)),
+      );
+      $message['subject'] .= t('[!site-name] !subject', $variables, array('langcode' => $language->language));
+      $message['body'][] = t('!recipient-name,', $variables, array('langcode' => $language->language));
+      $message['body'][] = t("!sender-name (!sender-url) has sent you a message via your contact form (!form-url) at !site-name.", $variables, array('langcode' => $language->language));
+      $message['body'][] = t("If you don't want to receive such e-mails, you can change your settings at !recipient-edit-url.", $variables, array('langcode' => $language->language));
       $message['body'][] = t('Message:', array(), array('langcode' => $language->language));
       $message['body'][] = $params['message'];
       break;
@@ -188,17 +208,43 @@ function contact_mail($key, &$message, $params) {
 }
 
 /**
- * Implement of hook_form_FORM_ID_alter().
+ * Implement hook_form_FORM_ID_alter().
+ *
+ * Add the enable personal contact form to an individual user's account page.
  */
-function contact_form_user_admin_settings_alter(&$form, $form_state) {
+function contact_form_user_profile_form_alter(&$form, &$form_state) {
+  if ($form['#user_category'] == 'account') {
+    $account = $form['#user'];
+    $form['contact'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Contact settings'),
+      '#weight' => 5,
+      '#collapsible' => TRUE,
+    );
+    $form['contact']['contact'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Personal contact form'),
+      '#default_value' => !empty($account->contact) ? $account->contact : FALSE,
+      '#description' => t('Allow other users to contact you via a <a href="@url">personal contact form</a> which keeps your e-mail address hidden. Note that some privileged users such as site administrators are still able to contact you even if you choose to disable this feature.', array('@url' => url("user/$account->uid/contact"))),
+    );
+  }
+}
+
+/**
+ * Implement of hook_form_FORM_ID_alter().
+ *
+ * Add the default personal contact setting on the user settings page.
+ */
+function contact_form_user_admin_settings_alter(&$form, &$form_state) {
   $form['contact'] = array(
     '#type' => 'fieldset',
-    '#title' => t('Contact forms'),
+    '#title' => t('Contact settings'),
     '#weight' => 0,
   );
   $form['contact']['contact_default_status'] = array(
     '#type' => 'checkbox',
     '#title' => t('Enable the personal contact form by default for new users.'),
+    '#description' => t('Changing this setting will not affect existing users.'),
     '#default_value' => 1,
   );
 }

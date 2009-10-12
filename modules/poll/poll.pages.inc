@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.pages.inc,v 1.20 2009/07/29 06:39:34 dries Exp $
+// $Id: poll.pages.inc,v 1.22 2009/10/11 03:07:19 webchick Exp $
 
 /**
  * @file
@@ -42,7 +42,7 @@ function poll_page() {
     $output .= '<li>' . l($node->title, "node/$node->nid") . ' - ' . format_plural($node->votes, '1 vote', '@count votes') . ' - ' . ($node->active ? t('open') : t('closed')) . '</li>';
   }
   $output .= '</ul>';
-  $output .= theme("pager", NULL);
+  $output .= theme("pager", array('tags' => NULL));
   return $output;
 }
 
@@ -51,7 +51,7 @@ function poll_page() {
  */
 function poll_votes($node) {
   $votes_per_page = 20;
-  drupal_set_title($node->title);
+  drupal_set_title($node->title[FIELD_LANGUAGE_NONE][0]['value']);
 
   $header[] = array('data' => t('Visitor'), 'field' => 'u.name');
   $header[] = array('data' => t('Vote'), 'field' => 'pc.chtext');
@@ -72,14 +72,14 @@ function poll_votes($node) {
   $rows = array();
   foreach ($queried_votes as $vote) {
     $rows[] = array(
-      $vote->name ? theme('username', $vote) : check_plain($vote->hostname),
+      $vote->name ? theme('username', array('account' => $vote)) : check_plain($vote->hostname),
       check_plain($vote->chtext),
       format_date($vote->timestamp),
     );
   }
   $build['poll_votes_table'] = array(
-    '#theme' => 'table', 
-    '#header' => $header, 
+    '#theme' => 'table',
+    '#header' => $header,
     '#rows' => $rows,
     '#prefix' => t('This table lists all the recorded votes for this poll. If anonymous users are allowed to vote, they will be identified by the IP address of the computer they used when they voted.'),
   );
@@ -91,7 +91,7 @@ function poll_votes($node) {
  * Callback for the 'results' tab for polls you can vote on
  */
 function poll_results($node) {
-  drupal_set_title($node->title);
+  drupal_set_title($node->title[FIELD_LANGUAGE_NONE][0]['value']);
   $node->show_results = TRUE;
   return node_show($node);
 }

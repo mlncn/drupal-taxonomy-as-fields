@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.module,v 1.293 2009/10/05 01:18:25 webchick Exp $
+// $Id: filter.module,v 1.296 2009/10/10 21:39:02 webchick Exp $
 
 /**
  * @file
@@ -165,9 +165,22 @@ function filter_format_load($format) {
  * Save a text format object to the database.
  *
  * @param $format
- *   A format object.
+ *   A format object using the properties:
+ *   - 'name': The title of the text format.
+ *   - 'format': (optional) The internal ID of the text format. If omitted, a
+ *     new text format is created.
+ *   - 'roles': (optional) An associative array containing the roles allowed to
+ *     access/use the text format.
+ *   - 'filters': (optional) An associative, multi-dimensional array of filters
+ *     assigned to the text format, using the properties:
+ *     - 'weight': The weight of the filter in the text format.
+ *     - 'status': A boolean indicating whether the filter is enabled in the
+ *       text format.
+ *     - 'module': The name of the module implementing the filter.
+ *     - 'settings': (optional) An array of configured settings for the filter.
+ *       See hook_filter_info() for details.
  */
-function filter_format_save($format) {
+function filter_format_save(&$format) {
   $format->name = trim($format->name);
 
   // Add a new text format.
@@ -180,13 +193,18 @@ function filter_format_save($format) {
 
   // Get the filters currently active in the format, to add new filters
   // to the bottom.
-  $current = filter_list_format($format->format);
-  $filters = $format->filters;
-  foreach ($filters as $name => $filter) {
+  $current = filter_list_format($format->format, TRUE);
+  $filter_info = filter_get_filters();
+  if (!isset($format->filters)) {
+    $format->filters = array();
+  }
+  foreach ($format->filters as $name => $filter) {
     $fields = array();
     // Add new filters to the bottom.
     $fields['weight'] = isset($current[$name]->weight) ? $current[$name]->weight : 10;
     $fields['status'] = $filter['status'];
+    $fields['module'] = $filter_info[$name]['module'];
+    $format->filters[$name]['module'] = $filter_info[$name]['module'];
     // Only update settings if there are any.
     if (!empty($filter['settings'])) {
       $fields['settings'] = serialize($filter['settings']);
@@ -265,7 +283,7 @@ function filter_permission() {
     if (!empty($permission)) {
       // Only link to the text format configuration page if the user who is
       // viewing this will have access to that page.
-      $format_name_replacement = user_access('administer filters') ? l($format->name, 'admin/config/content/formats/' . $format->format) : theme('placeholder', $format->name);
+      $format_name_replacement = user_access('administer filters') ? l($format->name, 'admin/config/content/formats/' . $format->format) : theme('placeholder', array('text' => $format->name));
       $perms[$permission] = array(
         'title' => t("Use the %text_format text format", array('%text_format' => $format->name)),
         'description' => t('Use !text_format in forms when entering or editing content. %warning', array('!text_format' => $format_name_replacement, '%warning' => t('Warning: This permission may have security implications depending on how the text format is configured.'))),
@@ -371,7 +389,7 @@ function _filter_html_tips($filter, $format, $long = FALSE) {
           );
         }
       }
-      $output .= theme('table', $header, $rows);
+      $output .= theme('table', array('header' => $header, 'rows' => $rows));
 
       $output .= '<p>' . t('Most unusual characters can be directly entered without any problems.') . '</p>';
       $output .= '<p>' . t('If you do encounter problems, try using HTML character entities. A common example looks like &amp;amp; for an ampersand &amp; character. For a full list of entities see HTML\'s <a href="@html-entities">entities</a> page. Some of the available characters include:', array('@html-entities' => 'http://www.w3.org/TR/html4/sgml/entities.html')) . '</p>';
@@ -391,7 +409,7 @@ function _filter_html_tips($filter, $format, $long = FALSE) {
           array('data' => $entity[1], 'class' => array('get'))
         );
       }
-      $output .= theme('table', $header, $rows);
+      $output .= theme('table', array('header' => $header, 'rows' => $rows));
       return $output;
     }
 
@@ -568,6 +586,10 @@ function filter_get_filters() {
     foreach (module_implements('filter_info') as $module) {
       $info = module_invoke($module, 'filter_info');
       if (isset($info) && is_array($info)) {
+        // Assign the name of the module implementing the filters.
+        foreach (array_keys($info) as $name) {
+          $info[$name]['module'] = $module;
+        }
         $filters = array_merge($filters, $info);
       }
     }
@@ -648,22 +670,13 @@ function filter_list_format($format, $include_disabled = FALSE) {
 }
 
 /**
- * @name Filtering functions
- * @{
- * Modules which need to have content filtered can use these functions to
- * interact with the filter system.
- *
- * For more info, see the hook_filter() documentation.
- *
- * Note: because filters can inject JavaScript or execute PHP code, security is
- * vital here. When a user supplies a $format, you should validate it with
- * filter_access($format) before accepting/using it. This is normally done in
- * the validation stage of the node system. You should for example never make a
- * preview of content in a disallowed format.
- */
-
-/**
  * Run all the enabled filters on a piece of text.
+ *
+ * Note: Because filters can inject JavaScript or execute PHP code, security is
+ * vital here. When a user supplies a $format, you should validate it using
+ * filter_access($format) before accepting/using it. This is normally done in
+ * the validation stage of the Form API. You should for example never make a
+ * preview of content in a disallowed format.
  *
  * @param $text
  *   The text to be filtered.
@@ -679,15 +692,19 @@ function filter_list_format($format, $include_disabled = FALSE) {
  *   The caller may set this to FALSE when the output is already cached
  *   elsewhere to avoid duplicate cache lookups and storage.
  */
-function check_markup($text, $format = NULL, $langcode = '', $cache = TRUE) {
+function check_markup($text, $format = NULL, $langcode = '', $cache = FALSE) {
   if (empty($format)) {
     $format = filter_fallback_format();
   }
+  $cache = $cache && filter_format_allowcache($format);
+  $cache_id = '';
 
   // Check for a cached version of this piece of text.
-  $cache_id = $format . ':' . $langcode . ':' . md5($text);
-  if ($cache && $cached = cache_get($cache_id, 'cache_filter')) {
-    return $cached->data;
+  if ($cache) {
+    $cache_id = $format . ':' . $langcode . ':' . md5($text);
+    if ($cached = cache_get($cache_id, 'cache_filter')) {
+      return $cached->data;
+    }
   }
 
   // Convert all Windows and Mac newlines to a single newline, so filters only
@@ -713,7 +730,7 @@ function check_markup($text, $format = NULL, $langcode = '', $cache = TRUE) {
   }
 
   // Store in cache with a minimum expiration time of 1 day.
-  if ($cache && filter_format_allowcache($format)) {
+  if ($cache) {
     cache_set($cache_id, $text, 'cache_filter', REQUEST_TIME + (60 * 60 * 24));
   }
 
@@ -761,7 +778,7 @@ function filter_form($selected_format = NULL, $weight = NULL, $parents = array('
   foreach ($formats as $format) {
     $options[$format->format] = $format->name;
     $form['format_guidelines'][$format->format] = array(
-      '#markup' => theme('filter_guidelines', $format),
+      '#markup' => theme('filter_guidelines', array('format' => $format)),
     );
   }
   $form['format'] = array(
@@ -811,11 +828,6 @@ function filter_access($format, $account = NULL) {
   $permission = filter_permission_name($format);
   return !empty($permission) && user_access($permission, $account);
 }
-
-/**
- * @} End of "Filtering functions".
- */
-
 
 /**
  * Helper function for fetching filter tips.
@@ -906,9 +918,11 @@ function theme_filter_tips_more_info() {
  *
  * @ingroup themeable
  */
-function theme_filter_guidelines($format) {
+function theme_filter_guidelines($variables) {
+  $format = $variables['format'];
+
   $name = isset($format->name) ? '<label>' . $format->name . ':</label>' : '';
-  return '<div id="filter-guidelines-' . $format->format . '" class="filter-guidelines-item">' . $name . theme('filter_tips', _filter_tips($format->format, FALSE)) . '</div>';
+  return '<div id="filter-guidelines-' . $format->format . '" class="filter-guidelines-item">' . $name . theme('filter_tips', array('tips' => _filter_tips($format->format, FALSE))) . '</div>';
 }
 
 /**

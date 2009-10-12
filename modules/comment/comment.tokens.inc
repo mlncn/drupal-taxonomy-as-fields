@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.tokens.inc,v 1.2 2009/09/30 18:37:30 dries Exp $
+// $Id: comment.tokens.inc,v 1.5 2009/10/11 03:07:18 webchick Exp $
 
 /**
  * @file
@@ -175,7 +175,7 @@ function comment_tokens($type, $tokens, array $data = array(), array $options = 
           break;
 
         case 'body':
-          $replacements[$original] = $sanitize ? check_markup($comment->comment, $comment->format) : $replacements[$original] = $comment->comment;
+          $replacements[$original] = $sanitize ? check_markup($comment->comment, $comment->format, '', TRUE) : $comment->comment;
           break;
 
         // Comment related URLs.
@@ -200,12 +200,17 @@ function comment_tokens($type, $tokens, array $data = array(), array $options = 
           break;
 
         case 'created':
-          $replacements[$original] = format_date($comment->timestamp, 'medium', '', NULL, $language_code);
+          $replacements[$original] = format_date($comment->created, 'medium', '', NULL, $language_code);
+          break;
+
+        case 'changed':
+          $replacements[$original] = format_date($comment->changed, 'medium', '', NULL, $language_code);
           break;
 
         case 'node':
           $node = node_load($comment->nid);
-          $replacements[$original] = $sanitize ? filter_xss($node->title) : $node->title;
+          $title = $node->title[FIELD_LANGUAGE_NONE][0]['value'];
+          $replacements[$original] = $sanitize ? filter_xss($title) : $title;
           break;
       }
     }
@@ -217,7 +222,7 @@ function comment_tokens($type, $tokens, array $data = array(), array $options = 
     }
 
     if ($date_tokens = token_find_with_prefix($tokens, 'created')) {
-      $replacements += token_generate('date', $date_tokens, array('date' => $comment->timestamp), $options);
+      $replacements += token_generate('date', $date_tokens, array('date' => $comment->created), $options);
     }
 
     if (($parent_tokens = token_find_with_prefix($tokens, 'parent')) && $parent = comment_load($comment->pid)) {

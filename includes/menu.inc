@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.inc,v 1.348 2009/10/01 19:07:12 dries Exp $
+// $Id: menu.inc,v 1.352 2009/10/11 19:39:30 dries Exp $
 
 /**
  * @file
@@ -1308,21 +1308,33 @@ function template_preprocess_menu_tree(&$variables) {
 /**
  * Theme wrapper for the HTML output for a menu sub-tree.
  *
+ * @param $variables
+ *   An associative array containing:
+ *   - tree: @todo: document
+ *
+ * @return
+ *   A themed HTML string.
+ *
  * @ingroup themeable
  */
-function theme_menu_tree($tree) {
-  return '<ul class="menu">' . $tree . '</ul>';
+function theme_menu_tree($variables) {
+  return '<ul class="menu">' . $variables['tree'] . '</ul>';
 }
 
 /**
  * Generate the HTML output for a menu link and submenu.
  *
- * @param $element
- *   Structured array data for a menu link.
+ * @param $variables
+ *   An associative array containing:
+ *   - element: Structured array data for a menu link.
+ *
+ * @return
+ *   A themed HTML string.
  *
  * @ingroup themeable
  */
-function theme_menu_link(array $element) {
+function theme_menu_link(array $variables) {
+  $element = $variables['element'];
   $sub_menu = '';
 
   if ($element['#below']) {
@@ -1335,26 +1347,31 @@ function theme_menu_link(array $element) {
 /**
  * Generate the HTML output for a single local task link.
  *
- * @param $link
- *   A menu link array with 'title', 'href', and 'localized_options' keys.
- * @param $active
- *   A boolean indicating whether the local task is active.
+ * @param $variables
+ *   An associative array containing:
+ *   - #link: A menu link array with 'title', 'href', and 'localized_options'
+ *     keys.
+ *   - #active: A boolean indicating whether the local task is active.
  *
  * @ingroup themeable
  */
-function theme_menu_local_task($link, $active = FALSE) {
-  return '<li ' . ($active ? 'class="active" ' : '') . '>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
+function theme_menu_local_task($variables) {
+  $link = $variables['element']['#link'];
+  return '<li' . (!empty($variables['element']['#active']) ? ' class="active"' : '') . '>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
 }
 
 /**
  * Generate the HTML output for a single local action link.
  *
- * @param $link
- *   A menu link array with 'title', 'href', and 'localized_options' keys.
+ * @param $variables
+ *   An associative array containing:
+ *   - #link: A menu link array with 'title', 'href', and 'localized_options'
+ *     keys.
  *
  * @ingroup themeable
  */
-function theme_menu_local_action($link) {
+function theme_menu_local_action($variables) {
+  $link = $variables['element']['#link'];
   return '<li>' . l($link['title'], $link['href'], $link['localized_options']) . "</li>\n";
 }
 
@@ -1389,7 +1406,7 @@ function menu_get_active_help() {
     // Add "more help" link on admin pages if the module provides a
     // standalone help page.
     if ($arg[0] == "admin" && user_access('access administration pages') && module_exists('help') && $function('admin/help#' . $arg[2], $empty_arg) && $help) {
-      $output .= theme("more_help_link", url('admin/help/' . $arg[2]));
+      $output .= theme("more_help_link", array('url' => url('admin/help/' . $arg[2])));
     }
   }
   return $output;
@@ -1447,7 +1464,13 @@ function menu_get_names() {
  * Return an array containing the names of system-defined (default) menus.
  */
 function menu_list_system_menus() {
-  return array('navigation' => 'Navigation', 'management' => 'Management', 'user-menu' => 'User menu', 'main-menu' => 'Main menu', 'secondary-menu' => 'Secondary menu');
+  return array(
+    'navigation' => 'Navigation',
+    'management' => 'Management',
+    'user-menu' => 'User menu',
+    'main-menu' => 'Main menu',
+    'secondary-menu' => 'Secondary menu',
+  );
 }
 
 /**
@@ -1541,8 +1564,8 @@ function menu_local_tasks($level = 0) {
   $data = &drupal_static(__FUNCTION__);
   $root_path = &drupal_static(__FUNCTION__ . ':root_path', '');
   $empty = array(
-    'tabs' => array('count' => 0, 'output' => ''),
-    'actions' => array('count' => 0, 'output' => ''),
+    'tabs' => array('count' => 0, 'output' => array()),
+    'actions' => array('count' => 0, 'output' => array()),
     'root_path' => &$root_path,
   );
 
@@ -1583,8 +1606,8 @@ function menu_local_tasks($level = 0) {
     // equal the depth. Thus we use the $depth counter (offset by 1000 for ksort).
     $depth = 1001;
     while (isset($children[$path])) {
-      $tabs_current = '';
-      $actions_current = '';
+      $tabs_current = array();
+      $actions_current = array();
       $next_path = '';
       $tab_count = 0;
       $action_count = 0;
@@ -1597,17 +1620,27 @@ function menu_local_tasks($level = 0) {
             for ($p = $item['tab_parent']; $tasks[$p]['type'] == MENU_DEFAULT_LOCAL_TASK; $p = $tasks[$p]['tab_parent']);
             // Use the path of the parent instead.
             $link['href'] = $tasks[$p]['href'];
-            $tabs_current .= theme('menu_local_task', $link, TRUE);
+            $tabs_current[] = array(
+              '#theme' => 'menu_local_task',
+              '#link' => $link,
+              '#active' => TRUE,
+            );
             $next_path = $item['path'];
             $tab_count++;
           }
           else {
             if ($item['type'] == MENU_LOCAL_TASK) {
-              $tabs_current .= theme('menu_local_task', $link);
+              $tabs_current[] = array(
+                '#theme' => 'menu_local_task',
+                '#link' => $link,
+              );
               $tab_count++;
             }
             else {
-              $actions_current .= theme('menu_local_action', $link);
+              $actions_current[] = array(
+                '#theme' => 'menu_local_action',
+                '#link' => $link,
+              );
               $action_count++;
             }
           }
@@ -1627,7 +1660,7 @@ function menu_local_tasks($level = 0) {
     $current = $router_item;
     $depth = 1000;
     while (isset($children[$parent])) {
-      $tabs_current = '';
+      $tabs_current = array();
       $next_path = '';
       $next_parent = '';
       $count = 0;
@@ -1649,14 +1682,21 @@ function menu_local_tasks($level = 0) {
           }
           // We check for the active tab.
           if ($item['path'] == $path) {
-            $tabs_current .= theme('menu_local_task', $link, TRUE);
+            $tabs_current[] = array(
+              '#theme' => 'menu_local_task',
+              '#link' => $link,
+              '#active' => TRUE,
+            );
             $next_path = $item['tab_parent'];
             if (isset($tasks[$next_path])) {
               $next_parent = $tasks[$next_path]['tab_parent'];
             }
           }
           else {
-            $tabs_current .= theme('menu_local_task', $link);
+            $tabs_current[] = array(
+              '#theme' => 'menu_local_task',
+              '#link' => $link,
+            );
           }
         }
       }
@@ -1671,6 +1711,9 @@ function menu_local_tasks($level = 0) {
     // Remove the depth, we are interested only in their relative placement.
     $tabs = array_values($tabs);
     $data['tabs'] = $tabs;
+
+    // Allow modules to alter local tasks or dynamically append further tasks.
+    drupal_alter('menu_local_tasks', $data, $router_item, $root_path);
   }
 
   if (isset($data['tabs'][$level])) {
@@ -1718,18 +1761,22 @@ function menu_tab_root_path() {
 }
 
 /**
- * Returns the rendered local tasks. The default implementation renders them as tabs.
+ * Returns renderable local tasks.
  *
  * @ingroup themeable
  */
 function theme_menu_local_tasks() {
-  $output = '';
+  $output = array();
 
   if ($primary = menu_primary_local_tasks()) {
-    $output .= "<ul class=\"tabs primary\">\n" . $primary . "</ul>\n";
+    $primary['#prefix'] = '<ul class="tabs primary">';
+    $primary['#suffix'] = '</ul>';
+    $output[] = $primary;
   }
   if ($secondary = menu_secondary_local_tasks()) {
-    $output .= "<ul class=\"tabs secondary\">\n" . $secondary . "</ul>\n";
+    $secondary['#prefix'] = '<ul class="tabs secondary">';
+    $secondary['#suffix'] = '</ul>';
+    $output[] = $secondary;
   }
 
   return $output;

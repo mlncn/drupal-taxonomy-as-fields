@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.801 2009/10/05 02:43:01 webchick Exp $
+// $Id: system.module,v 1.806 2009/10/12 20:12:28 webchick Exp $
 
 /**
  * @file
@@ -215,6 +215,10 @@ function system_permission() {
     'administer site configuration' => array(
       'title' => t('Administer site configuration'),
       'description' => t('Configure site-wide settings such as module or theme administration settings.'),
+    ),
+    'administer software updates' => array(
+      'title' => t('Administer software updates'),
+      'description' => t('Run the update.php script.'),
     ),
     'administer actions' => array(
       'title' => t('Administer actions'),
@@ -1400,24 +1404,20 @@ function _system_filetransfer_backend_form_common() {
     '#title' => t('Host'),
     '#default_value' => 'localhost',
   );
-
-  $form['port'] = array (
+  $form['port'] = array(
     '#type' => 'textfield',
     '#title' => t('Port'),
     '#default_value' => NULL,
   );
-
-  $form['username'] = array (
+  $form['username'] = array(
     '#type' => 'textfield',
     '#title' => t('Username'),
   );
-
-  $form['password'] = array (
+  $form['password'] = array(
     '#type' => 'password',
     '#title' => t('Password'),
     '#description' => t('This is not saved in the database and is only used to test the connection'),
   );
-
   return $form;
 }
 
@@ -1465,10 +1465,10 @@ function system_preprocess_page(&$variables) {
   list($version, ) = explode('.', VERSION);
 
   // Emit the META tag in the HTML HEAD section
-  theme('meta_generator_html', $version);
+  theme('meta_generator_html', array('version' => $version));
 
   // Emit the HTTP Header too
-  theme('meta_generator_header', $version);
+  theme('meta_generator_header', array('version' => $version));
 
   $variables['head'] = drupal_get_html_head();
 }
@@ -1488,7 +1488,7 @@ function system_form_user_profile_form_alter(&$form, &$form_state) {
 /**
  * Implement hook_form_FORM_ID_alter().
  */
-function system_form_user_register_alter(&$form, &$form_state) {
+function system_form_user_register_form_alter(&$form, &$form_state) {
   if (variable_get('configurable_timezones', 1)) {
     if (variable_get('user_default_timezone', DRUPAL_USER_TIMEZONE_DEFAULT) == DRUPAL_USER_TIMEZONE_SELECT) {
       system_user_timezone($form, $form_state);
@@ -1592,7 +1592,7 @@ function system_block_configure($delta = '') {
     $form['wrapper']['preview'] = array(
       '#type' => 'item',
       '#title' => 'Preview',
-      '#markup' => theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'), array('class' => array('powered-by-preview')), FALSE),
+      '#markup' => theme('image', array('path' => $image_path, 'alt' => t('Powered by Drupal, an open source content management system'), 'title' => t('Powered by Drupal, an open source content management system'), 'attributes' => array('class' => array('powered-by-preview')), 'getsize' => FALSE)),
     );
     return $form;
   }
@@ -1625,7 +1625,7 @@ function system_block_view($delta = '') {
     case 'powered-by':
       $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
       $block['subject'] = NULL;
-      $block['content'] = theme('system_powered_by', $image_path);
+      $block['content'] = theme('system_powered_by', array('image_path' => $image_path));
       return $block;
     case 'help':
       $block['subject'] = NULL;
@@ -2422,7 +2422,6 @@ function system_cron() {
   // not used, this will simply be a no-op.
   db_update('queue')
     ->fields(array(
-      'consumer_id' => 0,
       'expire' => 0,
     ))
     ->condition('expire', REQUEST_TIME, '<')
@@ -2691,8 +2690,8 @@ function system_timezone($abbreviation = '', $offset = -1, $is_daylight_saving_t
  *
  * @ingroup themeable
  */
-function theme_system_powered_by($image_path) {
-  $image = theme('image', $image_path, t('Powered by Drupal, an open source content management system'), t('Powered by Drupal, an open source content management system'));
+function theme_system_powered_by($variables) {
+  $image = theme('image', array('path' => $variables['image_path'], 'alt' => t('Powered by Drupal, an open source content management system'), 'title' => t('Powered by Drupal, an open source content management system')));
   return l($image, 'http://drupal.org', array('html' => TRUE, 'absolute' => TRUE, 'external' => TRUE));
 }
 
@@ -2719,8 +2718,8 @@ function theme_system_compact_link() {
  *
  * @ingroup themeable
  */
-function theme_meta_generator_html($version = VERSION) {
-  drupal_add_html_head('<meta name="Generator" content="Drupal ' . $version . ' (http://drupal.org)" />');
+function theme_meta_generator_html($variables) {
+  drupal_add_html_head('<meta name="Generator" content="Drupal ' . $variables['version'] . ' (http://drupal.org)" />');
 }
 
 /**
@@ -2728,8 +2727,8 @@ function theme_meta_generator_html($version = VERSION) {
  *
  * @ingroup themeable
  */
-function theme_meta_generator_header($version = VERSION) {
-  drupal_add_http_header('X-Generator', 'Drupal ' . $version . ' (http://drupal.org)');
+function theme_meta_generator_header($variables) {
+  drupal_add_http_header('X-Generator', 'Drupal ' . $variables['version'] . ' (http://drupal.org)');
 }
 
 /**
@@ -2798,7 +2797,7 @@ function system_page_build(&$page) {
         ),
       ),
       // Trigger cron run for clients not supporting JavaScript (fall-back).
-      '#markup' => theme('system_run_cron_image', 'system/run-cron-image'),
+      '#markup' => theme('system_run_cron_image', array('image_path' => 'system/run-cron-image')),
     );
   }
 
@@ -2893,7 +2892,7 @@ function system_run_cron_image_access() {
  * @see system_run_cron_image()
  * @ingroup themeable
  */
-function theme_system_run_cron_image($image_path) {
-  return '<noscript><div id="system-cron-image">' . theme('image', $image_path, '', '', array(), FALSE) . '</div></noscript>';
+function theme_system_run_cron_image($variables) {
+  return '<noscript><div id="system-cron-image">' . theme('image', array('path' => $variables['image_path'], 'getsize' => FALSE)) . '</div></noscript>';
 }
 
