@@ -1,5 +1,5 @@
 <?php
-// $Id: install.php,v 1.213 2009/10/12 02:00:04 webchick Exp $
+// $Id: install.php,v 1.215 2009/10/13 07:09:26 webchick Exp $
 
 /**
  * Root directory of Drupal installation.
@@ -567,7 +567,7 @@ function install_tasks($install_state) {
 
   // Now add any tasks defined by the installation profile.
   if (!empty($install_state['parameters']['profile'])) {
-    $function = $install_state['parameters']['profile'] . '_profile_tasks';
+    $function = $install_state['parameters']['profile'] . '_install_tasks';
     if (function_exists($function)) {
       $result = $function($install_state);
       if (is_array($result)) {
@@ -588,6 +588,18 @@ function install_tasks($install_state) {
       'display_name' => st('Finished'),
     ),
   );
+
+  // Allow the installation profile to modify the full list of tasks.
+  if (!empty($install_state['parameters']['profile'])) {
+    $profile_file = DRUPAL_ROOT . '/profiles/' . $install_state['parameters']['profile'] . '/' . $install_state['parameters']['profile'] . '.profile';
+    if (is_file($profile_file)) {
+      include_once $profile_file;
+      $function = $install_state['parameters']['profile'] . '_install_tasks_alter';
+      if (function_exists($function)) {
+        $function($tasks, $install_state);
+      }
+    }
+  }
 
   // Fill in default parameters for each task before returning the list.
   foreach ($tasks as $task_name => &$task) {
@@ -1296,7 +1308,7 @@ function install_bootstrap_full(&$install_state) {
  */
 function install_profile_modules(&$install_state) {
   $modules = variable_get('install_profile_modules', array());
-  $files = system_get_module_data();
+  $files = system_rebuild_module_data();
   variable_del('install_profile_modules');
   $operations = array();
   foreach ($modules as $module) {

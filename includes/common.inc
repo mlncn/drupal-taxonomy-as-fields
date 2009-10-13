@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1013 2009/10/11 06:05:53 webchick Exp $
+// $Id: common.inc,v 1.1015 2009/10/13 05:37:45 webchick Exp $
 
 /**
  * @file
@@ -4098,9 +4098,12 @@ function drupal_page_set_cache() {
 }
 
 /**
- * Executes a cron run when called
+ * Executes a cron run when called.
+ *
+ * Do not call this function from test, use $this->cronRun() instead.
+ *
  * @return
- * Returns TRUE if ran successfully
+ *   Returns TRUE if ran successfully
  */
 function drupal_cron_run() {
   // Allow execution to continue even if the request gets canceled.
@@ -5527,10 +5530,10 @@ function drupal_flush_all_caches() {
   // If invoked from update.php, we must not update the theme information in the
   // database, or this will result in all themes being disabled.
   if (defined('MAINTENANCE_MODE') && MAINTENANCE_MODE == 'update') {
-    _system_get_theme_data();
+    _system_rebuild_theme_data();
   }
   else {
-    system_get_theme_data();
+    system_rebuild_theme_data();
   }
 
   drupal_theme_rebuild();
