@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1015 2009/10/13 05:37:45 webchick Exp $
+// $Id: common.inc,v 1.1017 2009/10/13 21:16:42 dries Exp $
 
 /**
  * @file
@@ -656,22 +656,12 @@ function drupal_goto($path = '', array $query = array(), $fragment = NULL, $http
 
   $url = url($path, array('query' => $query, 'fragment' => $fragment, 'absolute' => TRUE));
 
-  // Allow modules to react to the end of the page request before redirecting.
-  // We do not want this while running update.php.
-  if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {
-    module_invoke_all('exit', $url);
-  }
-
-  // Commit the session, if necessary. We need all session data written to the
-  // database before redirecting.
-  drupal_session_commit();
-
   header('Location: ' . $url, TRUE, $http_response_code);
 
   // The "Location" header sends a redirect status code to the HTTP daemon. In
   // some cases this can be wrong, so we make sure none of the code below the
   // drupal_goto() call gets executed upon redirection.
-  exit();
+  drupal_exit($url);
 }
 
 /**
@@ -2628,6 +2618,28 @@ function drupal_page_footer() {
 }
 
 /**
+ * Perform end-of-request tasks.
+ *
+ * In some cases page requests need to end without calling drupal_page_footer().
+ * In these cases, call drupal_exit() instead. There should rarely be a reason
+ * to call exit instead of drupal_exit();
+ *
+ * @param $destination
+ *   If this function is called from drupal_goto(), then this argument
+ *   will be a fully-qualified URL that is the destination of the redirect.
+ *   This should be passed along to hook_exit() implementations.
+ */
+function drupal_exit($destination = NULL) {
+  if (drupal_get_bootstrap_phase() == DRUPAL_BOOTSTRAP_FULL) {
+    if (!defined('MAINTENANCE_MODE') || MAINTENANCE_MODE != 'update') {
+      module_invoke_all('exit', $destination);
+    }
+    drupal_session_commit();
+  }
+  exit;
+}
+
+/**
  * Form an associative array from a linear array.
  *
  * This function walks through the provided array and constructs an associative
@@ -4250,52 +4262,51 @@ function drupal_system_listing($mask, $directory, $key = 'name', $min_depth = 1)
 }
 
 /**
- * Hands off structured Drupal arrays to type-specific *_alter implementations.
+ * Hands off alterable variables to type-specific *_alter implementations.
  *
- * This dispatch function hands off structured Drupal arrays to type-specific
- * *_alter implementations. It ensures a consistent interface for all altering
- * operations.
+ * This dispatch function hands off the passed in variables to type-specific
+ * hook_TYPE_alter() implementations in modules. It ensures a consistent
+ * interface for all altering operations.
+ *
+ * A maximum of 2 alterable arguments is supported. In case more arguments need
+ * to be passed and alterable, modules provide additional variables assigned by
+ * reference in the last $context argument:
+ * @code
+ *   $context = array(
+ *     'alterable' => &$alterable,
+ *     'unalterable' => $unalterable,
+ *     'foo' => 'bar',
+ *   );
+ *   drupal_alter('mymodule_data', $alterable1, $alterable2, $context);
+ * @endcode
+ *
+ * Note that objects are always passed by reference in PHP5. If it is absolutely
+ * required that no implementation alters a passed object in $context, then an
+ * object needs to be cloned:
+ * @code
+ *   $context = array(
+ *     'unalterable_object' => clone $object,
+ *   );
+ *   drupal_alter('mymodule_data', $data, $context);
+ * @endcode
  *
  * @param $type
- *   The data type of the structured array. 'form', 'links',
+ *   A string describing the data type of the alterable $data. 'form', 'links',
  *   'node_content', and so on are several examples.
- * @param $data
- *   The structured array to be altered.
- * @param ...
- *   Any additional params will be passed on to the called
- *   hook_$type_alter functions.
+ * @param &$data
+ *   The primary data to be altered.
+ * @param &$context1
+ *   (optional) An additional variable that is passed by reference.
+ * @param &$context2
+ *   (optional) An additional variable that is passed by reference. If more
+ *   context needs to be provided to implementations, then this should be an
+ *   keyed array as described above.
  */
-function drupal_alter($type, &$data) {
-  // PHP's func_get_args() always returns copies of params, not references, so
-  // drupal_alter() can only manipulate data that comes in via the required first
-  // param. For the edge case functions that must pass in an arbitrary number of
-  // alterable parameters (hook_form_alter() being the best example), an array of
-  // those params can be placed in the __drupal_alter_by_ref key of the $data
-  // array. This is somewhat ugly, but is an unavoidable consequence of a flexible
-  // drupal_alter() function, and the limitations of func_get_args().
-  // @todo: Remove this in Drupal 7.
-  if (is_array($data) && isset($data['__drupal_alter_by_ref'])) {
-    $by_ref_parameters = $data['__drupal_alter_by_ref'];
-    unset($data['__drupal_alter_by_ref']);
-  }
-
-  // Hang onto a reference to the data array so that it isn't blown away later.
-  // Also, merge in any parameters that need to be passed by reference.
-  $args = array(&$data);
-  if (isset($by_ref_parameters)) {
-    $args = array_merge($args, $by_ref_parameters);
-  }
-
-  // Now, use func_get_args() to pull in any additional parameters passed into
-  // the drupal_alter() call.
-  $additional_args = func_get_args();
-  array_shift($additional_args);
-  array_shift($additional_args);
-  $args = array_merge($args, $additional_args);
-
-  foreach (module_implements($type . '_alter') as $module) {
-    $function = $module . '_' . $type . '_alter';
-    call_user_func_array($function, $args);
+function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
+  $hook = $type . '_alter';
+  foreach (module_implements($hook) as $module) {
+    $function = $module . '_' . $hook;
+    $function($data, $context1, $context2);
   }
 }
 

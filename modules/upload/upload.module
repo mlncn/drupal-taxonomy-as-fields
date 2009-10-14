@@ -1,5 +1,5 @@
 <?php
-// $Id: upload.module,v 1.262 2009/10/12 15:27:16 dries Exp $
+// $Id: upload.module,v 1.264 2009/10/13 21:16:44 dries Exp $
 
 /**
  * @file
@@ -649,7 +649,7 @@ function upload_js() {
     form_set_error('form_token', t('Validation error, please try again. If this error persists, please contact the site administrator.'));
     $output = theme('status_messages');
     print drupal_json_encode(array('status' => TRUE, 'data' => $output));
-    exit();
+    drupal_exit();
   }
 
   $form_state = array('values' => $_POST);
@@ -692,8 +692,9 @@ function upload_js() {
     '#tree' => FALSE,
     '#parents' => array(),
   );
-  drupal_alter('form', $form, array(), 'upload_js');
   $form_state = array('submitted' => FALSE, 'programmed' => FALSE);
+  $form_id = 'upload_js';
+  drupal_alter('form', $form, $form_state, $form_id);
   $form = form_builder('upload_js', $form, $form_state);
   $output = theme('status_messages') . drupal_render($form);
 

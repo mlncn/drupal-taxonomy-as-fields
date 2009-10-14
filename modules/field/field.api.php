@@ -1,5 +1,5 @@
 <?php
-// $Id: field.api.php,v 1.40 2009/10/10 21:39:02 webchick Exp $
+// $Id: field.api.php,v 1.42 2009/10/14 14:55:12 dries Exp $
 
 /**
  * @ingroup field_fieldable_type
@@ -932,15 +932,15 @@ function hook_field_attach_presave($obj_type, $object) {
  * This hook is invoked while preprocessing the field.tpl.php template file.
  *
  * @param $variables
- *   The variables array is passed by reference and will be populated with field values.
- * @param $obj_type
- *   The type of $object; e.g. 'node' or 'user'.
- * @param $object
- *   The object with fields to render.
- * @param $element
- *   The structured array containing the values ready for rendering.
+ *   The variables array is passed by reference and will be populated with field
+ *   values.
+ * @param $context
+ *   An associative array containing:
+ *   - obj_type: The type of $object; e.g. 'node' or 'user'.
+ *   - object: The object with fields to render.
+ *   - element: The structured array containing the values ready for rendering.
  */
-function hook_field_attach_preprocess_alter(&$variables, $obj_type, $object, $element) {
+function hook_field_attach_preprocess_alter(&$variables, $context) {
 }
 
 /**
@@ -1042,18 +1042,16 @@ function hook_field_attach_delete_revision($obj_type, $object) {
  *
  * This hook is invoked after the field module has performed the operation.
  *
- * @param $output
- *  The structured content array tree for all of $object's fields.
- * @param $obj_type
- *   The type of $object; e.g. 'node' or 'user'.
- * @param $object
- *   The object with fields to render.
- * @param $build_mode
- *   Build mode, e.g. 'full', 'teaser'...
- * @param $langcode
- *   The language in which the field values will be displayed.
+ * @param &$output
+ *   The structured content array tree for all of $object's fields.
+ * @param $context
+ *   An associative array containing:
+ *   - obj_type: The type of $object; e.g. 'node' or 'user'.
+ *   - object: The object with fields to render.
+ *   - build_mode: Build mode, e.g. 'full', 'teaser'...
+ *   - langcode: The language in which the field values will be displayed.
  */
-function hook_field_attach_view_alter($output, $obj_type, $object, $build_mode, $langcode) {
+function hook_field_attach_view_alter(&$output, $context) {
 }
 
 /**
@@ -1140,6 +1138,47 @@ function hook_field_storage_info_alter(&$info) {
   $info['field_sql_storage']['settings'] += array(
     'mymodule_additional_setting' => 'default value',
   );
+}
+
+/**
+ * Reveal the internal details about the storage for a field.
+ *
+ * For example, an SQL storage module might return the Schema API structure for
+ * the table. A key/value storage module might return the server name,
+ * authentication credentials, and bin name.
+ *
+ * Field storage modules are not obligated to implement this hook. Modules
+ * that rely on these details must only use them for read operations.
+ *
+ * @param $field
+ *   A field structure.
+ * @param $instance
+ *   A field instance structure.
+ * @return
+ *   An array of details.
+ *    - The first dimension is a store type (sql, solr, etc).
+ *    - The second dimension indicates the age of the values in the store
+ *      FIELD_LOAD_CURRENT or FIELD_LOAD_REVISION.
+ *    - Other dimensions are specific to the field storage module.
+ */
+function hook_field_storage_details($field, $instance) {
+}
+
+/**
+ * Perform alterations on Field API storage details.
+ *
+ * The storage details are appended to the field instance structure after this
+ * hook is invoked. Read and alter the $details only.
+ *
+ * @param $details
+ *   An array of storage details for fields as exposed by
+ *   hook_field_storage_details() implementations.
+ * @param $field
+ *   A field structure.
+ * @param $instance
+ *   A field instance structure.
+ */
+function hook_field_storage_details_alter(&$details, $field, $instance) {
 }
 
 /**
