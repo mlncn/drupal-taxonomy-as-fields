@@ -1,5 +1,5 @@
 <?php
-// $Id: menu.module,v 1.209 2009/10/13 01:24:07 dries Exp $
+// $Id: menu.module,v 1.212 2009/10/17 05:50:28 webchick Exp $
 
 /**
  * @file
@@ -98,6 +98,7 @@ function menu_menu() {
     'title' => 'List links',
     'weight' => -10,
     'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
   );
   $items['admin/structure/menu/manage/%menu/add'] = array(
     'title' => 'Add link',
@@ -113,6 +114,7 @@ function menu_menu() {
     'page arguments' => array('menu_edit_menu', 'edit', 4),
     'access arguments' => array('administer menu'),
     'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
     'file' => 'menu.admin.inc',
   );
   $items['admin/structure/menu/manage/%menu/delete'] = array(
@@ -271,21 +273,13 @@ function menu_save($menu) {
  *
  * @see menu_load()
  *
- * _menu_delete_item() will take care of clearing the page cache. Other modules
+ * menu_delete_links() will take care of clearing the page cache. Other modules
  * should take care of their menu-related data by implementing
  * hook_menu_delete().
  */
 function menu_delete($menu) {
   // Delete all links from the menu.
-  $links = db_query("SELECT * FROM {menu_links} WHERE menu_name = :menu_name", array(':menu_name' => $menu['menu_name']));
-  foreach ($links as $link) {
-    // To speed up the deletion process, we reset some link properties that
-    // would trigger re-parenting logic in _menu_delete_item() and
-    // _menu_update_parental_status().
-    $link['has_children'] = FALSE;
-    $link['plid'] = 0;
-    _menu_delete_item($link);
-  }
+  menu_delete_links($menu['menu_name']);
 
   // Delete the custom menu.
   db_delete('menu_custom')
@@ -431,7 +425,24 @@ function menu_block_view($delta = '') {
   $menus = menu_get_menus(FALSE);
   $data['subject'] = check_plain($menus[$delta]);
   $data['content'] = menu_tree($delta);
+  // Add contextual links for this block.
+  if (!empty($data['content'])) {
+    $data['content']['#contextual_links']['menu'] = menu_contextual_links('admin/structure/menu/manage', array($delta));
+  }
   return $data;
+}
+
+/**
+ * Implement hook_block_view_alter().
+ */
+function menu_block_view_alter(&$data, $block) {
+  // Add contextual links for system menu blocks.
+  if ($block->module == 'system' && !empty($data['content'])) {
+    $system_menus = menu_list_system_menus();
+    if (isset($system_menus[$block->delta])) {
+      $data['content']['#contextual_links']['menu'] = menu_contextual_links('admin/structure/menu/manage', array($block->delta));
+    }
+  }
 }
 
 /**
@@ -674,6 +685,7 @@ function menu_node_form_submit($form, &$form_state) {
 function menu_get_menus($all = TRUE) {
   $system_menus = array_keys(menu_list_system_menus());
   $query = db_select('menu_custom');
+  $query->addTag('translatable');
   $query->addField('menu_custom', 'menu_name', 'menu_name');
   $query->addField('menu_custom', 'title', 'title');
   if (!$all) {

@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.admin.inc,v 1.74 2009/10/14 20:22:04 dries Exp $
+// $Id: taxonomy.admin.inc,v 1.78 2009/10/15 16:18:46 webchick Exp $
 
 /**
  * @file
@@ -207,7 +207,7 @@ function taxonomy_form_vocabulary_submit($form, &$form_state) {
   }
   $vocabulary = (object) $form_state['values'];
   if ($vocabulary->machine_name != $old_vocabulary->machine_name) {
-    field_attach_rename_bundle($old_vocabulary->machine_name, $vocabulary->machine_name);
+    field_attach_rename_bundle('taxonomy_term', $old_vocabulary->machine_name, $vocabulary->machine_name);
   }
   switch (taxonomy_vocabulary_save($vocabulary)) {
     case SAVED_NEW:
@@ -391,7 +391,7 @@ function taxonomy_overview_terms($form, &$form_state, $vocabulary) {
       '#type' => 'submit',
       '#value' => t('Reset to alphabetical')
     );
-    $form_state['redirect'] = array($_GET['q'], (isset($_GET['page']) ? array('page' => $_GET['page']) : ''));
+    $form_state['redirect'] = array($_GET['q'], (isset($_GET['page']) ? array('query' => array('page' => $_GET['page'])) : array()));
   }
 
   return $form;
@@ -596,7 +596,11 @@ function theme_taxonomy_overview_terms($variables) {
  * @ingroup forms
  * @see taxonomy_form_term_submit()
  */
-function taxonomy_form_term($form, &$form_state, $vocabulary, $edit = array()) {
+function taxonomy_form_term($form, &$form_state, $edit = array(), $vocabulary = NULL) {
+  if (!isset($vocabulary) && is_object($edit)) {
+    $vocabulary = taxonomy_vocabulary_load($edit->vid);
+    $edit = (array)$edit;
+  }
   $edit += array(
     'name' => '',
     'description' => '',
@@ -686,11 +690,6 @@ function taxonomy_form_term($form, &$form_state, $vocabulary, $edit = array()) {
     );
     
   }
-  $form['advanced']['synonyms'] = array(
-    '#type' => 'textarea',
-    '#title' => t('Synonyms'),
-    '#default_value' => implode("\n", taxonomy_get_synonyms($edit['tid'])),
-    '#description' => t('One synonym per line. Text input term selection widgets will show terms whose synonyms match the entered value as suggestions.'));
   $form['advanced']['weight'] = array(
     '#type' => 'textfield',
     '#title' => t('Weight'),

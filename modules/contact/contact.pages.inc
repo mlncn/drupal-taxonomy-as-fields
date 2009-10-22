@@ -1,5 +1,5 @@
 <?php
-// $Id: contact.pages.inc,v 1.32 2009/10/11 18:34:10 dries Exp $
+// $Id: contact.pages.inc,v 1.35 2009/10/18 11:34:44 dries Exp $
 
 /**
  * @file
@@ -24,7 +24,13 @@ function contact_site_form($form, &$form_state) {
   }
 
   // Get an array of the categories and the current default category.
-  $categories = db_query("SELECT cid, category FROM {contact} ORDER BY weight, category")->fetchAllKeyed();
+  $categories = db_select('contact', 'c')
+    ->addTag('translatable')
+    ->fields('c', array('cid', 'category'))
+    ->orderBy('weight')
+    ->orderBy('category')
+    ->execute()
+    ->fetchAllKeyed();
   $default_category = db_query("SELECT cid FROM {contact} WHERE selected = 1")->fetchField();
 
   // If there are no categories, do not display the form.
@@ -50,7 +56,7 @@ function contact_site_form($form, &$form_state) {
 
   if (!$user->uid) {
     $form['#attached']['library'][] = array('system', 'cookie');
-    $form['#attached']['js'][] = drupal_get_path('module', 'contact') . '/contact.js';
+    $form['#attributes']['class'][] = 'user-info-from-cookie';
   }
 
   $form['#token'] = $user->uid ? $user->name . $user->mail : '';
@@ -148,7 +154,7 @@ function contact_site_form_submit($form, &$form_state) {
     drupal_mail('contact', 'page_autoreply', $from, $language, $values, $to);
   }
 
-  flood_register_event('contact');
+  flood_register_event('contact', variable_get('contact_threshold_window', 3600));
   watchdog('mail', '%sender-name (@sender-from) sent an e-mail regarding %category.', array('%sender-name' => $values['name'], '@sender-from' => $from, '%category' => $values['category']['category']));
 
   // Jump to home page rather than back to contact page to avoid
@@ -178,7 +184,7 @@ function contact_personal_form($form, &$form_state, stdClass $recipient) {
 
   if (!$user->uid) {
     $form['#attached']['library'][] = array('system', 'cookie');
-    $form['#attached']['js'][] = drupal_get_path('module', 'contact') . '/contact.js';
+    $form['#attributes']['class'][] = 'user-info-from-cookie';
   }
 
   $form['#token'] = $user->uid ? $user->name . $user->mail : '';
@@ -272,7 +278,7 @@ function contact_personal_form_submit($form, &$form_state) {
     drupal_mail('contact', 'user_copy', $from, $language, $values, $from);
   }
 
-  flood_register_event('contact');
+  flood_register_event('contact', variable_get('contact_threshold_window', 3600));
   watchdog('mail', '%sender-name (@sender-from) sent %recipient-name an e-mail.', array('%sender-name' => $values['name'], '@sender-from' => $from, '%recipient-name' => $values['recipient']->name));
 
   // Jump to the contacted user's profile page.

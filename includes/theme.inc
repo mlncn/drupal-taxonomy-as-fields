@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.inc,v 1.535 2009/10/14 10:56:35 dries Exp $
+// $Id: theme.inc,v 1.541 2009/10/19 23:28:40 dries Exp $
 
 /**
  * @file
@@ -256,7 +256,7 @@ function _theme_load_registry($theme, $base_theme = NULL, $theme_engine = NULL) 
   else {
     // If not, build one and cache it.
     $registry = _theme_build_registry($theme, $base_theme, $theme_engine);
-   // Only persist this registry if all modules are loaded. This assures a 
+   // Only persist this registry if all modules are loaded. This assures a
    // complete set of theme hooks.
     if (drupal_get_bootstrap_phase() == DRUPAL_BOOTSTRAP_FULL) {
       _theme_save_registry($theme, $registry);
@@ -762,7 +762,8 @@ function theme($hook, $variables = array()) {
   }
 
   if (!isset($hooks[$hook])) {
-    return;
+    watchdog('theme', 'Theme key "@key" not found.', array('@key' => $hook), WATCHDOG_WARNING);
+    return '';
   }
 
   $info = $hooks[$hook];
@@ -1145,7 +1146,6 @@ function theme_get_setting($setting_name, $theme = NULL) {
       'toggle_logo'                      =>  1,
       'toggle_favicon'                   =>  1,
       'toggle_name'                      =>  1,
-      'toggle_search'                    =>  1,
       'toggle_slogan'                    =>  1,
       'toggle_node_user_picture'         =>  1,
       'toggle_comment_user_picture'      =>  1,
@@ -2078,9 +2078,11 @@ function template_preprocess(&$variables, $hook) {
   // Initialize html class attribute for the current hook.
   $variables['classes_array'] = array($hook);
 
-  // Initialize attributes for the top-level template entity and its title.
+  // Initialize attributes for the top-level template entity and its title and
+  // content.
   $variables['attributes_array'] = array();
   $variables['title_attributes_array'] = array();
+  $variables['content_attributes_array'] = array();
 
   // Set default variables that depend on the database.
   $variables['is_admin']            = FALSE;
@@ -2107,9 +2109,10 @@ function template_process(&$variables, $hook) {
   // Flatten out classes.
   $variables['classes'] = implode(' ', $variables['classes_array']);
 
-  // Flatten out attributes and title_attributes.
+  // Flatten out attributes, title_attributes, and content_attributes.
   $variables['attributes'] = drupal_attributes($variables['attributes_array']);
   $variables['title_attributes'] = drupal_attributes($variables['title_attributes_array']);
+  $variables['content_attributes'] = drupal_attributes($variables['content_attributes_array']);
 }
 
 /**
@@ -2139,7 +2142,7 @@ function template_preprocess_html(&$variables) {
   else {
     $variables['classes_array'][] = 'no-sidebars';
   }
-  
+
   // Populate the body classes.
   if ($suggestions = template_page_suggestions(arg(), 'page')) {
     foreach ($suggestions as $suggestion) {
@@ -2151,7 +2154,7 @@ function template_preprocess_html(&$variables) {
       }
     }
   }
-  
+
   // If on an individual node page, add the node type to body classes.
   if ($node = menu_get_object()) {
     $variables['classes_array'][] = drupal_html_class('node-type-' . $node->type);
@@ -2183,7 +2186,7 @@ function template_preprocess_html(&$variables) {
     }
   }
   $variables['head_title'] = implode(' | ', $head_title);
-  
+
   // Populate the page template suggestions.
   if ($suggestions = template_page_suggestions(arg(), 'html')) {
     $variables['template_files'] = $suggestions;
@@ -2211,19 +2214,19 @@ function template_preprocess_page(&$variables) {
   // Move some variables to the top level for themer convenience and template cleanliness.
   $variables['show_messages'] = $variables['page']['#show_messages'];
 
+  foreach (system_region_list($GLOBALS['theme']) as $region_key => $region_name) {
+    if (!isset($variables['page'][$region_key])) {
+      $variables['page'][$region_key] = array();
+    }
+  }
+
   // Set up layout variable.
   $variables['layout'] = 'none';
   if (!empty($variables['page']['sidebar_first'])) {
     $variables['layout'] = 'first';
   }
-  else {
-    $variables['page']['sidebar_first'] = array();
-  }
   if (!empty($variables['page']['sidebar_second'])) {
     $variables['layout'] = ($variables['layout'] == 'first') ? 'both' : 'second';
-  }
-  else {
-    $variables['page']['sidebar_second'] = array();
   }
 
   $variables['base_path']         = base_path();

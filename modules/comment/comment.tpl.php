@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.tpl.php,v 1.13 2009/10/10 13:37:10 dries Exp $
+// $Id: comment.tpl.php,v 1.16 2009/10/19 20:33:21 dries Exp $
 
 /**
  * @file
@@ -11,14 +11,19 @@
  *   print a subset such as render($content['field_example']). Use
  *   hide($content['field_example']) to temporarily suppress the printing of a
  *   given element.
- * - $created: Date and time this comment was created.
- * - $changed: Date and time this comment was changed.
+ * - $created: Formatted date and time for when the comment was created.
+ *   Preprocess functions can reformat it by calling format_date() with the
+ *   desired parameters on the $comment->created variable.
+ * - $changed: Formatted date and time for when the comment was last changed.
+ *   Preprocess functions can reformat it by calling format_date() with the
+ *   desired parameters on the $comment->changed variable.
  * - $new: New comment marker.
  * - $picture: Authors picture.
  * - $signature: Authors signature.
  * - $status: Comment status. Possible values are:
  *   comment-unpublished, comment-published or comment-preview.
  * - $title: Linked title.
+ * - $contextual_links (array): An array of contextual links for the comment.
  * - $classes: String of classes that can be used to style contextually through
  *   CSS. It can be manipulated through the variable $classes_array from
  *   preprocess functions. The default values can be one or more of the following:
@@ -46,6 +51,10 @@
  */
 ?>
 <div class="<?php print $classes; ?> clearfix"<?php print $attributes; ?>>
+  <?php if ($contextual_links): ?>
+    <?php print render($contextual_links); ?>
+  <?php endif; ?>
+
   <?php print $picture ?>
 
   <?php if ($new): ?>
@@ -56,12 +65,12 @@
 
   <div class="submitted">
     <?php
-      print t('Submitted by !username on @datetime.',
-        array('!username' => $author, '@datetime' => $created));
+      print t('Submitted by !username on !datetime.',
+        array('!username' => $author, '!datetime' => $created));
     ?>
   </div>
 
-  <div class="content">
+  <div class="content"<?php print $content_attributes; ?>>
     <?php
       // We hide the comments and links now so that we can render them later.
       hide($content['links']);

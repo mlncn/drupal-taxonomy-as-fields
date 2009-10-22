@@ -1,5 +1,5 @@
 <?php
-// $Id: system.test,v 1.86 2009/10/14 02:13:15 dries Exp $
+// $Id: system.test,v 1.89 2009/10/18 11:34:44 dries Exp $
 
 /**
  * Helper class for module test cases.
@@ -972,7 +972,7 @@ class SystemBlockTestCase extends DrupalWebTestCase {
    */
   function testPoweredByBlock() {
     // Set block title and some settings to confirm that the interface is availble.
-    $this->drupalPost('admin/structure/block/configure/system/powered-by', array('title' => $this->randomName(8), 'color' => 'powered-black', 'size' => '135x42'), t('Save block'));
+    $this->drupalPost('admin/structure/block/manage/system/powered-by/configure', array('title' => $this->randomName(8), 'color' => 'powered-black', 'size' => '135x42'), t('Save block'));
     $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
 
     // Set the powered-by block to the footer region.
@@ -997,9 +997,91 @@ class SystemBlockTestCase extends DrupalWebTestCase {
     $edit = array();
     $edit['system_powered-by[region]'] = 'footer';
     $this->drupalPost('admin/structure/block', $edit, t('Save blocks'));
-    $this->drupalPost('admin/structure/block/configure/system/powered-by', array('title' => '', 'color' => 'powered-blue', 'size' => '80x15'), t('Save block'));
+    $this->drupalPost('admin/structure/block/manage/system/powered-by/configure', array('title' => '', 'color' => 'powered-blue', 'size' => '80x15'), t('Save block'));
+  }
+}
+
+/**
+ * Test main content rendering fallback provided by system module.
+ */
+class SystemMainContentFallback extends DrupalWebTestCase {
+  protected $admin_user;
+  protected $web_user;
+
+  public static function getInfo() {
+    return array(
+      'name' => 'Main content rendering fallback',
+      'description' => ' Test system module main content rendering fallback.',
+      'group' => 'System',
+    );
   }
 
+  function setUp() {
+    parent::setUp('system_test');
+
+    // Create and login admin user.
+    $this->admin_user = $this->drupalCreateUser(array(
+      'access administration pages',
+      'administer site configuration',
+      'administer blocks',
+      'administer nodes',
+    ));
+    $this->drupalLogin($this->admin_user);
+
+    // Create a web user.
+    $this->web_user = $this->drupalCreateUser(array('access user profiles', 'access content'));
+  }
+
+  /**
+   * Test availability of main content.
+   */
+  function testMainContentFallback() {
+    $edit = array();
+    // Disable the dashboard module, which depends on the block module.
+    $edit['modules[Core][dashboard][enable]'] = FALSE;
+    $this->drupalPost('admin/config/modules', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'), t('Modules status has been updated.'));
+    // Disable the block module.
+    $edit['modules[Core][block][enable]'] = FALSE;
+    $this->drupalPost('admin/config/modules', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'), t('Modules status has been updated.'));
+    module_list(TRUE);
+    $this->assertFalse(module_exists('block'), t('Block module disabled.'));
+
+    // At this point, no region is filled and fallback should be triggered.
+    $this->drupalGet('admin/config/system/site-information');
+    $this->assertField('site_name', t('Admin interface still availble.'));
+
+    // Fallback should not trigger when another module is handling content.
+    $this->drupalGet('system-test/main-content-handling');
+    $this->assertRaw('id="system-test-content"', t('Content handled by another module'));
+    $this->assertText(t('Content to test main content fallback'), t('Main content still displayed.'));
+
+    // Fallback should trigger when another module
+    // indicates that it is not handling the content.
+    $this->drupalGet('system-test/main-content-fallback');
+    $this->assertText(t('Content to test main content fallback'), t('Main content fallback properly triggers.'));
+
+    // Fallback should not trigger when another module is handling content.
+    // Note that this test ensures that no duplicate
+    // content gets created by the fallback.
+    $this->drupalGet('system-test/main-content-duplication');
+    $this->assertNoText(t('Content to test main content fallback'), t('Main content not duplicated.'));
+
+    // Request a user* page and see if it is displayed.
+    $this->drupalLogin($this->web_user);
+    $this->drupalGet('user/' . $this->web_user->uid . '/edit');
+    $this->assertField('mail', t('User interface still availble.'));
+
+    // Enable the block module again.
+    $this->drupalLogin($this->admin_user);
+    $edit = array();
+    $edit['modules[Core][block][enable]'] = 'block';
+    $this->drupalPost('admin/config/modules', $edit, t('Save configuration'));
+    $this->assertText(t('The configuration options have been saved.'), t('Modules status has been updated.'));
+    module_list(TRUE);
+    $this->assertTrue(module_exists('block'), t('Block module re-enabled.'));
+  }
 }
 
 class SystemSettingsForm extends DrupalWebTestCase {
@@ -1419,5 +1501,43 @@ class UpdateScriptFunctionalTest extends DrupalWebTestCase {
     $this->drupalLogin($user1);
     $this->drupalGet($this->update_url, array('external' => TRUE));
     $this->assertResponse(200);
+  }
+}
+
+/**
+ * Functional tests for the flood control mechanism.
+ */
+class FloodFunctionalTest extends DrupalWebTestCase {
+  public static function getInfo() {
+    return array(
+      'name' => 'Flood control mechanism',
+      'description' => 'Functional tests for the flood control mechanism.',
+      'group' => 'System',
+    );
+  }
+
+  /**
+   * Test flood control mechanism clean-up.
+   */
+  function testCleanUp() {
+    $threshold = 1;
+    $window_expired = -1;
+    $name = 'flood_test_cleanup';
+
+    // Register expired event.
+    flood_register_event($name, $window_expired);
+    // Verify event is not allowed.
+    $this->assertFalse(flood_is_allowed($name, $threshold));
+    // Run cron and verify event is now allowed.
+    $this->cronRun();
+    $this->assertTrue(flood_is_allowed($name, $threshold));
+
+    // Register unexpired event.
+    flood_register_event($name);
+    // Verify event is not allowed.
+    $this->assertFalse(flood_is_allowed($name, $threshold));
+    // Run cron and verify event is still not allowed.
+    $this->cronRun();
+    $this->assertFalse(flood_is_allowed($name, $threshold));
   }
 }

@@ -1,5 +1,5 @@
 <?php
-// $Id: comment.module,v 1.784 2009/10/13 05:17:15 webchick Exp $
+// $Id: comment.module,v 1.795 2009/10/20 17:33:42 webchick Exp $
 
 /**
  * @file
@@ -69,16 +69,6 @@ define('COMMENT_NODE_CLOSED', 1);
  * Comments for this node are open.
  */
 define('COMMENT_NODE_OPEN', 2);
-
-/**
- * Comment preview is optional.
- */
-define('COMMENT_PREVIEW_OPTIONAL', 0);
-
-/**
- * Comment preview is required.
- */
-define('COMMENT_PREVIEW_REQUIRED', 1);
 
 /**
  * Implement hook_help().
@@ -176,20 +166,47 @@ function comment_menu() {
     'access arguments' => array('administer comments'),
     'type' => MENU_LOCAL_TASK,
   );
-  $items['comment/delete'] = array(
-    'title' => 'Delete comment',
-    'page callback' => 'comment_delete_page',
-    'access arguments' => array('administer comments'),
+  $items['comment/%comment'] = array(
+    'title' => 'Comment permalink',
+    'page callback' => 'comment_permalink',
+    'page arguments' => array(1),
+    'access arguments' => array('access comments'),
     'type' => MENU_CALLBACK,
-    'file' => 'comment.admin.inc',
   );
-  $items['comment/edit/%comment'] = array(
-    'title' => 'Edit comment',
+  $items['comment/%comment/view'] = array(
+    'title' => 'View comment',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+  $items['comment/%comment/edit'] = array(
+    'title' => 'Edit',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('comment_form', 2),
+    'page arguments' => array('comment_form', 1),
     'access callback' => 'comment_access',
-    'access arguments' => array('edit', 2),
-    'type' => MENU_CALLBACK,
+    'access arguments' => array('edit', 1),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'weight' => 0,
+  );
+  $items['comment/%comment/approve'] = array(
+    'title' => 'Approve',
+    'page callback' => 'comment_approve',
+    'page arguments' => array(1),
+    'access arguments' => array('administer comments'),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'file' => 'comment.pages.inc',
+    'weight' => 1,
+  );
+  $items['comment/%comment/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('comment_confirm_delete', 1),
+    'access arguments' => array('administer comments'),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+    'file' => 'comment.admin.inc',
+    'weight' => 2,
   );
   $items['comment/reply/%node'] = array(
     'title' => 'Add new comment',
@@ -199,21 +216,6 @@ function comment_menu() {
     'access arguments' => array('view', 2),
     'type' => MENU_CALLBACK,
     'file' => 'comment.pages.inc',
-  );
-  $items['comment/approve'] = array(
-    'title' => 'Approve a comment',
-    'page callback' => 'comment_approve',
-    'page arguments' => array(2),
-    'access arguments' => array('administer comments'),
-    'type' => MENU_CALLBACK,
-    'file' => 'comment.pages.inc',
-  );
-  $items['comment/%comment'] = array(
-    'title' => 'Comment permalink',
-    'page callback' => 'comment_permalink',
-    'page arguments' => array(1),
-    'access arguments' => array('access comments'),
-    'type' => MENU_CALLBACK,
   );
 
   return $items;
@@ -233,7 +235,7 @@ function comment_count_unpublished() {
  * Implement hook_node_type_insert().
  */
 function comment_node_type_insert($info) {
-  field_attach_create_bundle('comment_node_' . $info->type);
+  field_attach_create_bundle('comment', 'comment_node_' . $info->type);
 }
 
 /**
@@ -241,7 +243,7 @@ function comment_node_type_insert($info) {
  */
 function comment_node_type_update($info) {
   if (!empty($info->old_type) && $info->type != $info->old_type) {
-    field_attach_rename_bundle('comment_node_' . $info->old_type, 'comment_node_' . $info->type);
+    field_attach_rename_bundle('comment', 'comment_node_' . $info->old_type, 'comment_node_' . $info->type);
   }
 }
 
@@ -249,7 +251,7 @@ function comment_node_type_update($info) {
  * Implement hook_node_type_delete().
  */
 function comment_node_type_delete($info) {
-  field_attach_delete_bundle('comment_node_' . $info->type);
+  field_attach_delete_bundle('comment', 'comment_node_' . $info->type);
   $settings = array(
     'comment',
     'comment_default_mode',
@@ -364,7 +366,7 @@ function comment_permalink($comment) {
     drupal_add_link(array('rel' => 'canonical', 'href' => url('node/' . $node->nid)));
 
     // Return the node view, this will show the correct comment in context.
-    return menu_execute_active_handler('node/' . $node->nid);
+    return menu_execute_active_handler('node/' . $node->nid, FALSE);
   }
   drupal_not_found();
 }
@@ -795,6 +797,8 @@ function comment_build($comment, $node, $build_mode = 'full') {
     '#node' => $node,
     '#build_mode' => $build_mode,
   );
+  // Add contextual links for this comment.
+  $build['#contextual_links']['comment'] = menu_contextual_links('comment', array($comment->cid));
 
   $prefix = '';
   $is_threaded = isset($comment->divs) && variable_get('comment_default_mode_' . $node->type, COMMENT_MODE_THREADED) == COMMENT_MODE_THREADED;
@@ -844,6 +848,7 @@ function comment_build_content($comment, $node, $build_mode = 'full') {
     '#markup' => check_markup($comment->comment, $comment->format, '', TRUE),
   );
 
+  field_attach_prepare_view('comment', array($comment->cid => $comment), $build_mode);
   $comment->content += field_attach_view('comment', $comment, $build_mode);
 
   if (empty($comment->in_preview)) {
@@ -879,12 +884,12 @@ function comment_links($comment, $node) {
     if (user_access('administer comments') && user_access('post comments')) {
       $links['comment_delete'] = array(
         'title' => t('delete'),
-        'href' => "comment/delete/$comment->cid",
+        'href' => "comment/$comment->cid/delete",
         'html' => TRUE,
       );
       $links['comment_edit'] = array(
         'title' => t('edit'),
-        'href' => "comment/edit/$comment->cid",
+        'href' => "comment/$comment->cid/edit",
         'html' => TRUE,
       );
       $links['comment_reply'] = array(
@@ -895,7 +900,7 @@ function comment_links($comment, $node) {
       if ($comment->status == COMMENT_NOT_PUBLISHED) {
         $links['comment_approve'] = array(
           'title' => t('approve'),
-          'href' => "comment/approve/$comment->cid",
+          'href' => "comment/$comment->cid/approve",
           'html' => TRUE,
         );
       }
@@ -904,7 +909,7 @@ function comment_links($comment, $node) {
       if (comment_access('edit', $comment)) {
         $links['comment_edit'] = array(
           'title' => t('edit'),
-          'href' => "comment/edit/$comment->cid",
+          'href' => "comment/$comment->cid/edit",
           'html' => TRUE,
         );
       }
@@ -937,6 +942,8 @@ function comment_links($comment, $node) {
  *   An array in the format expected by drupal_render().
  */
 function comment_build_multiple($comments, $node, $build_mode = 'full', $weight = 0) {
+  field_attach_prepare_view('comment', $comments, $build_mode);
+
   $build = array(
     '#sorted' => TRUE,
   );
@@ -1007,9 +1014,14 @@ function comment_form_node_type_form_alter(&$form, $form_state) {
       '#default_value' => variable_get('comment_form_location_' . $form['#node_type']->type, COMMENT_FORM_BELOW),
     );
     $form['comment']['comment_preview'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Require preview'),
-      '#default_value' => variable_get('comment_preview_' . $form['#node_type']->type, COMMENT_PREVIEW_OPTIONAL),
+      '#type' => 'radios',
+      '#title' => t('Preview comment'),
+      '#default_value' => variable_get('comment_preview_' . $form['#node_type']->type, DRUPAL_OPTIONAL),
+      '#options' => array(
+        DRUPAL_DISABLED => t('Disabled'),
+        DRUPAL_OPTIONAL => t('Optional'),
+        DRUPAL_REQUIRED => t('Required'),
+      ),
     );
   }
 }
@@ -1286,6 +1298,7 @@ function comment_save($comment) {
         'name' => $comment->name,
         'mail' => $comment->mail,
         'homepage' => $comment->homepage,
+        'language' => $comment->language,
       ))
       ->condition('cid', $comment->cid)
       ->execute();
@@ -1365,6 +1378,7 @@ function comment_save($comment) {
         'name' => $comment->name,
         'mail' => $comment->mail,
         'homepage' => $comment->homepage,
+        'language' => $comment->language,
       ))
       ->execute();
 
@@ -1638,14 +1652,14 @@ function comment_get_display_page($cid, $node_type) {
  * @see comment_form_submit()
  */
 function comment_form($form, &$form_state, $comment) {
-  global $user;
+  global $user, $language;
 
   $op = isset($_POST['op']) ? $_POST['op'] : '';
   $node = node_load($comment->nid);
 
   if (!$user->uid && variable_get('comment_anonymous_' . $node->type, COMMENT_ANONYMOUS_MAYNOT_CONTACT) != COMMENT_ANONYMOUS_MAYNOT_CONTACT) {
     $form['#attached']['library'][] = array('system', 'cookie');
-    $form['#attached']['js'][] = drupal_get_path('module', 'comment') . '/comment.js';
+    $form['#attributes']['class'][] = 'user-info-from-cookie';
   }
 
   $comment = (array) $comment;
@@ -1852,6 +1866,10 @@ function comment_form($form, &$form_state, $comment) {
     '#type' => 'value',
     '#value' => $comment->nid,
   );
+  $form['language'] = array(
+    '#type' => 'value',
+    '#value' => isset($comment->language) ? $comment->language : $language->language,
+  );
   $form['uid'] = array(
     '#type' => 'value',
     '#value' => !empty($comment->uid) ? $comment->uid : 0,
@@ -1865,16 +1883,16 @@ function comment_form($form, &$form_state, $comment) {
   // already previewing the submission. However, if there are form errors,
   // we hide the save button no matter what, so that optional form elements
   // (e.g., captchas) can be updated.
-  if (!form_get_errors() && ((variable_get('comment_preview_' . $node->type, COMMENT_PREVIEW_OPTIONAL) == COMMENT_PREVIEW_OPTIONAL) || ($op == t('Preview')) || ($op == t('Save')))) {
-    $form['submit'] = array(
-      '#type' => 'submit',
-      '#value' => t('Save'),
-      '#weight' => 19,
-    );
-  }
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#access' => variable_get('comment_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_REQUIRED || (!form_get_errors() && isset($form_state['comment_preview'])),
+    '#weight' => 19,
+  );
   $form['preview'] = array(
     '#type' => 'submit',
     '#value' => t('Preview'),
+    '#access' => (variable_get('comment_preview_' . $node->type, DRUPAL_OPTIONAL) != DRUPAL_DISABLED),
     '#weight' => 20,
     '#submit' => array('comment_form_build_preview'),
   );
@@ -2092,7 +2110,7 @@ function comment_form_submit($form, &$form_state) {
       $query['page'] = $page;
     }
     // Redirect to the newly posted comment.
-    $redirect = array('node/' . $node->nid, $query, 'comment-' . $comment->cid);
+    $redirect = array('node/' . $node->nid, array('query' => $query, 'fragment' => 'comment-' . $comment->cid));
   }
   else {
     watchdog('content', 'Comment: unauthorized comment submitted or comment submitted to a closed post %subject.', array('%subject' => $comment->subject), WATCHDOG_WARNING);
@@ -2475,4 +2493,39 @@ function comment_filter_format_delete($format, $fallback) {
     ->fields(array('format' => $fallback->format))
     ->condition('format', $format->format)
     ->execute();
+}
+
+/**
+ * Implements hook_rdf_mapping().
+ */
+function comment_rdf_mapping() {
+  return array(
+    array(
+      'type' => 'comment',
+      'bundle' => RDF_DEFAULT_BUNDLE,
+      'mapping' => array(
+        'rdftype' => array('sioct:Post'),
+        'title' => array(
+          'predicates' => array('dc:title'),
+        ),
+        'created' => array(
+          'predicates' => array('dc:date', 'dc:created'),
+          'datatype' => 'xsd:dateTime',
+          'callback' => 'date_iso8601',
+        ),
+        'body' => array(
+          'predicates' => array('content:encoded'),
+        ),
+        'pid' => array(
+          'predicates' => array('sioc:reply_of'),
+        ),
+        'uid' => array(
+          'predicates' => array('sioc:has_creator'),
+        ),
+        'name' => array(
+          'predicates' => array('foaf:name'),
+        ),
+      ),
+    ),
+  );
 }

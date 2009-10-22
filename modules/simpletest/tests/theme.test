@@ -1,5 +1,5 @@
 <?php
-// $Id: theme.test,v 1.7 2009/10/09 01:00:03 dries Exp $
+// $Id: theme.test,v 1.9 2009/10/16 08:27:41 webchick Exp $
 
 /**
  * @file
@@ -63,7 +63,7 @@ class ThemeTableUnitTest extends DrupalWebTestCase {
       'group' => 'Theme',
     );
   }
-  
+
   /**
    * Tableheader.js provides 'sticky' table headers, and is included by default.
    */

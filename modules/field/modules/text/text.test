@@ -1,5 +1,5 @@
 <?php
-// $Id: text.test,v 1.12 2009/09/20 09:37:09 dries Exp $
+// $Id: text.test,v 1.14 2009/10/16 03:47:14 webchick Exp $
 
 class TextFieldTestCase extends DrupalWebTestCase {
   protected $instance;
@@ -40,6 +40,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     field_create_field($this->field);
     $this->instance = array(
       'field_name' => $this->field['field_name'],
+      'object_type' => 'test_entity',
       'bundle' => FIELD_TEST_BUNDLE,
       'widget' => array(
         'type' => 'text_textfield',
@@ -85,6 +86,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     field_create_field($this->field);
     $this->instance = array(
       'field_name' => $this->field_name,
+      'object_type' => 'test_entity',
       'bundle' => FIELD_TEST_BUNDLE,
       'label' => $this->randomName() . '_label',
       'settings' => array(
@@ -113,7 +115,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
 
     // Display the object.
-    $entity = field_test_entity_load($id);
+    $entity = field_test_entity_test_load($id);
     $entity->content = field_attach_view($entity_type, $entity);
     $this->content = drupal_render($entity->content);
     $this->assertText($value, 'Filtered tags are not displayed');
@@ -138,6 +140,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     field_create_field($this->field);
     $this->instance = array(
       'field_name' => $this->field_name,
+      'object_type' => 'test_entity',
       'bundle' => FIELD_TEST_BUNDLE,
       'label' => $this->randomName() . '_label',
       'settings' => array(
@@ -176,7 +179,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
 
     // Display the object.
-    $entity = field_test_entity_load($id);
+    $entity = field_test_entity_test_load($id);
     $entity->content = field_attach_view($entity_type, $entity);
     $this->content = drupal_render($entity->content);
     $this->assertNoRaw($value, t('HTML tags are not displayed.'));
@@ -209,7 +212,7 @@ class TextFieldTestCase extends DrupalWebTestCase {
     $this->assertRaw(t('test_entity @id has been updated.', array('@id' => $id)), t('Entity was updated'));
 
     // Display the object.
-    $entity = field_test_entity_load($id);
+    $entity = field_test_entity_test_load($id);
     $entity->content = field_attach_view($entity_type, $entity);
     $this->content = drupal_render($entity->content);
     $this->assertRaw($value, t('Value is displayed unfiltered'));

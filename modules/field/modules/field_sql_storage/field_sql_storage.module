@@ -1,5 +1,5 @@
 <?php
-// $Id: field_sql_storage.module,v 1.27 2009/10/14 14:55:12 dries Exp $
+// $Id: field_sql_storage.module,v 1.29 2009/10/22 00:49:12 dries Exp $
 
 /**
  * @file
@@ -436,7 +436,7 @@ function field_sql_storage_field_storage_delete($obj_type, $object, $fields) {
   list($id, $vid, $bundle) = field_extract_ids($obj_type, $object);
   $etid = _field_sql_storage_etid($obj_type);
 
-  foreach (field_info_instances($bundle) as $instance) {
+  foreach (field_info_instances($obj_type, $bundle) as $instance) {
     if (isset($fields[$instance['field_id']])) {
       $field = field_info_field_by_id($instance['field_id']);
       field_sql_storage_field_storage_purge($obj_type, $object, $field, $instance);
@@ -469,8 +469,8 @@ function field_sql_storage_field_storage_purge($obj_type, $object, $field, $inst
 /**
  * Implement hook_field_storage_query().
  */
-function field_sql_storage_field_storage_query($field_id, $conditions, $count, &$cursor, $age) {
-  $load_current = $age == FIELD_LOAD_CURRENT;
+function field_sql_storage_field_storage_query($field_id, $conditions, $options) {
+  $load_current = $options['age'] == FIELD_LOAD_CURRENT;
 
   $field = field_info_field_by_id($field_id);
   $field_name = $field['field_name'];
@@ -480,14 +480,6 @@ function field_sql_storage_field_storage_query($field_id, $conditions, $count, &
   // Build the query.
   $query = db_select($table, 't');
   $query->join('field_config_entity_type', 'e', 't.etid = e.etid');
-
-  $query
-    ->fields('t', array('bundle', 'entity_id', 'revision_id'))
-    ->fields('e', array('type'))
-    // We need to ensure objects arrive in a consistent order for the
-    // range() operation to work.
-    ->orderBy('t.etid')
-    ->orderBy('t.entity_id');
 
   // Add conditions.
   foreach ($conditions as $condition) {
@@ -542,6 +534,21 @@ function field_sql_storage_field_storage_query($field_id, $conditions, $count, &
     $query->condition('deleted', 0);
   }
 
+  // For a count query, return the count now.
+  if ($options['count']) {
+    $query->addExpression('COUNT(DISTINCT e.type,t.entity_id,t.revision_id)');
+    return $query->execute()->fetchField();
+  }
+
+  // For a data query, add fields.
+  $query
+    ->fields('t', array('bundle', 'entity_id', 'revision_id'))
+    ->fields('e', array('type'))
+    // We need to ensure objects arrive in a consistent order for the
+    // range() operation to work.
+    ->orderBy('t.etid')
+    ->orderBy('t.entity_id');
+
   // Initialize results array
   $return = array();
 
@@ -551,15 +558,15 @@ function field_sql_storage_field_storage_query($field_id, $conditions, $count, &
   // less rows than asked for.
   $obj_count = 0;
   do {
-    if ($count != FIELD_QUERY_NO_LIMIT) {
-      $query->range($cursor, $count);
+    if ($options['limit'] != FIELD_QUERY_NO_LIMIT) {
+      $query->range($options['cursor'], $options['limit']);
     }
     $results = $query->execute();
 
     $row_count = 0;
     foreach ($results as $row) {
       $row_count++;
-      $cursor++;
+      $options['cursor']++;
       // If querying all revisions and the entity type has revisions, we need
       // to key the results by revision_ids.
       $entity_type = field_info_fieldable_types($row->type);
@@ -570,12 +577,12 @@ function field_sql_storage_field_storage_query($field_id, $conditions, $count, &
         $obj_count++;
       }
     }
-  } while ($count != FIELD_QUERY_NO_LIMIT && $row_count == $count && $obj_count < $count);
+  } while ($options['limit'] != FIELD_QUERY_NO_LIMIT && $row_count == $options['limit'] && $obj_count < $options['limit']);
 
   // The query is complete when the last batch returns less rows than asked
   // for.
-  if ($row_count < $count) {
-    $cursor = FIELD_QUERY_COMPLETE;
+  if ($row_count < $options['limit']) {
+    $options['cursor'] = FIELD_QUERY_COMPLETE;
   }
 
   return $return;
@@ -609,15 +616,18 @@ function field_sql_storage_field_storage_delete_revision($obj_type, $object, $fi
  * This function simply marks for deletion all data associated with the field.
  */
 function field_sql_storage_field_storage_delete_instance($instance) {
+  $etid = _field_sql_storage_etid($instance['object_type']);
   $field = field_info_field($instance['field_name']);
   $table_name = _field_sql_storage_tablename($field);
   $revision_name = _field_sql_storage_revision_tablename($field);
   db_update($table_name)
     ->fields(array('deleted' => 1))
+    ->condition('etid', $etid)
     ->condition('bundle', $instance['bundle'])
     ->execute();
   db_update($revision_name)
     ->fields(array('deleted' => 1))
+    ->condition('etid', $etid)
     ->condition('bundle', $instance['bundle'])
     ->execute();
 }
@@ -625,9 +635,10 @@ function field_sql_storage_field_storage_delete_instance($instance) {
 /**
  * Implement hook_field_attach_rename_bundle().
  */
-function field_sql_storage_field_attach_rename_bundle($bundle_old, $bundle_new) {
+function field_sql_storage_field_attach_rename_bundle($obj_type, $bundle_old, $bundle_new) {
+  $etid = _field_sql_storage_etid($obj_type);
   // We need to account for deleted or inactive fields and instances.
-  $instances = field_read_instances(array('bundle' => $bundle_new), array('include_deleted' => TRUE, 'include_inactive' => TRUE));
+  $instances = field_read_instances(array('object_type' => $obj_type, 'bundle' => $bundle_new), array('include_deleted' => TRUE, 'include_inactive' => TRUE));
   foreach ($instances as $instance) {
     $field = field_info_field_by_id($instance['field_id']);
     if ($field['storage']['type'] == 'field_sql_storage') {
@@ -635,10 +646,12 @@ function field_sql_storage_field_attach_rename_bundle($bundle_old, $bundle_new) 
       $revision_name = _field_sql_storage_revision_tablename($field);
       db_update($table_name)
         ->fields(array('bundle' => $bundle_new))
+        ->condition('etid', $etid)
         ->condition('bundle', $bundle_old)
         ->execute();
       db_update($revision_name)
         ->fields(array('bundle' => $bundle_new))
+        ->condition('etid', $etid)
         ->condition('bundle', $bundle_old)
         ->execute();
     }

@@ -1,5 +1,5 @@
 <?php
-// $Id: common.inc,v 1.1017 2009/10/13 21:16:42 dries Exp $
+// $Id: common.inc,v 1.1027 2009/10/18 18:32:27 dries Exp $
 
 /**
  * @file
@@ -620,14 +620,13 @@ function drupal_encode_path($path) {
  * Drupal will ensure that messages set by drupal_set_message() and other
  * session data are written to the database before the user is redirected.
  *
- * This function ends the request; use it instead of a return in your menu callback.
+ * This function ends the request; use it instead of a return in your menu
+ * callback.
  *
  * @param $path
  *   A Drupal path or a full URL.
- * @param $query
- *   A query string component, if any.
- * @param $fragment
- *   A destination fragment identifier (named anchor).
+ * @param $options
+ *   An associative array of additional URL options to pass to url().
  * @param $http_response_code
  *   Valid values for an actual "goto" as per RFC 2616 section 10.3 are:
  *   - 301 Moved Permanently (the recommended value for most redirects)
@@ -639,22 +638,25 @@ function drupal_encode_path($path) {
  *   - 307 Temporary Redirect (alternative to "503 Site Down for Maintenance")
  *   Note: Other values are defined by RFC 2616, but are rarely used and poorly
  *   supported.
+ *
  * @see drupal_get_destination()
+ * @see url()
  */
-function drupal_goto($path = '', array $query = array(), $fragment = NULL, $http_response_code = 302) {
+function drupal_goto($path = '', array $options = array(), $http_response_code = 302) {
+  // A destination in $_GET always overrides the function arguments.
   if (isset($_GET['destination'])) {
-    extract(drupal_parse_url(urldecode($_GET['destination'])));
+    $destination = drupal_parse_url(urldecode($_GET['destination']));
+    $path = $destination['path'];
+    $options['query'] = $destination['query'];
+    $options['fragment'] = $destination['fragment'];
   }
 
-  $args = array(
-    'path' => &$path,
-    'query' => &$query,
-    'fragment' => &$fragment,
-    'http_response_code' => &$http_response_code,
-  );
-  drupal_alter('drupal_goto', $args);
+  drupal_alter('drupal_goto', $path, $options, $http_response_code);
 
-  $url = url($path, array('query' => $query, 'fragment' => $fragment, 'absolute' => TRUE));
+  // The 'Location' HTTP header must be absolute.
+  $options['absolute'] = TRUE;
+
+  $url = url($path, $options);
 
   header('Location: ' . $url, TRUE, $http_response_code);
 
@@ -665,75 +667,39 @@ function drupal_goto($path = '', array $query = array(), $fragment = NULL, $http
 }
 
 /**
- * Generates a site offline message.
+ * Deliver a "site is under maintenance" message to the browser.
+ *
+ * Page callback functions wanting to report a "site offline" message should
+ * return MENU_SITE_OFFLINE instead of calling drupal_site_offline(). However,
+ * functions that are invoked in contexts where that return value might not
+ * bubble up to menu_execute_active_handler() should call drupal_site_offline().
  */
 function drupal_site_offline() {
-  drupal_maintenance_theme();
-  drupal_add_http_header('503 Service unavailable');
-  drupal_set_title(t('Site under maintenance'));
-  print theme('maintenance_page', array('content' => filter_xss_admin(variable_get('maintenance_mode_message',
-    t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal')))))));
+  drupal_deliver_page(MENU_SITE_OFFLINE);
 }
 
 /**
- * Generates a 404 error if the request can not be handled.
+ * Deliver a "page not found" error to the browser.
+ *
+ * Page callback functions wanting to report a "page not found" message should
+ * return MENU_NOT_FOUND instead of calling drupal_not_found(). However,
+ * functions that are invoked in contexts where that return value might not
+ * bubble up to menu_execute_active_handler() should call drupal_not_found().
  */
 function drupal_not_found() {
-  drupal_add_http_header('404 Not Found');
-
-  watchdog('page not found', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
-
-  // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_GET['destination'])) {
-    $_GET['destination'] = $_GET['q'];
-  }
-
-  $path = drupal_get_normal_path(variable_get('site_404', ''));
-  if ($path && $path != $_GET['q']) {
-    // Custom 404 handler. Set the active item in case there are tabs to
-    // display, or other dependencies on the path.
-    menu_set_active_item($path);
-    $return = menu_execute_active_handler($path);
-  }
-
-  if (empty($return) || $return == MENU_NOT_FOUND || $return == MENU_ACCESS_DENIED) {
-    // Standard 404 handler.
-    drupal_set_title(t('Page not found'));
-    $return = t('The requested page could not be found.');
-  }
-
-  drupal_set_page_content($return);
-  $page = element_info('page');
-  print drupal_render_page($page);
+  drupal_deliver_page(MENU_NOT_FOUND);
 }
 
 /**
- * Generates a 403 error if the request is not allowed.
+ * Deliver a "access denied" error to the browser.
+ *
+ * Page callback functions wanting to report an "access denied" message should
+ * return MENU_ACCESS_DENIED instead of calling drupal_access_denied(). However,
+ * functions that are invoked in contexts where that return value might not
+ * bubble up to menu_execute_active_handler() should call drupal_access_denied().
  */
 function drupal_access_denied() {
-  drupal_add_http_header('403 Forbidden');
-  watchdog('access denied', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
-
-  // Keep old path for reference, and to allow forms to redirect to it.
-  if (!isset($_GET['destination'])) {
-    $_GET['destination'] = $_GET['q'];
-  }
-
-  $path = drupal_get_normal_path(variable_get('site_403', ''));
-  if ($path && $path != $_GET['q']) {
-    // Custom 403 handler. Set the active item in case there are tabs to
-    // display or other dependencies on the path.
-    menu_set_active_item($path);
-    $return = menu_execute_active_handler($path);
-  }
-
-  if (empty($return) || $return == MENU_NOT_FOUND || $return == MENU_ACCESS_DENIED) {
-    // Standard 403 handler.
-    drupal_set_title(t('Access denied'));
-    $return = t('You are not authorized to access this page.');
-  }
-
-  print drupal_render_page($return);
+  drupal_deliver_page(MENU_ACCESS_DENIED);
 }
 
 /**
@@ -1597,10 +1563,15 @@ function valid_url($url, $absolute = FALSE) {
  *
  * @param $name
  *   The name of an event.
+ * @param $window
+ *   Optional number of seconds before this event expires. Defaults to 3600 (1
+ *   hour). Typically uses the same value as the flood_is_allowed() $window
+ *   parameter. Expired events are purged on cron run to prevent the flood table
+ *   from growing indefinitely.
  * @param $identifier
  *   Optional identifier (defaults to the current user's IP address).
  */
-function flood_register_event($name, $identifier = NULL) {
+function flood_register_event($name, $window = 3600, $identifier = NULL) {
   if (!isset($identifier)) {
     $identifier = ip_address();
   }
@@ -1609,6 +1580,7 @@ function flood_register_event($name, $identifier = NULL) {
       'event' => $name,
       'identifier' => $identifier,
       'timestamp' => REQUEST_TIME,
+      'expiration' => REQUEST_TIME + $window,
     ))
     ->execute();
 }
@@ -2308,6 +2280,22 @@ function format_date($timestamp, $type = 'medium', $format = '', $timezone = NUL
 }
 
 /**
+ * Returns an ISO8601 formatted date based on the given date.
+ *
+ * Can be used as a callback for RDF mappings.
+ *
+ * @param $date
+ *   A UNIX timestamp.
+ * @return string
+ *   An ISO8601 formatted date.
+ */
+function date_iso8601($date) {
+  // The DATE_ISO8601 constant cannot be used here because it does not match
+  // date('c') and produces invalid RDF markup.
+  return date('c', $date);
+}
+
+/**
  * Callback function for preg_replace_callback().
  */
 function _format_date_callback(array $matches = NULL, $new_langcode = NULL) {
@@ -2589,6 +2577,182 @@ function l($text, $path, array $options = array()) {
   }
 
   return '<a href="' . check_plain(url($path, $options)) . '"' . drupal_attributes($options['attributes']) . '>' . ($options['html'] ? $text : check_plain($text)) . '</a>';
+}
+
+/**
+ * Deliver a page callback result to the browser in the format appropriate.
+ *
+ * This function is most commonly called by menu_execute_active_handler(), but
+ * can also be called by error conditions such as drupal_not_found(),
+ * drupal_access_denied(), and drupal_site_offline().
+ *
+ * When a user requests a page, index.php calls menu_execute_active_handler()
+ * which calls the 'page callback' function registered in hook_menu(). The page
+ * callback function can return one of:
+ * - NULL: to indicate no content
+ * - an integer menu status constant: to indicate an error condition
+ * - a string of HTML content
+ * - a renderable array of content
+ * Returning a renderable array rather than a string of HTML is preferred,
+ * because that provides modules with more flexibility in customizing the final
+ * result.
+ *
+ * When the page callback returns its constructed content to
+ * menu_execute_active_handler(), this functions gets called. The purpose of
+ * this function is to determine the most appropriate 'delivery callback'
+ * function to route the content to. The delivery callback function then
+ * sends the content to the browser in the needed format. The default delivery
+ * callback is drupal_deliver_html_page() which delivers the content as an HTML
+ * page, complete with blocks in addition to the content. This default can be
+ * overridden on a per menu item basis by setting 'delivery callback' in
+ * hook_menu(), hook_menu_alter(), or hook_menu_active_handler_alter().
+ * Additionally, modules may use hook_page_delivery_callback_alter() to specify
+ * a different delivery callback to use for the page request.
+ *
+ * For example, the same page callback function can be used for an HTML
+ * version of the page and an AJAX version of the page. The page callback
+ * function just needs to decide what content is to be returned and the
+ * delivery callback function will send it as an HTML page or an AJAX
+ * response, as appropriate.
+ *
+ * In order for page callbacks to be reusable in different delivery formats,
+ * they should not issue any "print" or "echo" statements, but instead just
+ * return content.
+ *
+ * @param $page_callback_result
+ *   The result of a page callback. Can be one of:
+ *   - NULL: to indicate no content.
+ *   - An integer menu status constant: to indicate an error condition.
+ *   - A string of HTML content.
+ *   - A renderable array of content.
+ * @param $default_delivery_callback
+ *   (Optional) If given, it is the name of a delivery function most likely
+ *   to be appropriate for the page request as determined by the calling
+ *   function (e.g., menu_execute_active_handler()). If not given, it is
+ *   determined from the menu router information of the current page. In either
+ *   case, modules have a final chance to alter which function is called.
+ *
+ * @see menu_execute_active_handler()
+ * @see hook_menu()
+ * @see hook_menu_alter()
+ * @see hook_menu_active_handler_alter()
+ * @see hook_page_delivery_callback_alter()
+ */
+function drupal_deliver_page($page_callback_result, $default_delivery_callback = NULL) {
+  if (!isset($default_delivery_callback) && ($router_item = menu_get_item())) {
+    drupal_alter('menu_active_handler', $router_item);
+    $default_delivery_callback = $router_item['delivery_callback'];
+  }
+  $delivery_callback = !empty($default_delivery_callback) ? $default_delivery_callback : 'drupal_deliver_html_page';
+  // Give modules a final chance to alter the delivery callback used. This is
+  // for modules that need to decide which delivery callback to use based on
+  // information made available during page callback execution and for pages
+  // without router items.
+  drupal_alter('page_delivery_callback', $delivery_callback);
+  if (function_exists($delivery_callback)) {
+    $delivery_callback($page_callback_result);
+  }
+  else {
+    // If a delivery callback is specified, but doesn't exist as a function,
+    // something is wrong, but don't print anything, since it's not known
+    // what format the response needs to be in.
+    watchdog('delivery callback not found', check_plain($delivery_callback) . ': ' . check_plain($_GET['q']), NULL, WATCHDOG_ERROR);
+  }
+}
+
+/**
+ * Package and send the result of a page callback to the browser as a normal
+ * HTML page.
+ *
+ * @param $page_callback_result
+ *   The result of a page callback. Can be one of:
+ *   - NULL: to indicate no content.
+ *   - An integer menu status constant: to indicate an error condition.
+ *   - A string of HTML content.
+ *   - A renderable array of content.
+ *
+ * @see drupal_deliver_page
+ */
+function drupal_deliver_html_page($page_callback_result) {
+  // Menu status constants are integers; page content is a string or array.
+  if (is_int($page_callback_result)) {
+    // @todo: Break these up into separate functions?
+    switch ($page_callback_result) {
+      case MENU_NOT_FOUND:
+        // Print a 404 page.
+        drupal_add_http_header('404 Not Found');
+
+        watchdog('page not found', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
+
+        // Keep old path for reference, and to allow forms to redirect to it.
+        if (!isset($_GET['destination'])) {
+          $_GET['destination'] = $_GET['q'];
+        }
+
+        $path = drupal_get_normal_path(variable_get('site_404', ''));
+        if ($path && $path != $_GET['q']) {
+          // Custom 404 handler. Set the active item in case there are tabs to
+          // display, or other dependencies on the path.
+          menu_set_active_item($path);
+          $return = menu_execute_active_handler($path, FALSE);
+        }
+
+        if (empty($return) || $return == MENU_NOT_FOUND || $return == MENU_ACCESS_DENIED) {
+          // Standard 404 handler.
+          drupal_set_title(t('Page not found'));
+          $return = t('The requested page could not be found.');
+        }
+
+        drupal_set_page_content($return);
+        $page = element_info('page');
+        print drupal_render_page($page);
+        break;
+
+      case MENU_ACCESS_DENIED:
+        // Print a 403 page.
+        drupal_add_http_header('403 Forbidden');
+        watchdog('access denied', check_plain($_GET['q']), NULL, WATCHDOG_WARNING);
+
+        // Keep old path for reference, and to allow forms to redirect to it.
+        if (!isset($_GET['destination'])) {
+          $_GET['destination'] = $_GET['q'];
+        }
+
+        $path = drupal_get_normal_path(variable_get('site_403', ''));
+        if ($path && $path != $_GET['q']) {
+          // Custom 403 handler. Set the active item in case there are tabs to
+          // display or other dependencies on the path.
+          menu_set_active_item($path);
+          $return = menu_execute_active_handler($path, FALSE);
+        }
+
+        if (empty($return) || $return == MENU_NOT_FOUND || $return == MENU_ACCESS_DENIED) {
+          // Standard 403 handler.
+          drupal_set_title(t('Access denied'));
+          $return = t('You are not authorized to access this page.');
+        }
+
+        print drupal_render_page($return);
+        break;
+
+      case MENU_SITE_OFFLINE:
+        // Print a 503 page.
+        drupal_maintenance_theme();
+        drupal_add_http_header('503 Service unavailable');
+        drupal_set_title(t('Site under maintenance'));
+        print theme('maintenance_page', array('content' => filter_xss_admin(variable_get('maintenance_mode_message',
+          t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal')))))));
+        break;
+    }
+  }
+  elseif (isset($page_callback_result)) {
+    // Print anything besides a menu constant, assuming it's not NULL or
+    // undefined.
+    print drupal_render_page($page_callback_result);
+  }
+
+  // Perform end-of-request tasks.
+  drupal_page_footer();
 }
 
 /**
@@ -3150,7 +3314,7 @@ function drupal_clear_css_cache() {
  * @return
  *   The cleaned identifier.
  */
-function drupal_clean_css_identifier($identifier, $filter = array(' ' => '-', '_' => '-', '[' => '-', ']' => '')) {
+function drupal_clean_css_identifier($identifier, $filter = array(' ' => '-', '_' => '-', '/' => '-', '[' => '-', ']' => '')) {
   // By default, we filter using Drupal's coding standards.
   $identifier = strtr($identifier, $filter);
 
@@ -3625,6 +3789,53 @@ function drupal_process_attached($elements, $weight = JS_DEFAULT, $dependency_ch
   }
 
   return $success;
+}
+
+/**
+ * Adds JavaScript to the element to allow it to have different active states.
+ *
+ * @param $elements
+ *   The structured array that may contain an array item named states. This
+ *   array describes the different JavaScript states that can be applied to the
+ *   element when certain contitions are met. The #states array is first keyed
+ *   by one of the following states:
+ *   - enabled
+ *   - invisible
+ *   - invalid
+ *   - untouched
+ *   - optional
+ *   - filled
+ *   - unchecked
+ *   - irrelevant
+ *   - expanded
+ *   - readwrite
+ *
+ *   Each of these states is an array containing conditions that must be met in
+ *   order for this state to be active. The key to this conditioning array is
+ *   a jQuery selector for the element that is checked. The value of the
+ *   conditioning array are the states that are checked on the element (empty,
+ *   checked, value, collapsed, etc) and the expected value of that condition.
+ *
+ *   @code
+ *   $form['email_canceled']['settings'] = array(
+ *     '#type' => 'container',
+ *     '#states' => array(
+ *       // Hide the settings when the cancel notify checkbox is disabled.
+ *       'invisible' => array(
+ *         'input[name="email_canceled_toggle"]' => array('checked' => FALSE),
+ *       ),
+ *     ),
+ *   );
+ *   @endcode
+ */
+function drupal_process_states(&$elements) {
+  if (!empty($elements['#states'])) {
+    $elements['#attached']['js']['misc/states.js'] = array('weight' => JS_LIBRARY + 1);
+    $elements['#attached']['js'][] = array(
+      'type' => 'setting',
+      'data' => array('states' => array('#' . $elements['#id'] => $elements['#states'])),
+    );
+  }
 }
 
 /**
@@ -4324,10 +4535,17 @@ function drupal_alter($type, &$data, &$context1 = NULL, &$context2 = NULL) {
  */
 function drupal_set_page_content($content = NULL) {
   $content_block = &drupal_static(__FUNCTION__, NULL);
+  $main_content_display = &drupal_static('system_main_content_added', FALSE);
+
   if (!empty($content)) {
     $content_block = (is_array($content) ? $content : array('main' => array('#markup' => $content)));
   }
   else {
+    // Indicate that the main content has been requested. We assume that
+    // the module requesting the content will be adding it to the page.
+    // A module can indicate that it does not handle the content by setting
+    // the static variable back to FALSE after calling this function.
+    $main_content_display = TRUE;
     return $content_block;
   }
 }
@@ -4345,6 +4563,8 @@ function drupal_set_page_content($content = NULL) {
  * @see element_info('page')
  */
 function drupal_render_page($page) {
+  $main_content_display = &drupal_static('system_main_content_added', FALSE);
+
   // Allow menu callbacks to return strings or arbitrary arrays to render.
   // If the array returned is not of #type page directly, we need to fill
   // in the page with defaults.
@@ -4361,6 +4581,13 @@ function drupal_render_page($page) {
   // Modules alter the $page as needed. Blocks are populated into regions like
   // 'sidebar_first', 'footer', etc.
   drupal_alter('page', $page);
+
+  // If no module has taken care of the main content, add it to the page now.
+  // This allows the site to still be usable even if no modules that
+  // control page regions (for example, the Block module) are enabled.
+  if (!$main_content_display) {
+    $page['content']['system_main'] = drupal_set_page_content();
+  }
 
   return drupal_render($page);
 }
@@ -4503,6 +4730,9 @@ function drupal_render(&$elements) {
       }
     }
   }
+
+  // Add any JavaScript state information associated with the element.
+  drupal_process_states($elements);
 
   // Add additional libraries, CSS, JavaScript an other custom
   // attached data associated with this element.
@@ -4851,22 +5081,9 @@ function drupal_common_theme() {
       'arguments' => array('page' => NULL),
       'template' => 'page',
     ),
-    'maintenance_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
-      'template' => 'maintenance-page',
-    ),
-    'update_page' => array(
-      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
-    ),
-    'install_page' => array(
-      'arguments' => array('content' => NULL),
-    ),
     'region' => array(
       'arguments' => array('elements' => NULL),
       'template' => 'region',
-    ),
-    'task_list' => array(
-      'arguments' => array('items' => NULL, 'active' => NULL),
     ),
     'status_messages' => array(
       'arguments' => array('display' => NULL),
@@ -4921,6 +5138,26 @@ function drupal_common_theme() {
     ),
     'indentation' => array(
       'arguments' => array('size' => 1),
+    ),
+    // from theme.maintenance.inc
+    'maintenance_page' => array(
+      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+      'template' => 'maintenance-page',
+    ),
+    'update_page' => array(
+      'arguments' => array('content' => NULL, 'show_messages' => TRUE),
+    ),
+    'install_page' => array(
+      'arguments' => array('content' => NULL),
+    ),
+    'task_list' => array(
+      'arguments' => array('items' => NULL, 'active' => NULL),
+    ),
+    'authorize_message' => array(
+      'arguments' => array('message' => NULL, 'success' => TRUE),
+    ),
+    'authorize_report' => array(
+      'arguments' => array('messages' => array()),
     ),
     // from pager.inc
     'pager' => array(
@@ -5020,6 +5257,9 @@ function drupal_common_theme() {
       'arguments' => array('element' => NULL),
     ),
     'vertical_tabs' => array(
+      'arguments' => array('element' => NULL),
+    ),
+    'container' => array(
       'arguments' => array('element' => NULL),
     ),
   );
@@ -5795,5 +6035,78 @@ function xmlrpc($url) {
   require_once DRUPAL_ROOT . '/includes/xmlrpc.inc';
   $args = func_get_args();
   return call_user_func_array('_xmlrpc', $args);
+}
+
+/**
+ * Retrieve a list of all available archivers.
+ */
+function archiver_get_info() {
+  $archiver_info = &drupal_static(__FUNCTION__, array());
+
+  if (empty($archiver_info)) {
+    $cache = cache_get('archiver_info');
+    if ($cache === FALSE) {
+      // Rebuild the cache and save it.
+      $archiver_info = module_invoke_all('archiver_info');
+      drupal_alter('archiver_info', $archiver_info);
+      uasort($archiver_info, 'drupal_sort_weight');
+      cache_set('archiver_info', $archiver_info);
+    }
+    else {
+      $archiver_info = $cache->data;
+    }
+  }
+
+  return $archiver_info;
+}
+
+/**
+ * Create the appropriate archiver for the specified file.
+ *
+ * @param $file
+ *   The full path of the archive file.  Note that stream wrapper
+ *   paths are supported.
+ * @return
+ *   A newly created instance of the archiver class appropriate
+ *   for the specified file, already bound to that file.
+ */
+function archiver_get_archiver($file) {
+  $archiver_info = archiver_get_info();
+
+  foreach ($archiver_info as $implementation) {
+    foreach ($implementation['extensions'] as $extension) {
+      // Because extensions may be multi-part, such as .tar.gz,
+      // we cannot use simpler approaches like substr() or pathinfo().
+      // This method isn't quite as clean but gets the job done.
+      // Also note that the file may not yet exist, so we cannot rely
+      // on fileinfo() or other disk-level utilities.
+      if (strrpos($file, '.' . $extension) === strlen($file) - strlen('.' . $extension)) {
+        return new $implementation['class']($file);
+      }
+    }
+  }
+}
+
+/**
+ * Drupal Updater registry.
+ *
+ * An Updater is a class that knows how to update various parts of the Drupal
+ * file system, for example to update modules that have newer releases, or to
+ * install a new theme.
+ *
+ * @return
+ *   Returns the Drupal Updater class registry.
+ *
+ * @see hook_updater_info()
+ * @see hook_updater_info_alter()
+ */
+function drupal_get_updaters() {
+  $updaters = &drupal_static(__FUNCTION__);
+  if (!isset($updaters)) {
+    $updaters = module_invoke_all('updater_info');
+    drupal_alter('updater_info', $updaters);
+    uasort($updaters, 'drupal_sort_weight');
+  }
+  return $updaters;
 }
 

@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.test,v 1.50 2009/10/14 20:22:04 dries Exp $
+// $Id: taxonomy.test,v 1.55 2009/10/18 07:50:45 webchick Exp $
 
 /**
  * @file
@@ -326,6 +326,7 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
     $this->instance = array(
       'field_name' => 'taxonomy_' . $this->vocabulary->machine_name,
       'bundle' => 'article',
+      'object_type' => 'node',
       'widget' => array(
         'type' => 'options_select',
       ),
@@ -336,25 +337,6 @@ class TaxonomyTermTestCase extends TaxonomyWebTestCase {
       ),
     );
     field_create_instance($this->instance);
-  }
-
-  /**
-   * Test synonyms.
-   */
-  function testTaxonomySynonyms() {
-    // Create a taxonomy term with one synonym.
-    $term = $this->createTerm($this->vocabulary);
-    $term->synonyms = $this->randomName();
-    taxonomy_term_save($term);
-
-    // Fetch the synonyms.
-    $synonyms = taxonomy_get_synonyms($term->tid);
-    $count = count($synonyms);
-    $this->assertEqual($count, 1, t('@count synonyms were found.', array('@count' => $count)));
-
-    // Fetch the term using the synonyms.
-    $returned_term = taxonomy_get_synonym_root($synonyms[0]);
-    $this->assertEqual($term->tid, $returned_term->tid, t('Term ID returned correctly'));
   }
 
   /**
@@ -665,7 +647,6 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
 
     $web_user = $this->drupalCreateUser(array('access field_test content', 'administer field_test content', 'administer taxonomy'));
     $this->drupalLogin($web_user);
-
     $this->vocabulary = $this->createVocabulary();
   }
 
@@ -691,6 +672,7 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     field_create_field($this->field);
     $this->instance = array(
       'field_name' => $this->field_name,
+      'object_type' => 'test_entity',
       'bundle' => FIELD_TEST_BUNDLE,
       'widget' => array(
         'type' => 'options_select',
@@ -749,6 +731,7 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     field_create_field($this->field);
     $this->instance = array(
       'field_name' => $this->field_name,
+      'object_type' => 'test_entity',
       'bundle' => FIELD_TEST_BUNDLE,
       'label' => $this->randomName() . '_label',
       'widget' => array(
@@ -775,7 +758,9 @@ class TaxonomyTermFieldTestCase extends TaxonomyWebTestCase {
     $this->assertRaw(t('test_entity @id has been created.', array('@id' => $id)), t('Entity was created'));
 
     // Display the object.
-    $entity = field_test_entity_load($id);
+    $entity = field_test_entity_test_load($id);
+    $entities = array($id => $entity);
+    field_attach_prepare_view($entity_type, $entities, 'full');
     $entity->content = field_attach_view($entity_type, $entity);
     $this->content = drupal_render($entity->content);
     $this->assertText($term->name, t('Term name is displayed'));

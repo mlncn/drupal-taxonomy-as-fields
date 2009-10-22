@@ -1,5 +1,5 @@
 <?php
-// $Id: file.module,v 1.7 2009/10/12 05:22:57 webchick Exp $
+// $Id: file.module,v 1.9 2009/10/22 00:49:12 dries Exp $
 
 /**
  * @file
@@ -17,11 +17,13 @@ function file_menu() {
 
   $items['file/ajax'] = array(
     'page callback' => 'file_ajax_upload',
+    'delivery callback' => 'ajax_deliver',
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
   $items['file/progress'] = array(
     'page callback' => 'file_ajax_progress',
+    'delivery callback' => 'ajax_deliver',
     'access arguments' => array('access content'),
     'type' => MENU_CALLBACK,
   );
@@ -919,7 +921,7 @@ function file_get_file_references($file, $field = NULL, $age = FIELD_LOAD_REVISI
     if (!isset($references[$field_name])) {
       // Get each time this file is used within a field.
       $cursor = 0;
-      $references[$field_name] = field_attach_query($file_field['id'], array(array('fid', $file->fid)), FIELD_QUERY_NO_LIMIT, $cursor, $age);
+      $references[$field_name] = field_attach_query($file_field['id'], array(array('fid', $file->fid)), array('limit' => FIELD_QUERY_NO_LIMIT, 'cursor' => &$cursor, 'age'=> $age));
     }
   }
 

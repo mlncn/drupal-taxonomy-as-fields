@@ -1,5 +1,5 @@
 <?php
-// $Id: drupal_web_test_case.php,v 1.160 2009/10/13 07:14:26 webchick Exp $
+// $Id: drupal_web_test_case.php,v 1.165 2009/10/22 01:09:05 dries Exp $
 
 /**
  * Base class for Drupal tests.
@@ -730,7 +730,8 @@ class DrupalWebTestCase extends DrupalTestCase {
       'value' => $this->randomName(32),
       'format' => filter_default_format(),
     );
-    $settings['body'][FIELD_LANGUAGE_NONE][0] += $body;
+    $langcode = !empty($settings['language']) ? $settings['language'] : FIELD_LANGUAGE_NONE;
+    $settings['body'][$langcode][0] += $body;
 
     $node = (object) $settings;
     node_save($node);
@@ -1106,7 +1107,7 @@ class DrupalWebTestCase extends DrupalTestCase {
     $language = language_default();
 
     // Use the test mail class instead of the default mail handler class.
-    variable_set('mail_sending_system', array('default-system' => 'TestingMailSystem'));
+    variable_set('mail_system', array('default-system' => 'TestingMailSystem'));
 
     // Use temporary files directory with the same prefix as the database.
     $public_files_directory  = $this->originalFileDirectory . '/' . $db_prefix;
@@ -1174,7 +1175,7 @@ class DrupalWebTestCase extends DrupalTestCase {
 
     if (preg_match('/simpletest\d+/', $db_prefix)) {
       // Delete temporary files directory.
-      file_unmanaged_delete_recursive(file_directory_path());
+      file_unmanaged_delete_recursive($this->originalFileDirectory . '/' . $db_prefix);
 
       // Remove all prefixed tables (all the tables in the schema).
       $schema = drupal_get_schema(NULL, TRUE);
@@ -2509,7 +2510,7 @@ class DrupalWebTestCase extends DrupalTestCase {
   protected function verbose($message) {
     if ($id = simpletest_verbose($message)) {
       $url = file_create_url($this->originalFileDirectory . '/simpletest/verbose/' . get_class($this) . '-' . $id . '.html');
-      $this->pass(l(t('Verbose message'), $url, array('attributes' => array('target' => '_blank'))), 'Debug');
+      $this->error(l(t('Verbose message'), $url, array('attributes' => array('target' => '_blank'))), 'User notice');
     }
   }
 

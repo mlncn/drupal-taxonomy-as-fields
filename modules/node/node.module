@@ -1,5 +1,5 @@
 <?php
-// $Id: node.module,v 1.1145 2009/10/11 03:07:18 webchick Exp $
+// $Id: node.module,v 1.1153 2009/10/20 17:33:43 webchick Exp $
 
 /**
  * @file
@@ -491,7 +491,7 @@ function node_type_save($info) {
       ->execute();
 
     if (!empty($type->old_type) && $type->old_type != $type->type) {
-      field_attach_rename_bundle($type->old_type, $type->type);
+      field_attach_rename_bundle('node', $type->old_type, $type->type);
     }
     node_configure_fields($type);
     module_invoke_all('node_type_update', $type);
@@ -503,7 +503,7 @@ function node_type_save($info) {
       ->fields($fields)
       ->execute();
 
-    field_attach_create_bundle($type->type);
+    field_attach_create_bundle('node', $type->type);
     node_configure_fields($type);
     module_invoke_all('node_type_insert', $type);
     $status = SAVED_NEW;
@@ -528,18 +528,20 @@ function node_type_save($info) {
 function node_configure_fields($type) {
    // Add or remove the body field, as needed.
   $field = field_info_field('body');
-  $instance = field_info_instance('body', $type->type);
+  $instance = field_info_instance('node', 'body', $type->type);
   if ($type->has_body) {
     if (empty($field)) {
       $field = array(
         'field_name' => 'body',
         'type' => 'text_with_summary',
+        'translatable' => TRUE,
       );
       $field = field_create_field($field);
     }
     if (empty($instance)) {
       $instance = array(
         'field_name' => 'body',
+        'object_type' => 'node',
         'bundle' => $type->type,
         'label' => $type->body_label,
         'widget_type' => 'text_textarea_with_summary',
@@ -572,7 +574,7 @@ function node_configure_fields($type) {
   if ($type->has_title) {
     // Add the title field if not present.
     $field = field_info_field('title');
-    $instance = field_info_instance('title', $type->type);
+    $instance = field_info_instance('node', 'title', $type->type);
 
     if (empty($field)) {
       $field = array(
@@ -585,6 +587,7 @@ function node_configure_fields($type) {
       $weight = -5;
       $instance = array(
         'field_name' => 'title',
+        'object_type' => 'node',
         'bundle' => $type->type,
         'label' => $type->title_label,
         'widget_type' => 'text',
@@ -671,9 +674,10 @@ function _node_types_build() {
     $_node_types->names[$type] = $info['name'];
   }
   $type_result = db_select('node_type', 'nt')
+    ->addTag('translatable')
+    ->addTag('node_type_access')
     ->fields('nt')
     ->orderBy('nt.type', 'ASC')
-    ->addTag('node_type_access')
     ->execute();
   foreach ($type_result as $type_object) {
     // Check for node types from disabled modules and mark their types for removal.
@@ -747,6 +751,41 @@ function node_type_set_defaults($info = array()) {
   $new_type->orig_type = isset($info['type']) ? $info['type'] : '';
 
   return $new_type;
+}
+
+/**
+ * Implements hook_rdf_mapping().
+ */
+function node_rdf_mapping() {
+  return array(
+    array(
+      'type' => 'node',
+      'bundle' => RDF_DEFAULT_BUNDLE,
+      'mapping' => array(
+        'rdftype' => array('sioc:Item', 'foaf:Document'),
+        'title' => array(
+          'predicates' => array('dc:title'),
+        ),
+        'created' => array(
+          'predicates' => array('dc:date', 'dc:created'),
+          'datatype' => 'xsd:dateTime',
+          'callback' => 'date_iso8601',
+        ),
+        'changed' => array(
+          'predicates' => array('dc:modified'),
+        ),
+        'body' => array(
+          'predicates' => array('content:encoded'),
+        ),
+        'uid' => array(
+          'predicates' => array('sioc:has_creator'),
+        ),
+        'name' => array(
+          'predicates' => array('foaf:name'),
+        ),
+      ),
+    ),
+  );
 }
 
 /**
@@ -1108,6 +1147,9 @@ function node_build($node, $build_mode = 'full') {
     '#node' => $node,
     '#build_mode' => $build_mode,
   );
+  // Add contextual links for this node.
+  $build['#contextual_links']['node'] = menu_contextual_links('node', array($node->nid));
+
   return $build;
 }
 
@@ -1210,7 +1252,7 @@ function node_language_provider($languages) {
   // We cannot use args now.
   $path = explode('/', $path);
   // Act only if we are in a node page.
-  if ($path[0] == 'node' && $nid = intval($path[1])) {
+  if (isset($path[0]) && isset($path[1]) && $path[0] == 'node' && $nid = intval($path[1])) {
     // We cannot perform a node load here.
     $result = db_query('SELECT n.language FROM {node} n WHERE n.nid = :nid', array(':nid' => $nid))->fetchAssoc();
     return $result['language'];
@@ -1238,7 +1280,7 @@ function node_show($node, $message = FALSE) {
   node_tag_new($node->nid);
 
   // For markup consistency with other pages, use node_build_multiple() rather than node_build().
-  return node_build_multiple(array($node), 'full');
+  return node_build_multiple(array($node->nid => $node), 'full');
 }
 
 /**
@@ -1802,11 +1844,13 @@ function node_menu() {
     'page arguments' => array(1),
     'access callback' => 'node_access',
     'access arguments' => array('view', 1),
-    'type' => MENU_CALLBACK);
+    'type' => MENU_CALLBACK,
+  );
   $items['node/%node/view'] = array(
     'title' => 'View',
     'type' => MENU_DEFAULT_LOCAL_TASK,
-    'weight' => -10);
+    'weight' => -10,
+  );
   $items['node/%node/edit'] = array(
     'title' => 'Edit',
     'page callback' => 'node_page_edit',
@@ -1814,8 +1858,9 @@ function node_menu() {
     'access callback' => 'node_access',
     'access arguments' => array('update', 1),
     'theme callback' => '_node_custom_theme',
-    'weight' => 1,
+    'weight' => 0,
     'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
     'file' => 'node.pages.inc',
   );
   $items['node/%node/delete'] = array(
@@ -1825,7 +1870,8 @@ function node_menu() {
     'access callback' => 'node_access',
     'access arguments' => array('delete', 1),
     'weight' => 1,
-    'type' => MENU_CALLBACK,
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
     'file' => 'node.pages.inc',
   );
   $items['node/%node/revisions'] = array(
@@ -2031,6 +2077,7 @@ function node_feed($nids = FALSE, $channel = array()) {
  *   An array in the format expected by drupal_render().
  */
 function node_build_multiple($nodes, $build_mode = 'teaser', $weight = 0) {
+  field_attach_prepare_view('node', $nodes, $build_mode);
   $build = array();
   foreach ($nodes as $node) {
     $build['nodes'][$node->nid] = node_build($node, $build_mode);

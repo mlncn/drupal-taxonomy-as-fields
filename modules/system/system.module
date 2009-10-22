@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.811 2009/10/14 20:42:47 dries Exp $
+// $Id: system.module,v 1.822 2009/10/19 18:28:16 dries Exp $
 
 /**
  * @file
@@ -123,7 +123,7 @@ function system_help($path, $arg) {
       return $output;
     case 'admin/config/modules/uninstall':
       return '<p>' . t('The uninstall process removes all data related to a module. To uninstall a module, you must first disable it on the main <a href="@modules">modules page</a>. Not all modules support this feature.', array('@modules' => url('admin/config/modules'))) . '</p>';
-    case 'admin/structure/block/configure':
+    case 'admin/structure/block/manage':
       if ($arg[4] == 'system' && $arg[5] == 'powered-by') {
         return '<p>' . t('The <em>Powered by Drupal</em> block is an optional link to the home page of the Drupal project. While there is absolutely no requirement that sites feature this link, it may be used to show support for Drupal.') . '</p>';
       }
@@ -158,6 +158,13 @@ function system_theme() {
     'system_themes_form' => array(
       'arguments' => array('form' => NULL),
       'file' => 'system.admin.inc',
+    ),
+    'system_settings_form' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'system.admin.inc',
+    ),
+    'confirm_form' => array(
+      'arguments' => array('form' => NULL),
     ),
     'system_modules_fieldset' => array(
       'arguments' => array('form' => NULL),
@@ -258,16 +265,32 @@ function system_rdf_namespaces() {
   return array(
     'admin'    => 'http://webns.net/mvcb/',
     'content'  => 'http://purl.org/rss/1.0/modules/content/',
-    'dc'       => 'http://purl.org/dc/elements/1.1/',
-    'dcterms'  => 'http://purl.org/dc/terms/',
+    'dc'       => 'http://purl.org/dc/terms/',
     'foaf'     => 'http://xmlns.com/foaf/0.1/',
     'owl'      => 'http://www.w3.org/2002/07/owl#',
     'rdf'      => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
     'rdfs'     => 'http://www.w3.org/2000/01/rdf-schema#',
     'rss'      => 'http://purl.org/rss/1.0/',
+    'tags'     => 'http://www.holygoat.co.uk/owl/redwood/0.1/tags/',
     'sioc'     => 'http://rdfs.org/sioc/ns#',
-    'xsd'      => 'http://www.w3.org/2001/XMLSchema',
+    'sioct'    => 'http://rdfs.org/sioc/types#',
+    'ctag'     => 'http://commontag.org/ns#',
+    'skos'     => 'http://www.w3.org/2004/02/skos/core#',
+    'xsd'      => 'http://www.w3.org/2001/XMLSchema#',
   );
+}
+
+/**
+ * Implement hook_hook_info().
+ */
+function system_hook_info() {
+  $hooks['token_info'] = array(
+    'group' => 'tokens',
+  );
+  $hooks['tokens'] = array(
+    'group' => 'tokens',
+  );
+  return $hooks;
 }
 
 /**
@@ -306,6 +329,13 @@ function system_element_info() {
     '#list_type' => 'ul',
     '#attributes' => array(),
     '#items' => array(),
+  );
+  // By default, we don't want AJAX commands being rendered in the context of an
+  // HTML page, so we don't provide defaults for #theme or #theme_wrappers.
+  // However, modules can set these properties (for example, to provide an HTML
+  // debugging page that displays rather than executes AJAX commands).
+  $types['ajax_commands'] = array(
+    '#ajax_commands' => array(),
   );
 
   // Input elements.
@@ -463,6 +493,12 @@ function system_element_info() {
     '#default_tab' => '',
     '#process' => array('form_process_vertical_tabs'),
   );
+
+  $types['container'] = array(
+    '#theme_wrappers' => array('container'),
+    '#process' => array('form_process_container'),
+  );
+
   $types['token'] = array(
     '#input' => TRUE,
     '#theme' => array('hidden'),
@@ -492,6 +528,7 @@ function system_menu() {
   $items['system/ajax'] = array(
     'title' => 'AHAH callback',
     'page callback' => 'ajax_form_callback',
+    'delivery callback' => 'ajax_deliver',
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
     'file path' => 'includes',
@@ -1401,6 +1438,70 @@ function _system_themes_access($theme) {
 }
 
 /**
+ * Invoke a given callback via authorize.php to run with elevated privileges.
+ *
+ * To use authorize.php, certain variables must be stashed into
+ * $_SESSION. This function sets up all the necessary $_SESSION variables,
+ * then redirects to authorize.php to initiate the workflow that will
+ * eventually lead to the callback being invoked. The callback will be invoked
+ * at a low bootstrap level, without all modules being invoked, so it needs to
+ * be careful not to assume any code exists.
+ *
+ * @param $callback
+ *   The name of the function to invoke one the user authorizes the operation.
+ * @param $file
+ *   The full path to the file where the callback function is implemented.
+ * @param $arguments
+ *   Optional array of arguments to pass into the callback when it is invoked.
+ *   Note that the first argument to the callback is always the FileTransfer
+ *   object created by authorize.php when the user authorizes the operation.
+ * @param $page_title
+ *   Optional string to use as the page title once redirected to authorize.php.
+ * @return
+ *   Nothing. This function redirects to authorize.php and does not return.
+ */
+function system_run_authorized($callback, $file, $arguments = array(), $page_title = NULL) {
+  global $base_url;
+
+  // First, figure out what file transfer backends the site supports, and put
+  // all of those in the SESSION so that authorize.php has access to all of
+  // them via the class autoloader, even without a full bootstrap.
+  $_SESSION['authorize_filetransfer_backends'] = module_invoke_all('filetransfer_backends');
+
+  // Now, define the callback to invoke.
+  $_SESSION['authorize_operation'] = array(
+    'callback' => $callback,
+    'file' => $file,
+    'arguments' => $arguments,
+  );
+
+  if (isset($page_title)) {
+    $_SESSION['authorize_operation']['page_title'] = $page_title;
+  }
+
+  // Finally, redirect to authorize.php.
+  drupal_goto($base_url . '/authorize.php');
+}
+
+/**
+ * Implement hook_updater_info().
+ */
+function system_updater_info() {
+  return array(
+    'module' => array(
+      'class' => 'ModuleUpdater',
+      'name' => t('Update modules'),
+      'weight' => 0,
+    ),
+    'theme' => array(
+      'class' => 'ThemeUpdater',
+      'name' => t('Update themes'),
+      'weight' => 0,
+    ),
+  );
+}
+
+/**
  * Implement hook_filetransfer_backends().
  */
 function system_filetransfer_backends() {
@@ -1745,8 +1846,8 @@ function system_admin_menu_block($item) {
   $default_task = NULL;
   $has_subitems = FALSE;
   $result = db_query("
-    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, m.description, m.path, m.weight as router_weight, ml.*
-    FROM {menu_router} m 
+    SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.delivery_callback, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, m.description, m.path, m.weight as router_weight, ml.*
+    FROM {menu_router} m
     LEFT JOIN {menu_links} ml ON m.path = ml.router_path
     WHERE (ml.plid = :plid AND ml.menu_name = :name AND hidden = 0) OR (m.tab_parent = :path AND m.type IN (:local_task, :default_task))", array(':plid' => $item['mlid'], ':name' => $item['menu_name'], ':path' => $item['path'], ':local_task' => MENU_LOCAL_TASK, ':default_task' => MENU_DEFAULT_LOCAL_TASK), array('fetch' => PDO::FETCH_ASSOC));
   foreach ($result as $link) {
@@ -1780,7 +1881,7 @@ function system_admin_menu_block($item) {
     }
   }
   if ($has_subitems) {
-    // If we've had at least one non-tab subitem, remove the link for the 
+    // If we've had at least one non-tab subitem, remove the link for the
     // default task, since that is already broken down to subitems.
     unset($content[$default_task]);
   }
@@ -2332,7 +2433,7 @@ function system_settings_form($form, $automatic_defaults = TRUE) {
  */
 function system_settings_form_submit($form, &$form_state) {
   // Exclude unnecessary elements.
-  unset($form_state['values']['submit'], $form_state['values']['reset'], $form_state['values']['form_id'], $form_state['values']['op'], $form_state['values']['form_token'], $form_state['values']['form_build_id']);
+  form_state_values_clean($form_state);
 
   foreach ($form_state['values'] as $key => $value) {
     if (is_array($value) && isset($form_state['values']['array_filter'])) {
@@ -2461,7 +2562,7 @@ function system_get_module_admin_tasks($module) {
 
   if (empty($items)) {
     $result = db_query("
-       SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, ml.*
+       SELECT m.load_functions, m.to_arg_functions, m.access_callback, m.access_arguments, m.page_callback, m.page_arguments, m.delivery_callback, m.title, m.title_callback, m.title_arguments, m.theme_callback, m.theme_arguments, m.type, ml.*
        FROM {menu_links} ml INNER JOIN {menu_router} m ON ml.router_path = m.path WHERE ml.link_path LIKE 'admin/%' AND hidden >= 0 AND module = 'system' AND m.number_parts > 2", array(), array('fetch' => PDO::FETCH_ASSOC));
     foreach ($result as $item) {
       _menu_link_translate($item);
@@ -2499,7 +2600,7 @@ function system_get_module_admin_tasks($module) {
 function system_cron() {
   // Cleanup the flood.
   db_delete('flood')
-    ->condition('timestamp', REQUEST_TIME - 3600, '<')
+    ->condition('expiration', REQUEST_TIME, '<')
     ->execute();
   // Cleanup the batch table.
   db_delete('batch')
@@ -2683,7 +2784,7 @@ function system_mail($key, &$message, $params) {
   $body = token_replace($context['message'], $context);
 
   $message['subject'] .= str_replace(array("\r", "\n"), '', $subject);
-  $message['body'][] = drupal_html_to_text($body);
+  $message['body'][] = $body;
 }
 
 function system_message_action_form($context) {
@@ -3362,5 +3463,111 @@ function system_date_format_delete($dfid) {
   db_delete('date_formats')
     ->condition('dfid', $dfid)
     ->execute();
+}
+
+/**
+ * Implement hook_archiver_info().
+ */
+function system_archiver_info() {
+  return array(
+    'tar' => array(
+      'class' => 'ArchiverTar',
+      'extensions' => array('tar', 'tar.gz', 'tar.bz2'),
+    ),
+  );
+}
+
+/**
+ * Theme confirmation forms.
+ *
+ * By default this does not alter the appearance of a form at all,
+ * but is provided as a convenience for themers.
+ *
+ * @param $variables
+ *   An associative array containing:
+ *   - form: An associative array containing the structure of the form.
+ * @ingroup themeable
+ */
+function theme_confirm_form($variables) {
+  return drupal_render_children($variables['form']);
+}
+
+/**
+ * Template variable preprocessor for contextual links.
+ */
+function system_preprocess(&$variables, $hook) {
+  static $hooks;
+
+  if (!isset($hooks)) {
+    $hooks = theme_get_registry();
+  }
+
+  // Initialize contextual links template variable.
+  $variables['contextual_links'] = array();
+
+  // Determine the primary theme function argument.
+  $keys = array_keys($hooks[$hook]['arguments']);
+  $key = $keys[0];
+  if (isset($variables[$key])) {
+    $element = $variables[$key];
+  }
+
+  if (isset($element) && is_array($element) && isset($element['#contextual_links'])) {
+    $variables['contextual_links'] = system_build_contextual_links($element);
+    if (!empty($variables['contextual_links'])) {
+      $variables['classes_array'][] = 'contextual-links-region';
+    }
+  }
+}
+
+/**
+ * Build a renderable array for contextual links.
+ *
+ * @param $element
+ *   A renderable array containing a #contextual_links property.
+ *
+ * @return
+ *   A renderable array representing contextual links.
+ */
+function system_build_contextual_links($element) {
+  static $destination;
+
+  // Transform contextual links into parameters suitable for theme_link().
+  $items = call_user_func_array('array_merge_recursive', $element['#contextual_links']);
+  $build = array();
+  if (empty($items)) {
+    return $build;
+  }
+
+  if (!isset($destination)) {
+    $destination = drupal_get_destination();
+  }
+
+  $links = array();
+  foreach ($items as $class => $item) {
+    $class = drupal_html_class($class);
+    $links[$class] = array(
+      'title' => $item['title'],
+      'href' => $item['href'],
+    );
+    // @todo theme_links() should *really* use the same parameters as l()...
+    if (!isset($item['localized_options']['query'])) {
+      $item['localized_options']['query'] = array();
+    }
+    $item['localized_options']['query'] += $destination;
+    $links[$class] += $item['localized_options'];
+  }
+  if ($links) {
+    $build = array(
+      '#theme' => 'links',
+      '#links' => $links,
+      '#attributes' => array('class' => array('contextual-links')),
+      '#attached' => array(
+        'js' => array('misc/contextual_links.js'),
+        'css' => array('misc/contextual_links.css'),
+      ),
+    );
+  }
+  return $build;
 }
 

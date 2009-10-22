@@ -1,5 +1,5 @@
 <?php
-// $Id: system.api.php,v 1.87 2009/10/14 10:56:35 dries Exp $
+// $Id: system.api.php,v 1.94 2009/10/20 00:55:29 dries Exp $
 
 /**
  * @file
@@ -10,6 +10,38 @@
  * @addtogroup hooks
  * @{
  */
+
+/**
+ * Defines one or more hooks that are exposed by a module.
+ *
+ * Normally hooks do not need to be explicitly defined. However, by declaring a
+ * hook explicitly, a module may define a "group" for it. Modules that implement
+ * a hook may then place their implementation in either $module.module or in
+ * $module.$group.inc. If the hook is located in $module.$group.inc, then that
+ * file will be automatically loaded when needed.
+ * In general, hooks that are rarely invoked and/or are very large should be
+ * placed in a separate include file, while hooks that are very short or very
+ * frequently called should be left in the main module file so that they are
+ * always available.
+ *
+ * @return
+ *   An associative array whose keys are hook names and whose values are an
+ *   associative array containing:
+ *   - group: A string defining the group to which the hook belongs. The module
+ *     system will determine whether a file with the name $module.$group.inc
+ *     exists, and automatically load it when required.
+ *
+ * See system_hook_info() for all hook groups defined by Drupal core.
+ */
+function hook_hook_info() {
+  $hooks['token_info'] = array(
+    'group' => 'tokens',
+  );
+  $hooks['tokens'] = array(
+    'group' => 'tokens',
+  );
+  return $hooks;
+}
 
 /**
  * Inform the base system and the Field API about one or more entity types.
@@ -115,6 +147,23 @@ function hook_entity_info_alter(&$entity_info) {
   // Set the controller class for nodes to an alternate implementation of the
   // DrupalEntityController interface.
   $entity_info['node']['controller class'] = 'MyCustomNodeController';
+}
+
+/**
+ * Act on entities when loaded.
+ *
+ * This is a generic load hook called for all entity types loaded via the
+ * entity API.
+ *
+ * @param $entities
+ *   The entities keyed by entity ID.
+ * @param $type
+ *   The type of entities being loaded (i.e. node, user, comment).
+ */
+function hook_entity_load($entities, $type) {
+  foreach ($entities as $entity) {
+    $entity->foo = mymodule_add_something($entity, $entity_type);
+  }
 }
 
 /**
@@ -700,7 +749,7 @@ function hook_image_toolkits() {
  *
  * Email messages sent using functions other than drupal_mail() will not
  * invoke hook_mail_alter(). For example, a contributed module directly
- * calling the drupal_mail_sending_system()->mail() or PHP mail() function
+ * calling the drupal_mail_system()->mail() or PHP mail() function
  * will not invoke this hook. All core modules use drupal_mail() for
  * messaging, it is best practice but not manditory in contributed modules.
  *
@@ -1498,8 +1547,8 @@ function hook_file_delete($file) {
  * private file download method is selected. Modules can also provide headers
  * to specify information like the file's name or MIME type.
  *
- * @param $filepath
- *   String of the file's path.
+ * @param $uri
+ *   The URI of the file.
  * @return
  *   If the user does not have permission to access the file, return -1. If the
  *   user has permission, return an array with the appropriate headers. If the
@@ -1509,12 +1558,12 @@ function hook_file_delete($file) {
  * @see file_download()
  * @see upload_file_download()
  */
-function hook_file_download($filepath) {
+function hook_file_download($uri) {
   // Check if the file is controlled by the current module.
-  if (!file_prepare_directory($filepath)) {
-    $filepath = FALSE;
+  if (!file_prepare_directory($uri)) {
+    $uri = FALSE;
   }
-  $result = db_query("SELECT f.* FROM {file} f INNER JOIN {upload} u ON f.fid = u.fid WHERE uri = :filepath", array('filepath' => $filepath));
+  $result = db_query("SELECT f.* FROM {file} f INNER JOIN {upload} u ON f.fid = u.fid WHERE uri = :uri", array('uri' => $uri));
   foreach ($result as $file) {
     if (!user_access('view uploaded files')) {
       return -1;
@@ -2262,21 +2311,17 @@ function hook_install_tasks() {
 /**
  * Change the page the user is sent to by drupal_goto().
  *
- * @param $args
- *   The array keys are the same as drupal_goto() arguments and the array can
- *   be changed.
- *   <code>
- *     $args = array(
- *       'path' => &$path,
- *       'query' => &$query,
- *       'fragment' => &$fragment,
- *       'http_response_code' => &$http_response_code,
- *     );
- *   </code>
+ * @param &$path
+ *   A Drupal path or a full URL.
+ * @param &$options
+ *   An associative array of additional URL options to pass to url().
+ * @param &$http_response_code
+ *   The HTTP status code to use for the redirection. See drupal_goto() for more
+ *   information.
  */
-function hook_drupal_goto_alter(array $args) {
+function hook_drupal_goto_alter(&$path, &$options, &$http_response_code) {
   // A good addition to misery module.
-  $args['http_response_code'] = 500;
+  $http_response_code = 500;
 }
 
 /**
@@ -2288,7 +2333,7 @@ function hook_drupal_goto_alter(array $args) {
  *   the Drupal installation process that occurs after the installation profile
  *   is selected.
  * @param $install_state
- *   An array of information about the current installation state. 
+ *   An array of information about the current installation state.
  */
 function hook_install_tasks_alter(&$tasks, $install_state) {
   // Replace the "Choose language" installation task provided by Drupal core
@@ -2403,6 +2448,32 @@ function hook_action_info_alter(&$actions) {
 }
 
 /**
+ * Declare archivers to the system.
+ *
+ * An archiver is a class that is able to package and unpackage one or more files
+ * into a single possibly compressed file.  Common examples of such files are
+ * zip files and tar.gz files.  All archiver classes must implement
+ * ArchiverInterface.
+ *
+ * Each entry should be keyed on a unique value, and specify three
+ * additional keys:
+ * - class: The name of the PHP class for this archiver.
+ * - extensions: An array of file extensions that this archiver supports.
+ * - weight: This optional key specifies the weight of this archiver.
+ *   When mapping file extensions to archivers, the first archiver by
+ *   weight found that supports the requested extension will be used.
+ */
+function hook_archiver_info() {
+  return array(
+    'tar' => array(
+      'class' => 'ArchiverTar',
+      'extensions' => array('tar', 'tar.gz', 'tar.bz2'),
+    ),
+  );
+}
+
+
+/**
  * Defines additional date types.
  *
  * Next to the 'long', 'medium' and 'short' date types defined in core, any
@@ -2435,7 +2506,7 @@ function hook_date_format_types() {
  * module can define additional types that can be used when displaying dates. A
  * date type is a key which can be passed to format_date() to return a date in
  * the configured displayed format. A date format is a string defining the date
- * and time elements to use. For example, a date type could be 
+ * and time elements to use. For example, a date type could be
  * 'mymodule_extra_long', while a date format is like 'Y-m-d'.
  *
  * New date types must first be declared using hook_date_format_types(). It is
@@ -2463,7 +2534,7 @@ function hook_date_format_types() {
  *     'short', 'mymodule_extra_long'. It must first be declared in
  *     hook_date_format_types() unless extending a type provided by another
  *     module.
- *   - 'format': a string defining the date and time elements to use. It 
+ *   - 'format': a string defining the date and time elements to use. It
  *     can contain any of the formatting options described at
  *     http://php.net/manual/en/function.date.php
  *   - 'locales': (optional) an array of 2 and 5 character language codes, for
@@ -2503,6 +2574,80 @@ function hook_date_formats() {
 function hook_date_formats_alter(&$formats) {
   foreach ($formats as $id => $format) {
     $formats[$id]['locales'][] = 'en-ca';
+  }
+}
+
+/**
+ * Alters the router item for the active menu handler.
+ *
+ * Called by menu_execute_active_handler() to allow modules to alter the
+ * information that will be used to handle the page request. Only use this
+ * hook if an alteration specific to the page request is needed. Otherwise
+ * use hook_menu_alter().
+ *
+ * @param $router_item
+ *   An array with the following keys:
+ *   - access: Boolean. Whether the user is allowed to see this page.
+ *   - file: A path to a file to include prior to invoking the page callback.
+ *   - page_callback: The function to call to build the page content.
+ *   - page_arguments: Arguments to pass to the page callback.
+ *   - delivery_callback: The function to call to deliver the result of the
+ *     page callback to the browser.
+ * @param $path
+ *   The drupal path that was used for retrieving the router item.
+ *
+ * @see menu_execute_active_handler()
+ * @see hook_menu()
+ * @see hook_menu_alter()
+ */
+function hook_menu_active_handler_alter(&$router_item, $path = NULL) {
+  // Turn off access for all pages for all users.
+  $router_item['access'] = FALSE;
+}
+
+/**
+ * Alters the delivery callback used to send the result of the page callback to the browser.
+ *
+ * Called by drupal_deliver_page() to allow modules to alter how the
+ * page is delivered to the browser.
+ *
+ * This hook is intended for altering the delivery callback based on
+ * information unrelated to the path of the page accessed. For example,
+ * it can be used to set the delivery callback based on a HTTP request
+ * header (as shown in the code sample). To specify a delivery callback
+ * based on path information, use hook_menu(), hook_menu_alter() or
+ * hook_menu_active_handler_alter().
+ *
+ * This hook can also be used as an API function that can be used to explicitly
+ * set the delivery callback from some other function. For example, for a module
+ * named MODULE:
+ * @code
+ * function MODULE_page_delivery_callback_alter(&$callback, $set = FALSE) {
+ *   static $stored_callback;
+ *   if ($set) {
+ *     $stored_callback = $callback;
+ *   }
+ *   elseif (isset($stored_callback)) {
+ *     $callback = $stored_callback;
+ *   }
+ * }
+ * function SOMEWHERE_ELSE() {
+ *   $desired_delivery_callback = 'foo';
+ *   MODULE_page_delivery_callback_alter($desired_delivery_callback, TRUE);
+ * }
+ * @endcode
+ *
+ * @param $callback
+ *   The name of a function.
+ *
+ * @see drupal_deliver_page()
+ */
+function hook_page_delivery_callback_alter(&$callback) {
+  // jQuery sets a HTTP_X_REQUESTED_WITH header of 'XMLHttpRequest'.
+  // If a page would normally be delivered as an html page, and it is called
+  // from jQuery, deliver it instead as an AJAX response.
+  if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && $_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest' && $callback == 'drupal_deliver_html_page') {
+    $callback = 'ajax_deliver';
   }
 }
 

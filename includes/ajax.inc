@@ -1,5 +1,5 @@
 <?php
-// $Id: ajax.inc,v 1.14 2009/10/13 21:16:42 dries Exp $
+// $Id: ajax.inc,v 1.16 2009/10/18 05:14:39 webchick Exp $
 
 /**
  * @file
@@ -142,7 +142,7 @@ function ajax_render($commands = array(), $header = TRUE) {
   // them the first command.
   $scripts = drupal_add_js(NULL, NULL);
   if (!empty($scripts['settings'])) {
-    array_unshift($commands, ajax_command_settings($scripts['settings']['data']));
+    array_unshift($commands, ajax_command_settings(call_user_func_array('array_merge_recursive', $scripts['settings']['data'])));
   }
 
   // Allow modules to alter any AJAX response.
@@ -156,7 +156,7 @@ function ajax_render($commands = array(), $header = TRUE) {
     // http://malsup.com/jquery/form/#code-samples
     print '<textarea>' . drupal_json_encode($commands) . '</textarea>';
   }
-  else if ($header) {
+  elseif ($header) {
     drupal_json_output($commands);
   }
   else {
@@ -291,30 +291,60 @@ function ajax_form_callback() {
     $callback = $triggering_element['#ajax']['callback'];
   }
   if (!empty($callback) && function_exists($callback)) {
-    $html = $callback($form, $form_state);
-
-    // If the returned value is a string, assume it is HTML, add the status
-    // messages, and create a command object to return automatically. We want
-    // the status messages inside the new wrapper, so that they get replaced
-    // on subsequent AJAX calls for the same wrapper.
-    if (is_string($html)) {
-      $commands = array();
-      $commands[] = ajax_command_replace(NULL, $html);
-      $commands[] = ajax_command_prepend(NULL, theme('status_messages'));
-    }
-    // Otherwise, $html is supposed to be an array of commands, suitable for
-    // Drupal.ajax, so we pass it on as is. In this situation, the callback is
-    // doing something fancy, so let it decide how to handle status messages
-    // without second guessing it.
-    else {
-      $commands = $html;
-    }
-
-    ajax_render($commands);
+    return $callback($form, $form_state);
   }
+}
 
-  // Return a 'do nothing' command if there was no callback.
-  ajax_render(array());
+/**
+ * Package and send the result of a page callback to the browser as an AJAX response.
+ *
+ * @param $page_callback_result
+ *   The result of a page callback. Can be one of:
+ *   - NULL: to indicate no content.
+ *   - An integer menu status constant: to indicate an error condition.
+ *   - A string of HTML content.
+ *   - A renderable array of content.
+ */
+function ajax_deliver($page_callback_result) {
+  $commands = array();
+  if (!isset($page_callback_result)) {
+    // Simply delivering an empty commands array is sufficient. This results
+    // in the AJAX request being completed, but nothing being done to the page.
+  }
+  elseif (is_int($page_callback_result)) {
+    switch ($page_callback_result) {
+      case MENU_NOT_FOUND:
+        $commands[] = ajax_command_alert(t('The requested page could not be found.'));
+        break;
+
+      case MENU_ACCESS_DENIED:
+        $commands[] = ajax_command_alert(t('You are not authorized to access this page.'));
+        break;
+
+      case MENU_SITE_OFFLINE:
+        $commands[] = ajax_command_alert(filter_xss_admin(variable_get('maintenance_mode_message',
+          t('@site is currently under maintenance. We should be back shortly. Thank you for your patience.', array('@site' => variable_get('site_name', 'Drupal'))))));
+        break;
+    }
+  }
+  elseif (is_array($page_callback_result) && isset($page_callback_result['#type']) && ($page_callback_result['#type'] == 'ajax_commands')) {
+    // Complex AJAX callbacks can return a result that contains a specific
+    // set of commands to send to the browser. 
+    if (isset($page_callback_result['#ajax_commands'])) {
+      $commands = $page_callback_result['#ajax_commands'];
+    }
+  }
+  else {
+    // Like normal page callbacks, simple AJAX callbacks can return html
+    // content, as a string or renderable array, to replace what was previously
+    // there in the wrapper. In this case, in addition to the content, we want
+    // to add the status messages, but inside the new wrapper, so that they get
+    // replaced on subsequent AJAX calls for the same wrapper.
+    $html = is_string($page_callback_result) ? $page_callback_result : drupal_render($page_callback_result);
+    $commands[] = ajax_command_replace(NULL, $html);
+    $commands[] = ajax_command_prepend(NULL, theme('status_messages'));
+  }
+  ajax_render($commands);
 }
 
 /**
@@ -743,7 +773,7 @@ function ajax_command_css($selector, $argument) {
 function ajax_command_settings($argument) {
   return array(
     'command' => 'settings',
-    'argument' => $argument,
+    'settings' => $argument,
   );
 }
 

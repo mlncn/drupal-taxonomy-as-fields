@@ -1,5 +1,5 @@
 <?php
-// $Id: bootstrap.inc,v 1.309 2009/10/09 16:33:13 webchick Exp $
+// $Id: bootstrap.inc,v 1.313 2009/10/22 01:15:15 dries Exp $
 
 /**
  * @file
@@ -248,6 +248,7 @@ function timer_read($name) {
     }
     return $diff;
   }
+  return $timers[$name]['time'];
 }
 
 /**
@@ -262,7 +263,12 @@ function timer_read($name) {
 function timer_stop($name) {
   global $timers;
 
-  $timers[$name]['time'] = timer_read($name);
+  if (isset($timers[$name]['time'])) {
+    $timers[$name]['time'] += timer_read($name);
+  }
+  else {
+    $timers[$name]['time'] = timer_read($name);
+  }
   unset($timers[$name]['start']);
 
   return $timers[$name];
@@ -1627,7 +1633,7 @@ function drupal_language_initialize() {
 
   // Ensure the language is correctly returned, even without multilanguage support.
   // Useful for eg. XML/HTML 'lang' attributes.
-  if (variable_get('language_count', 1) == 1) {
+  if (!drupal_multilingual()) {
     $default = language_default();
     foreach ($types as $type) {
       $GLOBALS[$type] = $default;
@@ -1638,6 +1644,9 @@ function drupal_language_initialize() {
     foreach ($types as $type) {
       $GLOBALS[$type] = language_initialize($type);
     }
+    // Allow modules to react on language system initialization in multilingual
+    // environments.
+    module_invoke_all('language_init', $types);
   }
 }
 
@@ -1657,6 +1666,17 @@ function drupal_language_types() {
 }
 
 /**
+ * Return true if there is more than one language enabled.
+ */
+function drupal_multilingual() {
+  static $multilingual;
+  if (!isset($multilingual)) {
+    $multilingual = variable_get('language_count', 1) > 1;
+  }
+  return $multilingual;
+}
+
+/**
  * Return an array of the available language types.
  */
 function language_types() {
@@ -1672,7 +1692,7 @@ function language_list($field = 'language') {
   $languages = &drupal_static(__FUNCTION__);
   // Init language list
   if (!isset($languages)) {
-    if (variable_get('language_count', 1) > 1 || module_exists('locale')) {
+    if (drupal_multilingual() || module_exists('locale')) {
       $languages['language'] = db_query('SELECT * FROM {languages} ORDER BY weight ASC, name ASC')->fetchAllAssoc('language');
     }
     else {
@@ -1904,8 +1924,8 @@ function _registry_check_code($type, $name = NULL) {
     return;
   }
 
-  // $type can be one of 'function', 'interface' or 'class', so we only need the
-  // first letter to keep the cache key unique.
+  // $type is either 'interface' or 'class', so we only need the first letter to
+  // keep the cache key unique.
   $cache_key = $type[0] . $name;
   if (isset($lookup_cache[$cache_key])) {
     if ($lookup_cache[$cache_key]) {

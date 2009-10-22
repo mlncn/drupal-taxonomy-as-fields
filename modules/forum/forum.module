@@ -1,5 +1,5 @@
 <?php
-// $Id: forum.module,v 1.522 2009/10/11 03:07:18 webchick Exp $
+// $Id: forum.module,v 1.526 2009/10/20 17:33:42 webchick Exp $
 
 /**
  * @file
@@ -56,6 +56,10 @@ function forum_theme() {
     'forum_submitted' => array(
       'template' => 'forum-submitted',
       'arguments' => array('topic' => NULL),
+    ),
+    'forum_form' => array(
+      'arguments' => array('form' => NULL),
+      'file' => 'forum.admin.inc',
     ),
   );
 }
@@ -155,7 +159,7 @@ function forum_init() {
  */
 function _forum_node_check_node_type($node) {
   // Fetch information about the forum field.
-  $field = field_info_instance('taxonomy_forums', $node->type);
+  $field = field_info_instance('node', 'taxonomy_forums', $node->type);
 
   return is_array($field);
 }
@@ -408,7 +412,7 @@ function forum_comment_update($comment) {
 }
 
 /**
- * Implement forum_comment_unpublish() {
+ * Implements forum_comment_unpublish().
  */
 function forum_comment_unpublish($comment) {
   _forum_update_forum_index($comment->nid);
@@ -846,7 +850,7 @@ function template_preprocess_forums(&$variables) {
 
     // Loop through all bundles for forum taxonomy vocabulary field.
     $field = field_info_field('taxonomy_' . $vocabulary->machine_name);
-    foreach ($field['bundles'] as $type) {
+    foreach ($field['bundles']['node'] as $type) {
       // Check if the current user has the 'create' permission for this node type.
       if (node_access('create', $type)) {
         // Fetch the "General" name of the content type;
@@ -1127,4 +1131,30 @@ function _forum_update_forum_index($nid) {
       ->condition('nid', $nid)
       ->execute();
   }
+}
+
+/**
+ * Implements hook_rdf_mapping().
+ */
+function forum_rdf_mapping() {
+  return array(
+    array(
+      'type' => 'node',
+      'bundle' => 'forum',
+      'mapping' => array(
+        'rdftype' => array('sioct:Post', 'sioct:ForumTopic'),
+        'taxonomy_forums' => array(
+          'predicates' => array('sioc:has_container'),
+          'type' => 'rel',
+        ),
+      ),
+    ),
+    array(
+      'type' => 'taxonomy_term',
+      'bundle' => 'forums',
+      'mapping' => array(
+        'rdftype' => array('sioct:Container'),
+      ),
+    ),
+  );
 }

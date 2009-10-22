@@ -1,5 +1,5 @@
 <?php
-// $Id: search.test,v 1.39 2009/10/13 05:37:45 webchick Exp $
+// $Id: search.test,v 1.42 2009/10/19 23:28:40 dries Exp $
 
 // The search index can contain different types of content. Typically the type is 'node'.
 // Here we test with _test_ and _test2_ as the type.
@@ -395,16 +395,11 @@ class SearchBlockTestCase extends DrupalWebTestCase {
     // Create and login user
     $admin_user = $this->drupalCreateUser(array('administer blocks', 'search content'));
     $this->drupalLogin($admin_user);
-
-    // Disable the theme form to avoid confusion.
-    $settings = theme_get_settings();
-    $settings['toggle_search'] = FALSE;
-    variable_set('theme_settings', $settings);
   }
 
   function testSearchFormBlock() {
     // Set block title to confirm that the interface is availble.
-    $this->drupalPost('admin/structure/block/configure/search/form', array('title' => $this->randomName(8)), t('Save block'));
+    $this->drupalPost('admin/structure/block/manage/search/form/configure', array('title' => $this->randomName(8)), t('Save block'));
     $this->assertText(t('The block configuration has been saved.'), t('Block configuration set.'));
 
     // Set the block to a region to confirm block is availble.
@@ -434,7 +429,7 @@ class SearchBlockTestCase extends DrupalWebTestCase {
 
     // Test a search from the block when it doesn't appear on the search page.
     $edit = array('pages' => 'search');
-    $this->drupalPost('admin/structure/block/configure/search/form', $edit, t('Save block'));
+    $this->drupalPost('admin/structure/block/manage/search/form/configure', $edit, t('Save block'));
     $this->drupalPost('node', $terms, t('Search'));
     $this->assertText('Your search yielded no results');
   }
@@ -468,7 +463,7 @@ class SearchCommentTestCase extends DrupalWebTestCase {
   function testSearchResultsComment() {
     $comment_body = $this->randomName(5);
 
-    variable_set('comment_preview_article', COMMENT_PREVIEW_OPTIONAL);
+    variable_set('comment_preview_article', DRUPAL_OPTIONAL);
     // Enable check_plain() for 'Filtered HTML' text format.
     $edit = array(
       'filters[filter_html_escape][status]' => 1,

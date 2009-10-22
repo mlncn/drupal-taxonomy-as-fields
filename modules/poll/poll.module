@@ -1,5 +1,5 @@
 <?php
-// $Id: poll.module,v 1.317 2009/10/11 03:07:19 webchick Exp $
+// $Id: poll.module,v 1.320 2009/10/19 17:46:24 dries Exp $
 
 /**
  * @file
@@ -382,9 +382,7 @@ function _poll_choice_form($key, $chid = NULL, $value = '', $votes = 0, $weight 
  * Menu callback for AHAH additions. Render the new poll choices.
  */
 function poll_choice_js($form, $form_state) {
-  $choice_form = $form['choice_wrapper']['choice'];
-
-  return drupal_render($choice_form);
+  return $form['choice_wrapper']['choice'];
 }
 
 /**
@@ -438,7 +436,12 @@ function poll_load($nodes) {
     $poll = db_query("SELECT runtime, active FROM {poll} WHERE nid = :nid", array(':nid' => $node->nid))->fetchObject();
 
     // Load the appropriate choices into the $poll object.
-    $poll->choice = db_query("SELECT chid, chtext, chvotes, weight FROM {poll_choice} WHERE nid = :nid ORDER BY weight", array(':nid' => $node->nid))->fetchAllAssoc('chid', PDO::FETCH_ASSOC);
+    $poll->choice = db_select('poll_choice', 'c')
+      ->addTag('translatable')
+      ->fields('c', array('chid', 'chtext', 'chvotes', 'weight'))
+      ->condition('c.nid', $node->nid)
+      ->orderBy('weight')
+      ->execute()->fetchAllAssoc('chid', PDO::FETCH_ASSOC);
 
     // Determine whether or not this user is allowed to vote.
     $poll->allowvotes = FALSE;

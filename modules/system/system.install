@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.399 2009/10/14 10:56:35 dries Exp $
+// $Id: system.install,v 1.410 2009/10/20 19:06:09 webchick Exp $
 
 /**
  * @file
@@ -352,23 +352,19 @@ function system_install() {
   // Load system theme data appropriately.
   system_rebuild_theme_data();
 
-  // Inserting uid 0 here confuses MySQL -- the next user might be created as
-  // uid 2 which is not what we want. So we insert the first user here, the
-  // anonymous user. uid is 1 here for now, but very soon it will be changed
-  // to 0.
   db_insert('users')
     ->fields(array(
+      'uid' => 0,
       'name' => '',
       'mail' => '',
     ))
     ->execute();
   // We need some placeholders here as name and mail are uniques and data is
-  // presumed to be a serialized array. Install will change uid 1 immediately
-  // anyways. So we insert the superuser here, the uid is 2 here for now, but
-  // very soon it will be changed to 1.
-
+  // presumed to be a serialized array. This will be changed by the settings
+  // form.
   db_insert('users')
     ->fields(array(
+      'uid' => 1,
       'name' => 'placeholder-for-uid-1',
       'mail' => 'placeholder-for-uid-1',
       'created' => REQUEST_TIME,
@@ -376,19 +372,6 @@ function system_install() {
       'data' => serialize(array()),
     ))
     ->execute();
-  // This sets the above two users uid 0 (anonymous). We avoid an explicit 0
-  // otherwise MySQL might insert the next auto_increment value.
-  db_update('users')
-    ->expression('uid', 'uid - uid')
-    ->condition('name', '')
-    ->execute();
-
-  // This sets uid 1 (superuser). We skip uid 2 but that's not a big problem.
-  db_update('users')
-    ->fields(array('uid' => 1))
-    ->condition('name', 'placeholder-for-uid-1')
-    ->execute();
-
   // Built-in roles.
   $rid_anonymous = db_insert('role')
     ->fields(array('name' => 'anonymous user'))
@@ -568,6 +551,7 @@ function system_schema() {
         'type' => 'text',
         'not null' => TRUE,
         'size' => 'big',
+        'translatable' => TRUE,
       ),
     ),
     'primary key' => array('name'),
@@ -609,19 +593,6 @@ function system_schema() {
         'length' => 255,
         'not null' => TRUE,
         'default' => '0',
-      ),
-    ),
-    'primary key' => array('aid'),
-  );
-
-  $schema['actions_aid'] = array(
-    'description' => 'Stores action IDs for non-default actions.',
-    'fields' => array(
-      'aid' => array(
-        'description' => 'Primary Key: Unique actions ID.',
-        'type' => 'serial',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
       ),
     ),
     'primary key' => array('aid'),
@@ -927,10 +898,17 @@ function system_schema() {
         'not null' => TRUE,
         'default' => 0,
       ),
+      'expiration' => array(
+        'description' => 'Expiration timestamp. Expired events are purged on cron run.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
     ),
     'primary key' => array('fid'),
     'indexes' => array(
       'allow' => array('event', 'identifier', 'timestamp'),
+      'purge' => array('expiration'),
     ),
   );
 
@@ -1005,6 +983,13 @@ function system_schema() {
         'type' => 'text',
         'not null' => FALSE,
       ),
+      'delivery_callback' => array(
+        'description' => 'The name of the function that sends the result of the page_callback function to the browser.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
       'fit' => array(
         'description' => 'A numeric representation of how specific the path is.',
         'type' => 'int',
@@ -1017,6 +1002,12 @@ function system_schema() {
         'not null' => TRUE,
         'default' => 0,
         'size' => 'small',
+      ),
+      'context' => array(
+        'description' => 'Only for local tasks (tabs) - the context of a local task to control its placement.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
       ),
       'tab_parent' => array(
         'description' => 'Only for local tasks (tabs) - the router path of the parent page (which may also be a local task).',
@@ -1155,11 +1146,13 @@ function system_schema() {
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
+        'translatable' => TRUE,
       ),
       'options' => array(
         'description' => 'A serialized array of options to be passed to the url() or l() function, such as a query string or HTML attributes.',
         'type' => 'text',
         'not null' => FALSE,
+        'translatable' => TRUE,
       ),
       'module' => array(
         'description' => 'The name of the module that generated this link.',
@@ -1435,6 +1428,19 @@ function system_schema() {
     'primary key' => array('name'),
   );
 
+  $schema['sequences'] = array(
+    'description' => 'Stores IDs.',
+    'fields' => array(
+      'value' => array(
+        'description' => 'The value of the sequence.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+     ),
+    'primary key' => array('value'),
+  );
+
   $schema['sessions'] = array(
     'description' => "Drupal's session handlers read and write into the sessions table. Each record represents a user session, either anonymous or authenticated.",
     'fields' => array(
@@ -1576,14 +1582,14 @@ function system_schema() {
         'unsigned' => TRUE,
         'not null' => TRUE,
       ),
-      'src' => array(
+      'source' => array(
         'description' => 'The Drupal path this alias is for; e.g. node/12.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
       ),
-      'dst' => array(
+      'alias' => array(
         'description' => 'The alias for this path; e.g. title-of-the-story.',
         'type' => 'varchar',
         'length' => 255,
@@ -1599,11 +1605,11 @@ function system_schema() {
       ),
     ),
     'unique keys' => array(
-      'dst_language_pid' => array('dst', 'language', 'pid'),
+      'alias_language_pid' => array('alias', 'language', 'pid'),
     ),
     'primary key' => array('pid'),
     'indexes' => array(
-      'src_language_pid' => array('src', 'language', 'pid'),
+      'source_language_pid' => array('source', 'language', 'pid'),
     ),
   );
 
@@ -1613,9 +1619,99 @@ function system_schema() {
 // Updates for core.
 
 function system_update_last_removed() {
-  return 6049;
+  return 6047;
 }
 
+/**
+ * @defgroup updates-6.x-extra Extra system updates for 6.x
+ * @{
+ */
+
+/**
+* Increase the size of the 'load_functions' and 'to_arg_functions' fields in table 'menu_router'.
+*/
+function system_update_6048() {
+  $ret = array();
+  db_change_field($ret, 'menu_router', 'load_functions', 'load_functions', array('type' => 'text', 'not null' => TRUE,));
+  db_change_field($ret, 'menu_router', 'to_arg_functions', 'to_arg_functions', array('type' => 'text', 'not null' => TRUE,));
+
+  return $ret;
+}
+
+/**
+ * Replace src index on the {url_alias} table with src, language.
+ */
+function system_update_6049() {
+  $ret = array();
+  db_drop_index($ret, 'url_alias', 'src');
+  db_add_index($ret, 'url_alias', 'src_language', array('src', 'language'));
+  return $ret;
+}
+
+/**
+ * Clear any menu router blobs stored in the cache table.
+ */
+function system_update_6050() {
+  $ret = array();
+  cache_clear_all('router:', 'cache_menu', TRUE);
+  return $ret;
+}
+
+/**
+ * Create a signature_format column.
+ */
+function system_update_6051() {
+  $ret = array();
+
+  if (!db_column_exists('users', 'signature_format')) {
+
+    // Set future input formats to FILTER_FORMAT_DEFAULT to ensure a safe default
+    // when incompatible modules insert into the users table. An actual format
+    // will be assigned when users save their signature.
+
+    $schema = array(
+      'type' => 'int',
+      'size' => 'small',
+      'not null' => TRUE,
+      'default' => FILTER_FORMAT_DEFAULT,
+      'description' => 'The {filter_formats}.format of the signature.',
+    );
+
+    db_add_field($ret, 'users', 'signature_format', $schema);
+
+    // Set the format of existing signatures to the current default input format.
+    if ($current_default_filter = variable_get('filter_default_format', 0)) {
+      $ret[] = update_sql("UPDATE {users} SET signature_format = ". $current_default_filter);
+    }
+
+    drupal_set_message("User signatures no longer inherit comment input formats. Each user's signature now has its own associated format that can be selected on the user's account page. Existing signatures have been set to your site's default input format.");
+  }
+
+  return $ret;
+}
+
+/**
+ * Add a missing index on the {menu_router} table.
+ */
+function system_update_6052() {
+  $ret = array();
+  db_add_index($ret, 'menu_router', 'tab_root_weight_title', array(array('tab_root', 64), 'weight', 'title'));
+  return $ret;
+}
+
+/**
+ * Add a {system} index on type and name.
+ */
+function system_update_6053() {
+  $ret = array();
+  db_add_index($ret, 'system', 'type_name', array(array('type', 12), 'name'));
+  return $ret;
+}
+
+/**
+ * @} End of "defgroup updates-6.x-extra"
+ * The next series of updates should start at 7000.
+ */
 
 /**
  * @defgroup updates-6.x-to-7.x System updates from 6.x to 7.x
@@ -1937,7 +2033,6 @@ function system_update_7007() {
   return implode(', ', $messages);
 }
 
-
 /**
  * Use the poll_choice primary key to record votes in poll_votes rather than
  * the choice order. Rename chorder to weight.
@@ -2214,7 +2309,7 @@ function system_update_7021() {
         'cache' => -1,
       ));
     }
-    drupal_set_message('The contact form information setting was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the site-wide contact page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
+    drupal_set_message('The contact form information setting was migrated to <a href="' . url('admin/structure/block/manage/block/' . $bid . '/configure') . '">a custom block</a> and set up to only show on the site-wide contact page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
   }
   $insert->execute();
 
@@ -2237,7 +2332,7 @@ function system_update_7021() {
         'cache' => -1,
       ));
     }
-    drupal_set_message('The user registration guidelines were migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the user registration page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
+    drupal_set_message('The user registration guidelines were migrated to <a href="' . url('admin/structure/block/manage/block/' . $bid . '/configure') . '">a custom block</a> and set up to only show on the user registration page. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right.');
     $insert->execute();
   }
 
@@ -2260,7 +2355,7 @@ function system_update_7021() {
         'cache' => -1,
       ));
     }
-    drupal_set_message('The site mission was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to only show on the front page in the highlighted content region. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a highlighted content region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
+    drupal_set_message('The site mission was migrated to <a href="' . url('admin/structure/block/manage/block/' . $bid . '/configure') . '">a custom block</a> and set up to only show on the front page in the highlighted content region. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a highlighted content region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
     $insert->execute();
     // Migrate mission to RSS site description.
     variable_set('feed_description', $mission);
@@ -2286,7 +2381,7 @@ function system_update_7021() {
         'cache' => -1,
       ));
     }
-    drupal_set_message('The footer message was migrated to <a href="' . url('admin/structure/block/configure/block/' . $bid) . '">a custom block</a> and set up to appear in the footer. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a footer region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
+    drupal_set_message('The footer message was migrated to <a href="' . url('admin/structure/block/manage/block/' . $bid . '/configure') . '">a custom block</a> and set up to appear in the footer. The block was set to use the default text format, which might differ from the HTML based format used before. Please check the block and ensure that the output is right. If your theme does not have a footer region, you might need to <a href="' . url('admin/structure/block') . '">relocate the block</a>.');
     $insert->execute();
   }
 
@@ -2723,6 +2818,72 @@ function system_update_7040() {
   db_create_table('date_format_type', $schema['date_format_type']);
   db_create_table('date_formats', $schema['date_formats']);
   db_create_table('date_format_locale', $schema['date_format_locale']);
+}
+
+/**
+ * Adds 'delivery_callback' field to the {menu_router} table to allow a custom
+ * function to be used for final page rendering and sending to browser.
+ */
+function system_update_7041() {
+  db_add_field('menu_router', 'delivery_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+}
+
+/**
+ * Rename dst and src to source and alias.
+ */
+function system_update_7042() {
+  // Drop indexes.
+  db_drop_index('url_alias', 'src_language_pid');
+  db_drop_unique_key('url_alias', 'dst_language_pid');
+  // Rename fields.
+  db_change_field('url_alias', 'src', 'source', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  db_change_field('url_alias', 'dst', 'alias', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  // Add indexes back.
+  db_add_index('url_alias', 'source_language_pid', array('source', 'language', 'pid'));
+  db_add_unique_key('url_alias', 'alias_language_pid', array('alias', 'language', 'pid'));
+}
+
+/**
+ * Add a 'context' field to {menu_router} to control contextual placement of local tasks.
+ */
+function system_update_7043() {
+  db_add_field('menu_router', 'context', array(
+    'description' => 'Only for local tasks (tabs) - the context of a local task to control its placement.',
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+  ));
+}
+
+/**
+ * Reuse the actions_aid table as sequences.
+ */
+function system_update_7044() {
+  $schema['sequences'] = array(
+    'description' => 'Stores IDs.',
+    'fields' => array(
+      'value' => array(
+        'description' => 'The value of the sequence.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+     ),
+    'primary key' => array('value'),
+  );
+  db_create_table('sequences', $schema['sequences']);
+  $max_aid = db_query('SELECT MAX(aid) FROM {actions_aid}')->fetchField();
+  $max_uid = db_query('SELECT MAX(uid) FROM {users}')->fetchField();
+  db_insert('sequences')->fields(array('value' => max($max_aid, $max_uid)))->execute();
+  db_drop_table('actions_aid');
+}
+
+/**
+ * Add expiration field to the {flood} table.
+ */
+function system_update_7045() {
+  db_add_field('flood', 'expiration', array('description' => 'Expiration timestamp. Expired events are purged on cron run.', 'type' => 'int', 'not null' => TRUE, 'default' => 0));
+  db_add_index('flood', 'purge', array('expiration'));
 }
 
 /**

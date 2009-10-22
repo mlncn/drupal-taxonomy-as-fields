@@ -1,5 +1,5 @@
 <?php
-// $Id: taxonomy.pages.inc,v 1.38 2009/10/09 01:00:06 dries Exp $
+// $Id: taxonomy.pages.inc,v 1.42 2009/10/17 12:08:21 dries Exp $
 
 /**
  * @file
@@ -30,6 +30,7 @@ function taxonomy_term_page($term) {
   drupal_add_feed(url('taxonomy/term/' . $term->tid . '/feed'), 'RSS - ' . $term->name);
   drupal_add_css(drupal_get_path('module', 'taxonomy') . '/taxonomy.css');
 
+  field_attach_prepare_view('taxonomy_term', array($term->tid => $term), 'full');
   $build = array();
   $build += field_attach_view('taxonomy_term', $term);
   if (!empty($term->description)) {
@@ -40,7 +41,7 @@ function taxonomy_term_page($term) {
       '#suffix' => '</div>',
     );
   }
-  if ($nids = taxonomy_select_nodes($term)) {
+  if ($nids = taxonomy_select_nodes($term->tid, TRUE, variable_get('default_nodes_main', 10))) {
     $nodes = node_load_multiple($nids);
     $build += node_build_multiple($nodes);
     $build['pager'] = array(
@@ -70,21 +71,9 @@ function taxonomy_term_feed($term) {
   // Only display the description if we have a single term, to avoid clutter and confusion.
   // HTML will be removed from feed description, so no need to filter here.
   $channel['description'] = $term->description;
-  $nids = taxonomy_select_nodes(array($term->tid, FALSE));
+  $nids = taxonomy_select_nodes($term->tid, FALSE, variable_get('feed_default_items', 10));
 
   node_feed($nids, $channel);
-}
-
-/**
- * Page to edit a vocabulary term.
- */
-function taxonomy_term_edit($term) {
-  if (isset($term)) {
-    drupal_set_title($term->name);
-    include_once DRUPAL_ROOT . '/'. drupal_get_path('module', 'taxonomy') . '/taxonomy.admin.inc';
-    return drupal_get_form('taxonomy_form_term', taxonomy_vocabulary_load($term->vid), (array)$term);
-  }
-  return drupal_not_found();
 }
 
 /**
@@ -108,6 +97,7 @@ function taxonomy_autocomplete($field_name, $bundle, $tags_typed = '') {
     }
 
     $query = db_select('taxonomy_term_data', 't');
+    $query->addTag('translatable');
     $query->addTag('term_access');
 
     // Do not select already entered terms.

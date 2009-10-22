@@ -1,5 +1,5 @@
 <?php
-// $Id: user.pages.inc,v 1.58 2009/10/10 16:48:39 webchick Exp $
+// $Id: user.pages.inc,v 1.61 2009/10/15 16:18:46 webchick Exp $
 
 /**
  * @file
@@ -269,7 +269,8 @@ function user_profile_form_validate($form, &$form_state) {
 function user_profile_form_submit($form, &$form_state) {
   $account = $form['#user'];
   $category = $form['#user_category'];
-  unset($form_state['values']['op'], $form_state['values']['submit'], $form_state['values']['cancel'], $form_state['values']['form_token'], $form_state['values']['form_id'], $form_state['values']['form_build_id']);
+  // Remove unneeded values.
+  form_state_values_clean($form_state);
 
   $edit = (object)$form_state['values'];
   field_attach_submit('user', $edit, $form, $form_state);
@@ -293,7 +294,7 @@ function user_edit_cancel_submit($form, &$form_state) {
     unset($_GET['destination']);
   }
   // Note: We redirect from user/uid/edit to user/uid/cancel to make the tabs disappear.
-  $form_state['redirect'] = array("user/" . $form['#user']->uid . "/cancel", $destination);
+  $form_state['redirect'] = array("user/" . $form['#user']->uid . "/cancel", array('query' => $destination));
 }
 
 /**
@@ -499,7 +500,7 @@ function user_page() {
   global $user;
   if ($user->uid) {
     menu_set_active_item('user/' . $user->uid);
-    return menu_execute_active_handler();
+    return menu_execute_active_handler(NULL, FALSE);
   }
   else {
     return drupal_get_form('user_login');
