@@ -1,5 +1,5 @@
 <?php
-// $Id: system.install,v 1.410 2009/10/20 19:06:09 webchick Exp $
+// $Id: system.install,v 1.415 2009/10/24 23:19:21 webchick Exp $
 
 /**
  * @file
@@ -1992,28 +1992,6 @@ function system_update_7006() {
  * all modules can use the updated permission scheme during their updates.
  */
 function system_update_7007() {
-  $schema['role_permission'] = array(
-    'fields' => array(
-      'rid' => array(
-        'type' => 'int',
-        'unsigned' => TRUE,
-        'not null' => TRUE,
-      ),
-      'permission' => array(
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-        'default' => '',
-      ),
-    ),
-    'primary key' => array('rid', 'permission'),
-    'indexes' => array(
-      'permission' => array('permission'),
-    ),
-  );
-
-  db_create_table('role_permission', $schema['role_permission']);
-
   // Copy the permissions from the old {permission} table to the new {role_permission} table.
   $messages = array();
   $result = db_query("SELECT rid, perm FROM {permission} ORDER BY rid ASC");
@@ -2723,101 +2701,14 @@ function system_update_7038() {
  * page.
  */
 function system_update_7039() {
-  db_add_field('menu_router', 'theme_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
-  db_add_field('menu_router', 'theme_arguments', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  // Moved to update_fix_d7_requirements().
 }
 
 /**
  * Create new date format tables.
  */
 function system_update_7040() {
-  $schema['date_format_type'] = array(
-    'description' => 'Stores configured date format types.',
-    'fields' => array(
-      'type' => array(
-        'description' => 'The date format type, e.g. medium.',
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-      ),
-      'title' => array(
-        'description' => 'The human readable name of the format type.',
-        'type' => 'varchar',
-        'length' => 255,
-        'not null' => TRUE,
-      ),
-      'locked' => array(
-        'description' => 'Whether or not this is a system provided format.',
-        'type' => 'int',
-        'size' => 'tiny',
-        'default' => 0,
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('type'),
-  );
-
-  $schema['date_formats'] = array(
-    'description' => 'Stores configured date formats.',
-    'fields' => array(
-      'dfid' => array(
-        'description' => 'The date format identifier.',
-        'type' => 'serial',
-        'not null' => TRUE,
-        'unsigned' => TRUE,
-      ),
-      'format' => array(
-        'description' => 'The date format string.',
-        'type' => 'varchar',
-        'length' => 100,
-        'not null' => TRUE,
-      ),
-      'type' => array(
-        'description' => 'The date format type, e.g. medium.',
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-      ),
-      'locked' => array(
-        'description' => 'Whether or not this format can be modified.',
-        'type' => 'int',
-        'size' => 'tiny',
-        'default' => 0,
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('dfid'),
-    'unique keys' => array('formats' => array('format', 'type')),
-  );
-
-  $schema['date_format_locale'] = array(
-    'description' => 'Stores configured date formats for each locale.',
-    'fields' => array(
-      'format' => array(
-        'description' => 'The date format string.',
-        'type' => 'varchar',
-        'length' => 100,
-        'not null' => TRUE,
-      ),
-      'type' => array(
-        'description' => 'The date format type, e.g. medium.',
-        'type' => 'varchar',
-        'length' => 64,
-        'not null' => TRUE,
-      ),
-      'language' => array(
-        'description' => 'A {languages}.language for this format to be used with.',
-        'type' => 'varchar',
-        'length' => 12,
-        'not null' => TRUE,
-      ),
-    ),
-    'primary key' => array('type', 'language'),
-  );
-
-  db_create_table('date_format_type', $schema['date_format_type']);
-  db_create_table('date_formats', $schema['date_formats']);
-  db_create_table('date_format_locale', $schema['date_format_locale']);
+  // Moved to update_fix_d7_requirements().
 }
 
 /**
@@ -2825,13 +2716,23 @@ function system_update_7040() {
  * function to be used for final page rendering and sending to browser.
  */
 function system_update_7041() {
-  db_add_field('menu_router', 'delivery_callback', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  // Moved to update_fix_d7_requirements().
 }
 
 /**
  * Rename dst and src to source and alias.
  */
 function system_update_7042() {
+  // update_fix_d7_requirements() adds 'fake' source and alias columns to
+  // allow bootstrap to run without fatal errors. Remove those columns now
+  // so that we can rename properly.
+  db_drop_field('url_alias', 'source');
+  db_drop_field('url_alias', 'alias');
+
+  // Add the cache_path table.
+  $schema['cache_path'] = drupal_get_schema_unprocessed('system', 'cache');
+  $schema['cache_path']['description'] = 'Cache table used for path alias lookups.';
+  db_create_table('cache_path', $schema['cache_path']);
   // Drop indexes.
   db_drop_index('url_alias', 'src_language_pid');
   db_drop_unique_key('url_alias', 'dst_language_pid');
@@ -2841,18 +2742,14 @@ function system_update_7042() {
   // Add indexes back.
   db_add_index('url_alias', 'source_language_pid', array('source', 'language', 'pid'));
   db_add_unique_key('url_alias', 'alias_language_pid', array('alias', 'language', 'pid'));
+
 }
 
 /**
  * Add a 'context' field to {menu_router} to control contextual placement of local tasks.
  */
 function system_update_7043() {
-  db_add_field('menu_router', 'context', array(
-    'description' => 'Only for local tasks (tabs) - the context of a local task to control its placement.',
-    'type' => 'int',
-    'not null' => TRUE,
-    'default' => 0,
-  ));
+  // Moved to update_fix_d7_requirements().
 }
 
 /**

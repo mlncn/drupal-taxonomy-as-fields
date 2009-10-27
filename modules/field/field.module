@@ -1,5 +1,5 @@
 <?php
-// $Id: field.module,v 1.43 2009/10/22 00:49:12 dries Exp $
+// $Id: field.module,v 1.45 2009/10/26 00:15:41 dries Exp $
 /**
  * @file
  * Attach custom data fields to Drupal objects.
@@ -161,17 +161,17 @@ function field_theme() {
   $items = array(
     'field' => array(
       'template' => 'field',
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
       'path' => $path,
     ),
     'field_multiple_value_form' => array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     ),
   );
   $field_formatters = field_info_formatter_types(NULL);
   foreach ($field_formatters as $key => $field_formatter) {
     $items['field_formatter_' . $key] = array(
-      'arguments' => array('element' => NULL),
+      'render element' => 'element',
     );
     if (isset($field_formatter['theme'])) {
       $items['field_formatter_' . $key] += $field_formatter['theme'];
@@ -478,7 +478,7 @@ function _field_filter_xss_display_allowed_tags() {
  *
  * Used to display a field's values outside the context of the $node, as
  * when fields are displayed in Views, or to display a field in a template
- * using a different formatter than the one set up on the Display Fields tab
+ * using a different formatter than the one set up on the 'Manage display' tab
  * for the node's context.
  *
  * @param $field

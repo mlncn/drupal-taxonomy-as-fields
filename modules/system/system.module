@@ -1,5 +1,5 @@
 <?php
-// $Id: system.module,v 1.822 2009/10/19 18:28:16 dries Exp $
+// $Id: system.module,v 1.826 2009/10/25 19:52:47 dries Exp $
 
 /**
  * @file
@@ -119,7 +119,17 @@ function system_help($path, $arg) {
     case 'admin/config/modules':
       $output = '<p>' . t('Modules are plugins that extend Drupal\'s core functionality. To further extend your site\'s functionality, a number of <a href="@modules">contributed modules</a> are available for download.', array('@permissions' => url('admin/config/people/permissions'), '@modules' => 'http://drupal.org/project/modules')) . '</p>';
       $output .= '<p>' . t('Module-related tasks can be located on the <a href="@by-module">administration by module page</a>. New <a href="@permissions">module-related permissions</a> may also become available as new modules are enabled.', array('@by-module' => url('admin/by-module'), '@permissions' => url('admin/config/people/permissions'))) . '</p>';
-      $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. To help manage the update process, the <em>Update status</em> module, if enabled, provides <a href="@updates">information on new versions of modules (and themes)</a> as they are released. Regular review of the <a href="@updates">available updates page</a> is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php', '@updates' => url('admin/reports/updates'))) . '</p>';
+      if (module_exists('update')) {
+        if (update_manager_access()) {
+          $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. To help manage the update process, the <em>Update manager</em> module provides <a href="@updates">information on new versions of modules (and themes)</a> as they are released, and allows you to <a href="@update-manager-update">upgrade any missing updates</a> or <a href="@update-manager-install">install new modules and themes</a>. Regular review of the <a href="@updates">available updates page</a> is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php', '@updates' => url('admin/reports/updates'), '@update-manager-update' => url('admin/config/modules/update'), '@update-manager-install' => url('admin/config/modules/install'))) . '</p>';
+        }
+        else {
+          $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. To help manage the update process, the <em>Update manager</em> module provides <a href="@updates">information on new versions of modules (and themes)</a> as they are released. Regular review of the <a href="@updates">available updates page</a> is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php', '@updates' => url('admin/reports/updates'))) . '</p>';
+        }
+      }
+      else {
+        $output .= '<p>' . t('Each time a module is updated, it is important that <a href="@update-php">update.php</a> is run. If you enable the <em>Update manager</em> module, it will provide a report about new versions of modules (and themes) as they are released, can notify you via e-mail if your site is out of date, and let you install missing updates. Regular review of available updates is essential to maintaining a secure and current site.', array('@update-php' => $base_url . '/update.php')) . '</p>';
+      }
       return $output;
     case 'admin/config/modules/uninstall':
       return '<p>' . t('The uninstall process removes all data related to a module. To uninstall a module, you must first disable it on the main <a href="@modules">modules page</a>. Not all modules support this feature.', array('@modules' => url('admin/config/modules'))) . '</p>';
@@ -156,63 +166,65 @@ function system_help($path, $arg) {
 function system_theme() {
   return array_merge(drupal_common_theme(), array(
     'system_themes_form' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'system.admin.inc',
     ),
     'system_settings_form' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'system.admin.inc',
     ),
     'confirm_form' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
     ),
     'system_modules_fieldset' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'system.admin.inc',
     ),
     'system_modules_incompatible' => array(
-      'arguments' => array('message' => NULL),
+      'variables' => array('message' => NULL),
       'file' => 'system.admin.inc',
     ),
     'system_modules_uninstall' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'system.admin.inc',
     ),
     'status_report' => array(
-      'arguments' => array('requirements' => NULL),
+      'render element' => 'requirements',
       'file' => 'system.admin.inc',
     ),
     'admin_page' => array(
-      'arguments' => array('blocks' => NULL),
+      'variables' => array('blocks' => NULL),
       'file' => 'system.admin.inc',
     ),
     'admin_block' => array(
-      'arguments' => array('block' => NULL),
+      'variables' => array('block' => NULL),
       'file' => 'system.admin.inc',
     ),
     'admin_block_content' => array(
-      'arguments' => array('content' => NULL),
+      'variables' => array('content' => NULL),
       'file' => 'system.admin.inc',
     ),
     'system_admin_by_module' => array(
-      'arguments' => array('menu_items' => NULL),
+      'variables' => array('menu_items' => NULL),
       'file' => 'system.admin.inc',
     ),
     'system_powered_by' => array(
-      'arguments' => array('image_path' => NULL),
+      'variables' => array(),
     ),
     'meta_generator_html' => array(
-      'arguments' => array('version' => NULL),
+      'variables' => array('version' => NULL),
     ),
     'meta_generator_header' => array(
-      'arguments' => array('version' => NULL),
+      'variables' => array('version' => NULL),
     ),
-    'system_compact_link' => array(),
+    'system_compact_link' => array(
+      'variables' => array(),
+    ),
     'system_run_cron_image' => array(
-      'arguments' => array('image_path' => NULL),
+      'variables' => array('image_path' => NULL),
     ),
     'system_date_time_settings' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'system.admin.inc',
     ),
   ));
@@ -1507,22 +1519,13 @@ function system_updater_info() {
 function system_filetransfer_backends() {
   $backends = array();
 
-  //This is the default, will be available on most systems
-  if (function_exists('ftp_connect')) {
-    $backends['ftp_extension'] = array(
+  // This is the default, will be available on most systems.
+  if (function_exists('ftp_connect') || ini_get('allow_url_fopen')) {
+    $backends['ftp'] = array(
       'title' => t('FTP'),
-      'class' => 'FileTransferFTPExtension',
+      'class' => 'FileTransferFTP',
       'settings_form' => 'system_filetransfer_backend_form_ftp',
       'weight' => 0,
-    );
-  }
-
-  if (ini_get('allow_url_fopen')) {
-    $backends['ftp_wrapper'] = array(
-      'title' => t('FTP using file streams'),
-      'class' => 'FileTransferFTPWrapper',
-      'settings_form' => 'system_filetransfer_backend_form_ftp',
-      'weight' => 10,
     );
   }
 
@@ -1753,46 +1756,6 @@ function system_block_info() {
 }
 
 /**
- * Implement hook_block_configure().
- */
-function system_block_configure($delta = '') {
-  if ($delta == 'powered-by') {
-    $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
-    drupal_add_js(drupal_get_path('module', 'system') . '/system.js');
-    // Compile a list of fields to show
-    $form['wrapper']['color'] = array(
-      '#type' => 'select',
-      '#title' => t('Badge color'),
-      '#default_value' => variable_get('drupal_badge_color', 'powered-blue'),
-      '#options' => array('powered-black' => t('Black'), 'powered-blue' => t('Blue'), 'powered-gray' => t('Gray')),
-    );
-    $form['wrapper']['size'] = array(
-      '#type' => 'select',
-      '#title' => t('Badge size'),
-      '#default_value' => variable_get('drupal_badge_size', '80x15'),
-      '#options' => array('80x15' => t('Small'), '88x31' => t('Medium'), '135x42' => t('Large')),
-    );
-    $form['wrapper']['preview'] = array(
-      '#type' => 'item',
-      '#title' => 'Preview',
-      '#markup' => theme('image', array('path' => $image_path, 'alt' => t('Powered by Drupal, an open source content management system'), 'title' => t('Powered by Drupal, an open source content management system'), 'attributes' => array('class' => array('powered-by-preview')), 'getsize' => FALSE)),
-    );
-    return $form;
-  }
-}
-
-/**
- * Implement hook_block_save().
- */
-function system_block_save($delta = '', $edit = NULL) {
-  if ($delta == 'powered-by') {
-    $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
-    variable_set('drupal_badge_color', $edit['color']);
-    variable_set('drupal_badge_size', $edit['size']);
-  }
-}
-
-/**
  * Implement hook_block_view().
  *
  * Generate a block with a promotional link to Drupal.org and
@@ -1806,9 +1769,8 @@ function system_block_view($delta = '') {
       $block['content'] = drupal_set_page_content();
       return $block;
     case 'powered-by':
-      $image_path = 'misc/' . variable_get('drupal_badge_color', 'powered-blue') . '-' . variable_get('drupal_badge_size', '80x15') . '.png';
       $block['subject'] = NULL;
-      $block['content'] = theme('system_powered_by', array('image_path' => $image_path));
+      $block['content'] = theme('system_powered_by');
       return $block;
     case 'help':
       $block['subject'] = NULL;
@@ -2910,8 +2872,7 @@ function system_timezone($abbreviation = '', $offset = -1, $is_daylight_saving_t
  * @ingroup themeable
  */
 function theme_system_powered_by($variables) {
-  $image = theme('image', array('path' => $variables['image_path'], 'alt' => t('Powered by Drupal, an open source content management system'), 'title' => t('Powered by Drupal, an open source content management system')));
-  return l($image, 'http://drupal.org', array('html' => TRUE, 'absolute' => TRUE, 'external' => TRUE));
+  return '<span>' . t('Powered by <a href="@poweredby">Drupal</a>', array('@poweredby' => 'http://drupal.org')) . '</span>';
 }
 
 /**
@@ -3506,8 +3467,13 @@ function system_preprocess(&$variables, $hook) {
   $variables['contextual_links'] = array();
 
   // Determine the primary theme function argument.
-  $keys = array_keys($hooks[$hook]['arguments']);
-  $key = $keys[0];
+  if (isset($hooks[$hook]['variables'])) {
+    $keys = array_keys($hooks[$hook]['variables']);
+    $key = $keys[0];
+  }
+  else {
+    $key = $hooks[$hook]['render element'];
+  }
   if (isset($variables[$key])) {
     $element = $variables[$key];
   }

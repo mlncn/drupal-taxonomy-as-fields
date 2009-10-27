@@ -1,4 +1,4 @@
-; $Id: default.info,v 1.5 2009/10/13 13:54:55 dries Exp $
+; $Id: default.info,v 1.7 2009/10/19 18:28:16 dries Exp $
 name = Drupal
 description = Create a Drupal site with the most commonly used features pre-installed.
 version = VERSION
@@ -14,7 +14,9 @@ dependencies[] = path
 dependencies[] = taxonomy
 dependencies[] = dblog
 dependencies[] = search
+dependencies[] = shortcut
 dependencies[] = toolbar
 dependencies[] = field_ui
 dependencies[] = file
+dependencies[] = rdf
 files[] = default.profile

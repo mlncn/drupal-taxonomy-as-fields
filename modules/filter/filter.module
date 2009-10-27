@@ -1,5 +1,5 @@
 <?php
-// $Id: filter.module,v 1.298 2009/10/16 19:06:23 dries Exp $
+// $Id: filter.module,v 1.300 2009/10/23 22:24:14 webchick Exp $
 
 /**
  * @file
@@ -38,22 +38,22 @@ function filter_help($path, $arg) {
 function filter_theme() {
   return array(
     'filter_admin_overview' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'filter.admin.inc',
     ),
     'filter_admin_order' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'filter.admin.inc',
     ),
     'filter_tips' => array(
-      'arguments' => array('tips' => NULL, 'long' => FALSE),
+      'variables' => array('tips' => NULL, 'long' => FALSE),
       'file' => 'filter.pages.inc',
     ),
     'filter_tips_more_info' => array(
-      'arguments' => array(),
+      'variables' => array(),
     ),
     'filter_guidelines' => array(
-      'arguments' => array('format' => NULL),
+      'variables' => array('format' => NULL),
     ),
   );
 }
@@ -615,17 +615,21 @@ function check_markup($text, $format_id = NULL, $langcode = '', $cache = FALSE) 
 }
 
 /**
- * Generate a selector for choosing a format in a form.
+ * Generates a selector for choosing a format in a form.
+ *
+ * @param $selected_format
+ *   The ID of the format that is currently selected; uses the default format
+ *   for the current user if not provided.
+ * @param $weight
+ *   The weight of the form element within the form.
+ * @param $parents
+ *   The parents array of the element. Required when defining multiple text
+ *   formats on a single form or having a different parent than 'format'.
+ *
+ * @return
+ *   Form API array for the form element.
  *
  * @ingroup forms
- * @param $selected_format
- *   The ID of the format that is currently selected.
- * @param $weight
- *   The weight of the text format.
- * @param $parents
- *   Required when defining multiple text formats on a single node or having a different parent than 'format'.
- * @return
- *   HTML for the form element.
  */
 function filter_form($selected_format = NULL, $weight = NULL, $parents = array('format')) {
   global $user;

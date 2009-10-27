@@ -1,5 +1,5 @@
 <?php
-// $Id: simpletest.module,v 1.77 2009/10/09 01:00:03 dries Exp $
+// $Id: simpletest.module,v 1.80 2009/10/24 23:12:11 webchick Exp $
 
 /**
  * @file
@@ -75,11 +75,11 @@ function simpletest_permission() {
 function simpletest_theme() {
   return array(
     'simpletest_test_table' => array(
-      'arguments' => array('table' => NULL),
+      'render element' => 'table',
       'file' => 'simpletest.pages.inc',
     ),
     'simpletest_result_summary' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'simpletest.pages.inc',
     ),
   );
@@ -406,6 +406,10 @@ function simpletest_clean_environment() {
   else {
     drupal_set_message(t('Clear results is disabled and the test results table will not be cleared.'), 'warning');
   }
+
+  // Detect test classes that have been added, renamed or deleted.
+  registry_rebuild();
+  cache_clear_all('simpletest', 'cache');
 }
 
 /**
@@ -414,16 +418,18 @@ function simpletest_clean_environment() {
 function simpletest_clean_database() {
   $tables = db_find_tables(Database::getConnection()->prefixTables('{simpletest}') . '%');
   $schema = drupal_get_schema_unprocessed('simpletest');
+  $count = 0;
   foreach (array_diff_key($tables, $schema) as $table) {
     // Strip the prefix and skip tables without digits following "simpletest",
     // e.g. {simpletest_test_id}.
     if (preg_match('/simpletest\d+.*/', $table, $matches)) {
       db_drop_table($matches[0]);
+      $count++;
     }
   }
 
-  if (count($ret) > 0) {
-    drupal_set_message(format_plural(count($ret), 'Removed 1 leftover table.', 'Removed @count leftover tables.'));
+  if ($count > 0) {
+    drupal_set_message(format_plural($count, 'Removed 1 leftover table.', 'Removed @count leftover tables.'));
   }
   else {
     drupal_set_message(t('No leftover tables to remove.'));

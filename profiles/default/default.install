@@ -1,5 +1,5 @@
 <?php
-// $Id: default.install,v 1.11 2009/10/14 10:56:35 dries Exp $
+// $Id: default.install,v 1.16 2009/10/20 17:33:43 webchick Exp $
 
 /**
  * Implement hook_install().
@@ -166,22 +166,33 @@ function default_install() {
     node_type_save($type);
   }
 
+  // Insert default user-defined RDF mapping into the database.
+  $rdf_mappings = array(
+    array(
+      'type' => 'node',
+      'bundle' => 'page',
+      'mapping' => array(
+        'rdftype' => array('foaf:Document'),
+      ),
+    ),
+    array(
+      'type' => 'node',
+      'bundle' => 'article',
+      'mapping' => array(
+        'rdftype' => array('sioc:Item', 'foaf:Document'),
+      ),
+    ),
+  );
+  foreach ($rdf_mappings as $rdf_mapping) {
+    rdf_mapping_save($rdf_mapping);
+  }
+
   // Default page to not be promoted and have comments disabled.
   variable_set('node_options_page', array('status'));
   variable_set('comment_page', COMMENT_NODE_HIDDEN);
 
   // Don't display date and author information for page nodes by default.
   variable_set('node_submitted_page', FALSE);
-
-  // Create an image style.
-  $style = array('name' => 'thumbnail');
-  $style = image_style_save($style);
-  $effect = array(
-    'isid' => $style['isid'],
-    'name' => 'image_scale_and_crop',
-    'data' => array('width' => '85', 'height' => '85'),
-  );
-  image_effect_save($effect);
 
   // Enable user picture support and set the default to a square thumbnail option.
   variable_set('user_pictures', '1');
@@ -202,6 +213,7 @@ function default_install() {
   taxonomy_vocabulary_save($vocabulary);
   $instance = array(
     'field_name' => 'taxonomy_' . $vocabulary->machine_name,
+    'object_type' => 'node',
     'label' => $vocabulary->name,
     'bundle' => 'article',
     'description' => $vocabulary->help,

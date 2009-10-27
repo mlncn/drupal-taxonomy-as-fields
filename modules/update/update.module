@@ -1,5 +1,5 @@
 <?php
-// $Id: update.module,v 1.50 2009/10/15 21:19:31 webchick Exp $
+// $Id: update.module,v 1.53 2009/10/25 19:52:47 dries Exp $
 
 /**
  * @file
@@ -79,11 +79,6 @@ function update_help($path, $arg) {
     case 'admin/reports/updates':
       return '<p>' . t('Here you can find information about available updates for your installed modules and themes. Note that each module or theme is part of a "project", which may or may not have the same name, and might include multiple modules or themes within it.') . '</p>';
 
-    case 'admin/appearance/install':
-    case 'admin/config/modules/install':
-    case 'admin/reports/updates/install':
-      return '<p>' . t('To install a new module or theme, either upload the .tar.gz file that you have downloaded, or paste the URL of a .tar.gz you wish to install. You can find <a href="@module_url">modules</a> and <a href="@theme_url">themes</a> at <a href="@drupal_org_url">http://drupal.org</a>.', array('@module_url' => 'http://drupal.org/project/modules', '@theme_url' => 'http://drupal.org/project/themes', '@drupal_org_url' => 'http://drupal.org')) . '</p>';
-
     case 'admin/appearance':
     case 'admin/config/modules':
       include_once DRUPAL_ROOT . '/includes/install.inc';
@@ -101,8 +96,11 @@ function update_help($path, $arg) {
       }
 
     case 'admin/appearance/update':
+    case 'admin/appearance/install':
     case 'admin/config/modules/update':
+    case 'admin/config/modules/install':
     case 'admin/reports/updates/update':
+    case 'admin/reports/updates/install':
     case 'admin/reports/updates/settings':
     case 'admin/reports/status':
     case 'admin/update/confirm':
@@ -245,20 +243,20 @@ function update_manager_access() {
 function update_theme() {
   return array(
     'update_manager_update_form' => array(
-      'arguments' => array('form' => NULL),
+      'render element' => 'form',
       'file' => 'update.manager.inc',
     ),
     'update_last_check' => array(
-      'arguments' => array('last' => NULL),
+      'variables' => array('last' => NULL),
     ),
     'update_report' => array(
-      'arguments' => array('data' => NULL),
+      'variables' => array('data' => NULL),
     ),
     'update_version' => array(
-      'arguments' => array('version' => NULL, 'tag' => NULL, 'class' => array()),
+      'variables' => array('version' => NULL, 'tag' => NULL, 'class' => array()),
     ),
     'update_status_label' => array(
-      'arguments' => array('status' => NULL),
+      'variables' => array('status' => NULL),
     ),
   );
 }
@@ -373,7 +371,7 @@ function _update_requirement_check($project, $type) {
   if ($status != UPDATE_CURRENT && $type == 'core' && isset($project['recommended'])) {
     $requirement_label .= ' ' . t('(version @version available)', array('@version' => $project['recommended']));
   }
-  $requirement['value'] = l($requirement_label, 'admin/reports/updates');
+  $requirement['value'] = l($requirement_label, update_manager_access() ? 'admin/reports/updates/update' : 'admin/reports/updates');
   return $requirement;
 }
 
@@ -588,7 +586,9 @@ function update_mail($key, &$message, $params) {
     $message['body'][] = _update_message_text($msg_type, $msg_reason, FALSE, $language);
   }
   $message['body'][] = t('See the available updates page for more information:', array(), array('langcode' => $langcode)) . "\n" . url('admin/reports/updates', array('absolute' => TRUE, 'language' => $language));
-
+  if (update_manager_access()) {
+    $message['body'][] = t('You can automatically install your missing updates using the Update manager:', array(), array('langcode' => $langcode)) . "\n" . url('admin/reports/updates/update', array('absolute' => TRUE, 'language' => $language));
+  }
   $settings_url = url('admin/reports/updates/settings', array('absolute' => TRUE));
   if (variable_get('update_notification_threshold', 'all') == 'all') {
     $message['body'][] = t('Your site is currently configured to send these emails when any updates are available. To get notified only for security updates, please visit !url.', array('!url' => $settings_url));
@@ -672,7 +672,12 @@ function _update_message_text($msg_type, $msg_reason, $report_link = FALSE, $lan
   }
 
   if ($report_link) {
-    $text .= ' ' . t('See the <a href="@available_updates">available updates</a> page for more information.', array('@available_updates' => url('admin/reports/updates', array('language' => $language))), array('langcode' => $langcode));
+    if (update_manager_access()) {
+      $text .= ' ' . t('See the <a href="@available_updates">available updates</a> page for more information and to install your missing updates.', array('@available_updates' => url('admin/reports/updates/update', array('language' => $language))), array('langcode' => $langcode));
+    }
+    else {
+      $text .= ' ' . t('See the <a href="@available_updates">available updates</a> page for more information.', array('@available_updates' => url('admin/reports/updates', array('language' => $language))), array('langcode' => $langcode));
+    }
   }
 
   return $text;
